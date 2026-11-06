@@ -5,6 +5,7 @@ import Navbar from './components/Navbar';
 import ReviewStation from './components/ReviewStation';
 import { getStatus, getPipelineStatus } from './api';
 import { eventStream } from './services/eventStream';
+import HypeMomentToasts from './components/HypeMomentToasts';
 
 // Code-split heavy routes with React.lazy
 const TemplateStudio = lazy(() => import('./components/TemplateStudio'));
@@ -17,6 +18,7 @@ const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 function AppLayout() {
   const [status, setStatus] = useState({});
   const [pipelineAlert, setPipelineAlert] = useState(null);
+  const [toasts, setToasts] = useState([]);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -28,6 +30,25 @@ function AppLayout() {
       if (event === 'clip_created' || event === 'clip_updated' || event === 'render_complete') {
         queryClient.invalidateQueries({ queryKey: ['clips'] });
         fetchSystemStatus();
+
+        // Push persistent toast notification for created clips
+        if (event === 'clip_created' && data) {
+          setToasts((prev) => {
+            const toastId = `toast-${data.clip_id || data.id || Date.now()}`;
+            if (prev.some((t) => t.toast_id === toastId)) return prev;
+            return [
+              {
+                toast_id: toastId,
+                clip_id: data.clip_id || data.id,
+                channel_id: data.channel_id,
+                title: data.title || 'New Stream Highlight Ready',
+                virality_score: data.virality_score || 85,
+                time: new Date().toLocaleTimeString(),
+              },
+              ...prev,
+            ];
+          });
+        }
       } else if (event === 'channel_status' || event === 'channel_settings_changed') {
         queryClient.invalidateQueries({ queryKey: ['channels'] });
       } else if (event === 'job_progress') {
@@ -42,6 +63,10 @@ function AppLayout() {
 
     return () => unsubscribe();
   }, [queryClient]);
+
+  const handleDismissToast = (toastId) => {
+    setToasts((prev) => prev.filter((t) => t.toast_id !== toastId));
+  };
 
   const fetchSystemStatus = async () => {
     try {
@@ -115,6 +140,9 @@ function AppLayout() {
           <Outlet context={{ onStatusChange: fetchSystemStatus }} />
         </Suspense>
       </main>
+
+      {/* Persistent Bottom-Left Hype Moment Toasts */}
+      <HypeMomentToasts toasts={toasts} onDismiss={handleDismissToast} />
     </div>
   );
 }

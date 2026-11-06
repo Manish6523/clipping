@@ -551,12 +551,26 @@ export default function TemplateStudio() {
                   : 'border-amber-400/50 bg-amber-400/5 hover:border-amber-400'
               }`}
             >
-              <span className="text-[10px] font-mono font-bold text-amber-300 bg-black/60 px-1 py-0.5 rounded w-max">
+              <span className="text-[10px] font-mono font-bold text-amber-300 bg-black/60 px-1 py-0.5 rounded w-max select-none">
                 FACECAM CROP
               </span>
-              <span className="text-[9px] font-mono text-amber-300/80 self-end bg-black/60 px-1 rounded">
+              <span className="text-[9px] font-mono text-amber-300/80 self-end bg-black/60 px-1 rounded select-none">
                 {boxes.facecam.w}% × {boxes.facecam.h}%
               </span>
+
+              {/* 8 Resize Handles (rendered when active) */}
+              {activeBoxId === 'facecam' && (
+                <>
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'nw')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'n')} className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'w')} className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'e')} className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 's')} className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                </>
+              )}
             </div>
 
             {/* Gameplay Box */}
@@ -574,12 +588,26 @@ export default function TemplateStudio() {
                   : 'border-cyan-400/50 bg-cyan-400/5 hover:border-cyan-400'
               }`}
             >
-              <span className="text-[10px] font-mono font-bold text-cyan-300 bg-black/60 px-1 py-0.5 rounded w-max">
+              <span className="text-[10px] font-mono font-bold text-cyan-300 bg-black/60 px-1 py-0.5 rounded w-max select-none">
                 GAMEPLAY / MAIN CROP
               </span>
-              <span className="text-[9px] font-mono text-cyan-300/80 self-end bg-black/60 px-1 rounded">
+              <span className="text-[9px] font-mono text-cyan-300/80 self-end bg-black/60 px-1 rounded select-none">
                 {boxes.gameplay.w}% × {boxes.gameplay.h}%
               </span>
+
+              {/* 8 Resize Handles (rendered when active) */}
+              {activeBoxId === 'gameplay' && (
+                <>
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'nw')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-cyan-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'n')} className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-cyan-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-cyan-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'w')} className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-cyan-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'e')} className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-cyan-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-cyan-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 's')} className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-cyan-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                  <div onPointerDown={(e) => handlePointerDown(e, 'gameplay', 'resize', 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-cyan-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                </>
+              )}
             </div>
           </div>
 
@@ -613,25 +641,59 @@ export default function TemplateStudio() {
             </div>
           ) : (
             <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex flex-col">
-              {/* Stacked Top 38% Section */}
-              <div className="h-[38%] bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center">
-                <span className="text-amber-400/80 font-bold text-xs uppercase tracking-wider">
-                  Facecam ({boxes.facecam.w}% w)
-                </span>
-                <span className="absolute top-2 left-2 text-[9px] font-mono text-amber-500 bg-black/60 px-1 rounded">
+              {/* Stacked Top 38% Section with Real Cropped Frame Preview */}
+              <div
+                className="h-[38%] bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center bg-no-repeat"
+                style={
+                  channelFrameUrl
+                    ? {
+                        backgroundImage: `url(${channelFrameUrl})`,
+                        backgroundPosition: `${boxes.facecam.w > 0 ? (boxes.facecam.x / (100 - boxes.facecam.w)) * 100 : 0}% ${
+                          boxes.facecam.h > 0 ? (boxes.facecam.y / (100 - boxes.facecam.h)) * 100 : 0
+                        }%`,
+                        backgroundSize: `${boxes.facecam.w > 0 ? (100 / boxes.facecam.w) * 100 : 100}% ${
+                          boxes.facecam.h > 0 ? (100 / boxes.facecam.h) * 100 : 100
+                        }%`,
+                      }
+                    : undefined
+                }
+              >
+                {!channelFrameUrl && (
+                  <span className="text-amber-400/80 font-bold text-xs uppercase tracking-wider">
+                    Facecam ({boxes.facecam.w}% w)
+                  </span>
+                )}
+                <span className="absolute top-2 left-2 text-[9px] font-mono text-amber-500 bg-black/60 px-1 rounded z-10">
                   TOP 38%
                 </span>
               </div>
 
-              {/* Stacked Bottom 62% Section */}
-              <div className="h-[62%] bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4">
+              {/* Stacked Bottom 62% Section with Real Cropped Frame Preview */}
+              <div
+                className="h-[62%] bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4 bg-no-repeat"
+                style={
+                  channelFrameUrl
+                    ? {
+                        backgroundImage: `url(${channelFrameUrl})`,
+                        backgroundPosition: `${boxes.gameplay.w > 0 ? (boxes.gameplay.x / (100 - boxes.gameplay.w)) * 100 : 0}% ${
+                          boxes.gameplay.h > 0 ? (boxes.gameplay.y / (100 - boxes.gameplay.h)) * 100 : 0
+                        }%`,
+                        backgroundSize: `${boxes.gameplay.w > 0 ? (100 / boxes.gameplay.w) * 100 : 100}% ${
+                          boxes.gameplay.h > 0 ? (100 / boxes.gameplay.h) * 100 : 100
+                        }%`,
+                      }
+                    : undefined
+                }
+              >
                 <div />
-                <span className="text-cyan-400/80 font-bold text-xs uppercase tracking-wider">
-                  Gameplay ({boxes.gameplay.w}% w)
-                </span>
+                {!channelFrameUrl && (
+                  <span className="text-cyan-400/80 font-bold text-xs uppercase tracking-wider">
+                    Gameplay ({boxes.gameplay.w}% w)
+                  </span>
+                )}
 
                 {/* Subtitle simulation overlay */}
-                <div className="text-center">
+                <div className="text-center z-10">
                   <span
                     style={{
                       fontFamily: fontFamily.split(' ')[0],
@@ -639,13 +701,13 @@ export default function TemplateStudio() {
                       color: primaryColor,
                       textShadow: `0 0 3px ${outlineColor}, 0 2px 4px rgba(0,0,0,0.8)`,
                     }}
-                    className="font-black uppercase tracking-wide inline-block leading-tight"
+                    className="font-black uppercase tracking-wide inline-block leading-tight drop-shadow-lg"
                   >
                     THIS IS <span style={{ color: highlightColor }}>INSANE!</span>
                   </span>
                 </div>
 
-                <span className="absolute bottom-2 left-2 text-[9px] font-mono text-cyan-500 bg-black/60 px-1 rounded">
+                <span className="absolute bottom-2 left-2 text-[9px] font-mono text-cyan-500 bg-black/60 px-1 rounded z-10">
                   BOTTOM 62%
                 </span>
               </div>

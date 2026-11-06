@@ -1,5 +1,5 @@
 {
-  "name": "custom_gaming_split",
+  "name": "Bottom Left",
   "description": "Facecam top with gameplay bottom",
   "min_virality_score": 65,
   "chat_spike_multiplier": 2.5,
@@ -44,7 +44,7 @@
     }
   },
   "subtitles": {
-    "font_name": "Montserrat ExtraBold",
+    "font_name": "Bangers",
     "font_size": 72,
     "primary_color": "&H00FFFFFF",
     "highlight_color": "&H0000FFFF",

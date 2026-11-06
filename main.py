@@ -181,6 +181,18 @@ class AutoClipEngine:
 
                 update_pipeline_progress("completed", channel_id="manual", step=5, step_name=f"Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
 
+                from src.web.ws_manager import ws_manager
+                await ws_manager.broadcast("clip_created", {
+                    "id": clip_id,
+                    "clip_id": clip_id,
+                    "channel_id": "manual",
+                    "title": f"Manual Highlight ({template_name})",
+                    "virality_score": 85,
+                    "template_name": template_name,
+                    "rendered_video_path": rendered_mp4,
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                })
+
                 clip_record = await get_clip(clip_id)
                 if clip_record:
                     await self.bot.send_clip_card(clip_record)
@@ -222,7 +234,18 @@ class AutoClipEngine:
         try:
             transcription = await self.transcriber.transcribe(video_path)
 
-            template_name = metadata.get("template_name", "ishowspeed_gaming")
+            template_name = metadata.get("template_name")
+            if not template_name:
+                # Query channel's assigned template from DB
+                from src.database import get_db_connection
+                async with get_db_connection() as db:
+                    cur = await db.execute("SELECT template_name FROM channels WHERE channel_id_or_handle = ?", (channel_id,))
+                    row = await cur.fetchone()
+                    if row and row[0]:
+                        template_name = row[0]
+            if not template_name:
+                template_name = "Bottom Left"
+
             template = load_template(template_name)
             min_score = template.get("min_virality_score", 70)
 
@@ -313,6 +336,19 @@ class AutoClipEngine:
                 step_name=f"Viral Clip #{clip_id} Ready! Sent to Telegram.",
                 clip_id=clip_id,
             )
+
+            # Broadcast clip_created event to real-time Web UI
+            from src.web.ws_manager import ws_manager
+            await ws_manager.broadcast("clip_created", {
+                "id": clip_id,
+                "clip_id": clip_id,
+                "channel_id": channel_id,
+                "title": best_candidate.suggested_title,
+                "virality_score": best_candidate.virality_score,
+                "template_name": template_name,
+                "rendered_video_path": rendered_mp4,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            })
 
             clip_record = await get_clip(clip_id)
             if clip_record:
@@ -412,6 +448,18 @@ class AutoClipEngine:
             )
 
             update_pipeline_progress("completed", channel_id=channel_id, step=5, step_name=f"VOD Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
+
+            from src.web.ws_manager import ws_manager
+            await ws_manager.broadcast("clip_created", {
+                "id": clip_id,
+                "clip_id": clip_id,
+                "channel_id": channel_id,
+                "title": best_candidate.suggested_title,
+                "virality_score": best_candidate.virality_score,
+                "template_name": template_name,
+                "rendered_video_path": rendered_mp4,
+                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+            })
 
             clip_record = await get_clip(clip_id)
             if clip_record:

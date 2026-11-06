@@ -19,11 +19,16 @@ logger = logging.getLogger(__name__)
 
 
 def load_template(template_name: str) -> Dict[str, Any]:
-    """Load JSON template configuration."""
+    """Load JSON template configuration with safe fallbacks."""
     t_path = Path(TEMPLATES_DIR) / f"{template_name}.json"
     if not t_path.exists():
-        # Fallback to ishowspeed_gaming if not found
-        t_path = Path(TEMPLATES_DIR) / "ishowspeed_gaming.json"
+        # Look for any available json template in directory
+        available = list(Path(TEMPLATES_DIR).glob("*.json"))
+        if available:
+            t_path = available[0]
+            logger.warning("Template '%s' not found, falling back to '%s'", template_name, t_path.stem)
+        else:
+            raise FileNotFoundError(f"No templates found in {TEMPLATES_DIR}")
     with open(t_path, "r", encoding="utf-8") as f:
         return json.load(f)
 
