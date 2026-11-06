@@ -57,6 +57,26 @@ export default function TemplateStudio() {
 
   const canvasRef = useRef(null);
 
+  // Compute CSS background position & size for an exact crop window on a 16:9 source frame
+  const getCropStyle = (box) => {
+    if (!channelFrameUrl || !box) return undefined;
+    const bw = Math.max(0.1, box.w);
+    const bh = Math.max(0.1, box.h);
+
+    const sizeX = (100 / bw) * 100;
+    const sizeY = (100 / bh) * 100;
+
+    const posX = bw >= 100 ? 50 : Math.max(0, Math.min(100, (box.x / (100 - bw)) * 100));
+    const posY = bh >= 100 ? 50 : Math.max(0, Math.min(100, (box.y / (100 - bh)) * 100));
+
+    return {
+      backgroundImage: `url(${channelFrameUrl})`,
+      backgroundPosition: `${posX}% ${posY}%`,
+      backgroundSize: `${sizeX}% ${sizeY}%`,
+      backgroundRepeat: 'no-repeat',
+    };
+  };
+
   useEffect(() => {
     loadExistingTemplates();
     loadChannelList();
@@ -157,12 +177,43 @@ export default function TemplateStudio() {
   const handleNewTemplate = () => {
     setTemplateName(`custom_template_${Date.now().toString().slice(-4)}`);
     setDescription('Custom multi-crop layout');
-    setBoxes({
-      facecam: { x: 5, y: 55, w: 32, h: 42 },
-      gameplay: { x: 20, y: 0, w: 60, h: 100 },
-    });
+    if (layoutType === 'single_crop_9_16') {
+      setBoxes({
+        facecam: { x: 5, y: 55, w: 32, h: 42 },
+        gameplay: { x: 34.2, y: 0, w: 31.6, h: 100 },
+      });
+    } else {
+      setBoxes({
+        facecam: { x: 5, y: 55, w: 32, h: 42 },
+        gameplay: { x: 20, y: 0, w: 60, h: 100 },
+      });
+    }
     setIsDirty(true);
     showToast('Ready to design new template!');
+  };
+
+  const handleResetAspect = () => {
+    if (layoutType === 'single_crop_9_16') {
+      // 9:16 aspect ratio: w = h * (9/16) * (1080/1920) in percentage terms = h * (9/16) * (9/16) = h * 0.3164
+      setBoxes((prev) => ({
+        ...prev,
+        gameplay: { x: 34.2, y: 0, w: 31.6, h: 100 },
+      }));
+    } else if (layoutType === 'split_screen_50_50') {
+      // Top 50% = 1080x960 (ratio 1.125), Bottom 50% = 1080x960 (ratio 1.125)
+      setBoxes((prev) => ({
+        facecam: { x: 2, y: 55, w: 30, h: 42 },
+        gameplay: { x: 20, y: 0, w: 60, h: 100 },
+      }));
+    } else {
+      // Default facecam top 38% + gameplay bottom 62%
+      setBoxes({
+        facecam: { x: 0, y: 58, w: 32, h: 42 },
+        gameplay: { x: 20, y: 0, w: 60, h: 100 },
+      });
+    }
+    setIsDirty(true);
+    showToast('Reset aspect ratio & positions!');
   };
 
   // Direct Pointer Drag & 8-Point Resize Engine
@@ -551,6 +602,14 @@ export default function TemplateStudio() {
               16:9 Source Stream Canvas
             </span>
             <div className="flex items-center gap-2">
+              <button
+                onClick={handleResetAspect}
+                title="Reset crop boxes to optimal default proportions"
+                className="flex items-center gap-1 text-xs text-slate-300 font-semibold bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 transition-all mr-2"
+              >
+                <RotateCcw size={12} className="text-[#8FD3FF]" /> Reset Ratio
+              </button>
+
               <label className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold cursor-pointer bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 select-none mr-2">
                 <input
                   type="checkbox"
@@ -718,20 +777,8 @@ export default function TemplateStudio() {
             /* Single Full 9:16 Crop Preview (No Facecam) */
             <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex flex-col">
               <div
-                className="w-full h-full relative overflow-hidden flex flex-col justify-between p-4 bg-no-repeat bg-slate-900"
-                style={
-                  channelFrameUrl
-                    ? {
-                        backgroundImage: `url(${channelFrameUrl})`,
-                        backgroundPosition: `${boxes.gameplay.w > 0 ? (boxes.gameplay.x / (100 - boxes.gameplay.w)) * 100 : 0}% ${
-                          boxes.gameplay.h > 0 ? (boxes.gameplay.y / (100 - boxes.gameplay.h)) * 100 : 0
-                        }%`,
-                        backgroundSize: `${boxes.gameplay.w > 0 ? (100 / boxes.gameplay.w) * 100 : 100}% ${
-                          boxes.gameplay.h > 0 ? (100 / boxes.gameplay.h) * 100 : 100
-                        }%`,
-                      }
-                    : undefined
-                }
+                className="w-full h-full relative overflow-hidden flex flex-col justify-between p-4 bg-slate-900"
+                style={getCropStyle(boxes.gameplay)}
               >
                 <span className="text-[10px] font-mono text-cyan-400 bg-black/70 px-2 py-0.5 rounded w-max z-10 border border-cyan-400/30">
                   FULL 9:16 CROP (NO CAM)
@@ -790,20 +837,8 @@ export default function TemplateStudio() {
             <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex flex-col">
               {/* Stacked Top Section with Real Cropped Frame Preview */}
               <div
-                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[38%]'} bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center bg-no-repeat`}
-                style={
-                  channelFrameUrl
-                    ? {
-                        backgroundImage: `url(${channelFrameUrl})`,
-                        backgroundPosition: `${boxes.facecam.w > 0 ? (boxes.facecam.x / (100 - boxes.facecam.w)) * 100 : 0}% ${
-                          boxes.facecam.h > 0 ? (boxes.facecam.y / (100 - boxes.facecam.h)) * 100 : 0
-                        }%`,
-                        backgroundSize: `${boxes.facecam.w > 0 ? (100 / boxes.facecam.w) * 100 : 100}% ${
-                          boxes.facecam.h > 0 ? (100 / boxes.facecam.h) * 100 : 100
-                        }%`,
-                      }
-                    : undefined
-                }
+                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[38%]'} bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center`}
+                style={getCropStyle(boxes.facecam)}
               >
                 {!channelFrameUrl && (
                   <span className="text-amber-400/80 font-bold text-xs uppercase tracking-wider">
@@ -817,20 +852,8 @@ export default function TemplateStudio() {
 
               {/* Stacked Bottom Section with Real Cropped Frame Preview */}
               <div
-                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[62%]'} bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4 bg-no-repeat`}
-                style={
-                  channelFrameUrl
-                    ? {
-                        backgroundImage: `url(${channelFrameUrl})`,
-                        backgroundPosition: `${boxes.gameplay.w > 0 ? (boxes.gameplay.x / (100 - boxes.gameplay.w)) * 100 : 0}% ${
-                          boxes.gameplay.h > 0 ? (boxes.gameplay.y / (100 - boxes.gameplay.h)) * 100 : 0
-                        }%`,
-                        backgroundSize: `${boxes.gameplay.w > 0 ? (100 / boxes.gameplay.w) * 100 : 100}% ${
-                          boxes.gameplay.h > 0 ? (100 / boxes.gameplay.h) * 100 : 100
-                        }%`,
-                      }
-                    : undefined
-                }
+                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[62%]'} bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4`}
+                style={getCropStyle(boxes.gameplay)}
               >
                 <div />
                 {!channelFrameUrl && (
