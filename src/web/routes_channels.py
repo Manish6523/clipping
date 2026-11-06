@@ -82,14 +82,15 @@ async def patch_channel_settings(request: web.Request) -> web.Response:
             cur = await db.execute("SELECT * FROM channels WHERE id = ?", (int(channel_id_param),))
         else:
             cur = await db.execute("SELECT * FROM channels WHERE channel_id_or_handle = ?", (channel_id_param,))
-        channel = await cur.fetchone()
-        if not channel:
+        channel_raw = await cur.fetchone()
+        if not channel_raw:
             return make_json_error("NOT_FOUND", f"Channel {channel_id_param} not found", status=404)
 
+        channel = dict(channel_raw)
         cid = channel["id"]
         handle = channel["channel_id_or_handle"]
 
-        template_name = data.get("template_name", channel["template_name"]).strip()
+        template_name = data.get("template_name", channel.get("template_name", "custom_gaming_split")).strip()
         display_name = data.get("display_name", channel.get("display_name"))
         notes = data.get("notes", channel.get("notes"))
         settings_obj = data.get("settings", {})
