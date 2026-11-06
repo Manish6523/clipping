@@ -1,0 +1,64 @@
+{
+  "name": "irl_streamer",
+  "description": "Dynamic face-tracking single 9:16 crop with bright lime captions and teaser hook",
+  "min_virality_score": 68,
+  "chat_spike_multiplier": 2.2,
+  "hype_keywords": [
+    "OMG",
+    "POG",
+    "NO SHOT",
+    "LMAO",
+    "POLICE",
+    "CAUGHT",
+    "RUN",
+    "INSANE"
+  ],
+  "layout": {
+    "type": "dynamic_face_track",
+    "target_width": 1080,
+    "target_height": 1920,
+    "smoothing_window": 30,
+    "fallback_crop_x": 656,
+    "crop_width": 608,
+    "crop_height": 1080
+  },
+  "subtitles": {
+    "font_name": "Montserrat ExtraBold",
+    "font_size": 72,
+    "primary_color": "&H00FFFFFF",
+    "highlight_color": "&H0033FF33",
+    "outline_color": "&H00000000",
+    "back_color": "&H80000000",
+    "bold": true,
+    "italic": false,
+    "outline": 4.0,
+    "shadow": 2.0,
+    "margin_v": 1450,
+    "alignment": 2,
+    "max_words_per_screen": 2,
+    "animation_tag": "{\\t(0,70,\\fscx115\\fscy115)}"
+  },
+  "pacing": {
+    "strip_silences": true,
+    "silence_threshold_ms": 350,
+    "silence_noise_db": -35.0,
+    "teaser_preroll": true,
+    "teaser_duration_sec": 1.5,
+    "teaser_transition": "flash"
+  },
+  "anti_shadowban": {
+    "speed_multiplier": 1.02,
+    "contrast": 1.03,
+    "saturation": 1.04,
+    "watermark_path": null,
+    "watermark_position": "top_right",
+    "watermark_opacity": 0.85,
+    "bg_tension_audio": null,
+    "bg_tension_db": -26.0
+  },
+  "destinations": {
+    "youtube_account_key": "irl_yt",
+    "instagram_account_key": "irl_ig"
+  }
+}
+

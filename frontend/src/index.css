@@ -1,0 +1,50 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --bg-base: #0A0B0E;
+    --bg-panel: #13151A;
+    --bg-raised: #1A1D24;
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --accent-gradient: linear-gradient(135deg, #8FD3FF 0%, #A9B8FF 100%);
+    --txt-primary: #E8EAF0;
+    --txt-muted: #8B90A0;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--bg-base);
+    color: var(--txt-primary);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+}
+
+/* Custom scrollbars matching Momo VideoMaker */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* Accent button glow */
+.btn-accent {
+  background: linear-gradient(135deg, #8FD3FF 0%, #A9B8FF 100%);
+  color: #0A0B0E;
+  font-weight: 700;
+  transition: all 0.15s ease-out;
+}
+.btn-accent:hover {
+  box-shadow: 0 4px 20px rgba(143, 211, 255, 0.35);
+  transform: translateY(-1px);
+}

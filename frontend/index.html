@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>AutoClip Suite • Studio</title>
+    <!-- Google Fonts for Subtitle live previewing & Momo UI (non-blocking) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Inter:wght@400;500;600;700;800;900&family=Montserrat:ital,wght@0,800;0,900;1,800&family=Poppins:wght@700;800;900&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=Anton&family=Bangers&family=Inter:wght@400;500;600;700;800;900&family=Montserrat:ital,wght@0,800;0,900;1,800&family=Poppins:wght@700;800;900&display=swap" rel="stylesheet">
+    </noscript>
+  </head>
+  <body class="bg-[#0A0B0E] text-[#E8EAF0] text-[13px]">
+    <script>
+      (function() {
+        var scale = localStorage.getItem('agy_ui_scale') || 'medium';
+        var sizeMap = { small: '12px', medium: '13px', large: '14px' };
+        document.documentElement.style.fontSize = sizeMap[scale] || '13px';
+      })();
+    </script>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

@@ -1,0 +1,2 @@
+"""AutoClipDaemon core package."""
+

@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  autoclip-daemon:
+    build: .
+    container_name: autoclip_daemon
+    restart: always
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      - ./templates:/app/templates
+      - ./tmp:/app/tmp
+    environment:
+      - PYTHONUNBUFFERED=1
+      - USE_VAAPI=false
+    env_file:
+      - config/.env
+

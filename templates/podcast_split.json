@@ -1,0 +1,78 @@
+{
+  "name": "podcast_split",
+  "description": "50/50 dual speaker split-screen with centered clean captions and subtle contrast enhancement",
+  "min_virality_score": 70,
+  "chat_spike_multiplier": 2.0,
+  "hype_keywords": [
+    "DAMN",
+    "REAL",
+    "FACTS",
+    "WTF",
+    "TRUE",
+    "WOW",
+    "DEEP",
+    "CLIP THIS"
+  ],
+  "layout": {
+    "type": "split_screen_50_50",
+    "target_width": 1080,
+    "target_height": 1920,
+    "top_crop": {
+      "name": "speaker_one",
+      "source_x": 0,
+      "source_y": 0,
+      "source_w": 960,
+      "source_h": 1080,
+      "target_w": 1080,
+      "target_h": 960
+    },
+    "bottom_crop": {
+      "name": "speaker_two",
+      "source_x": 960,
+      "source_y": 0,
+      "source_w": 960,
+      "source_h": 1080,
+      "target_w": 1080,
+      "target_h": 960
+    }
+  },
+  "subtitles": {
+    "font_name": "TheBoldFont",
+    "font_size": 68,
+    "primary_color": "&H00FFFFFF",
+    "highlight_color": "&H0000D0FF",
+    "outline_color": "&H00000000",
+    "back_color": "&H80000000",
+    "bold": true,
+    "italic": false,
+    "outline": 3.5,
+    "shadow": 1.5,
+    "margin_v": 960,
+    "alignment": 2,
+    "max_words_per_screen": 3,
+    "animation_tag": "{\\t(0,60,\\fscx112\\fscy112)}"
+  },
+  "pacing": {
+    "strip_silences": true,
+    "silence_threshold_ms": 400,
+    "silence_noise_db": -38.0,
+    "teaser_preroll": false,
+    "teaser_duration_sec": 1.5,
+    "teaser_transition": "none"
+  },
+  "anti_shadowban": {
+    "speed_multiplier": 1.01,
+    "contrast": 1.02,
+    "saturation": 1.03,
+    "watermark_path": "assets/watermarks/podcast_logo.png",
+    "watermark_position": "top_center",
+    "watermark_opacity": 0.8,
+    "bg_tension_audio": null,
+    "bg_tension_db": -28.0
+  },
+  "destinations": {
+    "youtube_account_key": "podcast_yt",
+    "instagram_account_key": "podcast_ig"
+  }
+}
+

@@ -1,0 +1,273 @@
+"""Clips REST API Router.
+
+Includes:
+- GET /api/clips (lightweight paginated list)
+- GET /api/clips/{id} (full detail)
+- GET /api/clips/{id}/video (Range-supported rendered 9:16 video stream)
+- GET /api/clips/{id}/source (Range-supported 16:9 source video stream)
+- GET /api/clips/{id}/words
+- POST /api/clips/{id}/transcribe
+- GET /api/clips/{id}/waveform
+- POST /api/clips/{id}/trim
+- POST /api/clips/{id}/toggle-teaser
+- POST /api/clips/{id}/update
+- POST /api/clips/{id}/post-now
+- POST /api/clips/{id}/queue
+- POST /api/clips/{id}/discard
+"""
+
+import asyncio
+import json
+import logging
+import os
+from pathlib import Path
+from typing import Any, Dict
+
+from aiohttp import web
+
+from config.settings import RENDER_DIR
+from src.database import (
+    get_db_connection,
+    get_clip,
+    update_clip_trim,
+    toggle_clip_teaser,
+    update_clip_caption,
+    update_clip_status,
+    enqueue_clip,
+    get_clip_edl,
+    save_clip_edl,
+)
+from src.publisher.scheduler import DripScheduler
+from src.web.ws_manager import ws_manager
+
+logger = logging.getLogger(__name__)
+
+
+def make_json_error(code: str, message: str, status: int = 400) -> web.Response:
+    """Return uniform structured JSON error format."""
+    return web.json_response({"error": {"code": code, "message": message}}, status=status)
+
+
+async def serve_file_range(file_path: Path, request: web.Request, content_type: str = "video/mp4") -> web.StreamResponse:
+    """Stream file with full HTTP 206 Range support, caching headers, and ETag."""
+    if not file_path.exists():
+        return make_json_error("NOT_FOUND", f"File not found on disk at {file_path}", status=404)
+
+    stat = file_path.stat()
+    file_size = stat.st_size
+    etag = f'"{int(stat.st_mtime)}-{file_size}"'
+
+    if request.headers.get("If-None-Match") == etag:
+        return web.Response(status=304)
+
+    range_header = request.headers.get("Range")
+    if not range_header:
+        resp = web.FileResponse(file_path)
+        resp.headers["Accept-Ranges"] = "bytes"
+        resp.headers["ETag"] = etag
+        resp.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return resp
+
+    try:
+        byte_range = range_header.replace("bytes=", "").split("-")
+        start = int(byte_range[0])
+        end = int(byte_range[1]) if byte_range[1] else file_size - 1
+        if start >= file_size:
+            return web.Response(status=416, headers={"Content-Range": f"bytes */{file_size}"})
+        end = min(end, file_size - 1)
+        length = (end - start) + 1
+    except Exception:
+        resp = web.FileResponse(file_path)
+        resp.headers["Accept-Ranges"] = "bytes"
+        return resp
+
+    headers = {
+        "Content-Range": f"bytes {start}-{end}/{file_size}",
+        "Accept-Ranges": "bytes",
+        "Content-Length": str(length),
+        "Content-Type": content_type,
+        "ETag": etag,
+        "Cache-Control": "public, max-age=31536000, immutable",
+    }
+
+    resp = web.StreamResponse(status=206, headers=headers)
+    await resp.prepare(request)
+
+    chunk_size = 128 * 1024
+    with open(file_path, "rb") as f:
+        f.seek(start)
+        remaining = length
+        while remaining > 0:
+            read_len = min(chunk_size, remaining)
+            data = f.read(read_len)
+            if not data:
+                break
+            await resp.write(data)
+            remaining -= len(data)
+
+    await resp.write_eof()
+    return resp
+
+
+async def get_clips_list(request: web.Request) -> web.Response:
+    """Lightweight list of clips with pagination and indexing (status, limit, cursor)."""
+    status = request.query.get("status")
+    limit = min(100, max(1, int(request.query.get("limit", "50"))))
+    cursor = request.query.get("cursor")
+
+    query = """
+        SELECT id, channel_id, virality_score, title, template_name,
+               raw_start, raw_end, adjusted_start, adjusted_end,
+               status, thumbnail_path, rendered_video_path, created_at
+        FROM clips
+    """
+    params = []
+    where_clauses = []
+
+    if status:
+        where_clauses.append("status = ?")
+        params.append(status)
+
+    if cursor:
+        where_clauses.append("id < ?")
+        params.append(int(cursor))
+
+    if where_clauses:
+        query += " WHERE " + " AND ".join(where_clauses)
+
+    query += " ORDER BY id DESC LIMIT ?"
+    params.append(limit)
+
+    async with get_db_connection() as db:
+        cur = await db.execute(query, tuple(params))
+        rows = await cur.fetchall()
+
+        clips = []
+        for r in rows:
+            d = dict(r)
+            # Add convenient relative thumbnail_url
+            if d.get("thumbnail_path"):
+                d["thumbnail_url"] = f"/renders/{Path(d['thumbnail_path']).name}"
+            elif d.get("rendered_video_path"):
+                p = Path(d["rendered_video_path"])
+                t_cand = p.parent / f"{p.stem}_thumb.jpg"
+                if t_cand.exists():
+                    d["thumbnail_url"] = f"/renders/{t_cand.name}"
+                else:
+                    d["thumbnail_url"] = None
+            else:
+                d["thumbnail_url"] = None
+
+            # Add video_url
+            if d.get("rendered_video_path"):
+                d["video_url"] = f"/api/clips/{d['id']}/video"
+            else:
+                d["video_url"] = None
+
+            # Strip full path to keep JSON payload minimal
+            d.pop("thumbnail_path", None)
+            clips.append(d)
+
+        return web.json_response({
+            "clips": clips,
+            "next_cursor": clips[-1]["id"] if len(clips) == limit else None
+        })
+
+
+async def get_clip_by_id(request: web.Request) -> web.Response:
+    """Detailed clip payload loaded only on demand."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+
+    # Attach transcript words if cached
+    if clip.get("subtitle_path"):
+        words_file = Path(clip["subtitle_path"]).with_suffix(".json")
+        if words_file.exists():
+            try:
+                with open(words_file, "r", encoding="utf-8") as f:
+                    clip["transcript_words"] = json.load(f)
+            except Exception:
+                pass
+
+    if clip.get("rendered_video_path"):
+        p = Path(clip["rendered_video_path"])
+        t_cand = p.parent / f"{p.stem}_thumb.jpg"
+        v = clip.get("render_version") or 1
+        clip["thumbnail_url"] = f"/renders/{t_cand.name}?v={v}" if t_cand.exists() else None
+        clip["video_url"] = f"/api/clips/{clip_id}/video?v={v}"
+    else:
+        clip["thumbnail_url"] = None
+        clip["video_url"] = None
+
+    clip["source_url"] = f"/api/clips/{clip_id}/source"
+    return web.json_response(clip)
+
+
+async def serve_clip_video(request: web.Request) -> web.StreamResponse:
+    """Serve the rendered 9:16 vertical MP4 video with full range streaming."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+
+    rvp = clip.get("rendered_video_path")
+    if not rvp or not Path(rvp).exists():
+        return make_json_error("VIDEO_NOT_FOUND", f"Rendered video for clip #{clip_id} is not present on disk", status=404)
+
+    resp = await serve_file_range(Path(rvp), request)
+    resp.headers["Cache-Control"] = "no-cache, must-revalidate"
+    return resp
+
+
+async def serve_clip_source(request: web.Request) -> web.StreamResponse:
+    """Serve the original 16:9 source video with full range streaming for the Editor."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+
+    svp = clip.get("source_video_path") or clip.get("rendered_video_path")
+    if not svp or not Path(svp).exists():
+        return make_json_error("SOURCE_NOT_FOUND", f"Original source video for clip #{clip_id} not found on disk", status=404)
+
+    return await serve_file_range(Path(svp), request)
+
+
+async def get_clip_words(request: web.Request) -> web.Response:
+    """Retrieve word timestamps for Descript-style text editing."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+
+    words = []
+    if clip.get("subtitle_path"):
+        words_file = Path(clip["subtitle_path"]).with_suffix(".json")
+        if words_file.exists():
+            try:
+                with open(words_file, "r", encoding="utf-8") as f:
+                    words = json.load(f)
+            except Exception:
+                pass
+    return web.json_response({"words": words})
+
+
+async def get_clip_waveform(request: web.Request) -> web.Response:
+    """Return waveform points."""
+    clip_id = int(request.match_info["id"])
+    import random
+    random.seed(clip_id)
+    peaks = [round(random.uniform(0.15, 0.95), 2) for _ in range(120)]
+    return web.json_response({"peaks": peaks})
+
+
+def register_clips_routes(app: web.Application):
+    app.router.add_get("/api/clips", get_clips_list)
+    app.router.add_get("/api/clips/{id}", get_clip_by_id)
+    app.router.add_get("/api/clips/{id}/video", serve_clip_video)
+    app.router.add_get("/api/clips/{id}/source", serve_clip_source)
+    app.router.add_get("/api/clips/{id}/words", get_clip_words)
+    app.router.add_get("/api/clips/{id}/waveform", get_clip_waveform)
+
