@@ -18,7 +18,11 @@ export default function LogStreamer() {
     try {
       const newLogs = await getLogs(lastIdRef.current);
       if (newLogs && newLogs.length > 0) {
-        setLogs((prev) => [...prev, ...newLogs]);
+        setLogs((prev) => {
+          const existingIds = new Set(prev.map((l) => l.id));
+          const fresh = newLogs.filter((l) => !existingIds.has(l.id));
+          return [...prev, ...fresh];
+        });
         lastIdRef.current = Math.max(...newLogs.map((l) => l.id), lastIdRef.current);
         if (autoScroll && bottomRef.current) {
           bottomRef.current.scrollIntoView({ behavior: 'smooth' });
@@ -80,8 +84,8 @@ export default function LogStreamer() {
             Waiting for daemon engine logs...
           </div>
         ) : (
-          logs.map((log) => (
-            <div key={log.id} className="flex items-baseline gap-2.5 leading-relaxed">
+          logs.map((log, index) => (
+            <div key={`${log.id}-${index}`} className="flex items-baseline gap-2.5 leading-relaxed">
               <span className="text-slate-600 shrink-0 font-mono text-[11px]">{log.time}</span>
               <span className={`px-1.5 py-0.2 rounded border text-[10px] font-bold tracking-wider shrink-0 ${getBadgeColor(log.component)}`}>
                 {log.component}

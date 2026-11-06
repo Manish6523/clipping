@@ -32,7 +32,7 @@ export default function ChannelManager() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [newChannel, setNewChannel] = useState('');
   const [newPlatform, setNewPlatform] = useState('twitch');
-  const [newTemplate, setNewTemplate] = useState('custom_gaming_split');
+  const [newTemplate, setNewTemplate] = useState('');
 
   // Pause Modal
   const [pauseModalChannel, setPauseModalChannel] = useState(null);
@@ -60,6 +60,9 @@ export default function ChannelManager() {
       setChannels(chanData);
       setStreamers(streamData);
       setTemplates(templData);
+      if (templData && templData.length > 0 && !newTemplate) {
+        setNewTemplate(templData[0].name);
+      }
     } catch (err) {
       console.error('Failed to load channel data:', err);
     }
@@ -139,10 +142,13 @@ export default function ChannelManager() {
 
   const saveSettings = async () => {
     if (!drawerChannel || !drawerForm) return;
+    const handle = drawerChannel.channel_id_or_handle;
+    const updatedTemplate = drawerForm.template_name;
+    const updatedDisplay = drawerForm.display_name;
     try {
-      await patchChannelSettings(drawerChannel.channel_id_or_handle, {
-        template_name: drawerForm.template_name,
-        display_name: drawerForm.display_name,
+      await patchChannelSettings(handle, {
+        template_name: updatedTemplate,
+        display_name: updatedDisplay,
         notes: drawerForm.notes,
         settings: {
           clip_rules: drawerForm.clip_rules,
@@ -151,9 +157,17 @@ export default function ChannelManager() {
           publishing: drawerForm.publishing,
         }
       });
+      // Optimistically update local channel state immediately
+      setChannels((prev) =>
+        prev.map((c) =>
+          c.channel_id_or_handle === handle
+            ? { ...c, template_name: updatedTemplate, display_name: updatedDisplay }
+            : c
+        )
+      );
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2500);
-      fetchData();
+      await fetchData();
     } catch (err) {
       alert('Save failed: ' + (err.response?.data?.error?.message || err.message));
     }
