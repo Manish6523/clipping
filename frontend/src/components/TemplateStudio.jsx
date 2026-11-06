@@ -44,6 +44,7 @@ export default function TemplateStudio() {
   const [outlineColor, setOutlineColor] = useState('#000000');
   const [outlineWidth, setOutlineWidth] = useState(4);
   const [animationPreset, setAnimationPreset] = useState('pop'); // pop, bounce, typewriter
+  const [captionPositionY, setCaptionPositionY] = useState(76); // percentage (0 - 100) on 9:16 vertical canvas
 
   // Drag and Resize Boxes (in normalized 0-100 percentage of the 16:9 canvas)
   const [boxes, setBoxes] = useState({
@@ -155,6 +156,11 @@ export default function TemplateStudio() {
       setFontSize(t.subtitles.font_size || 72);
       setOutlineWidth(t.subtitles.outline || 4);
       setAnimationPreset(t.subtitles.animation || 'pop');
+      if (t.subtitles.position && t.subtitles.position.y !== undefined) {
+        setCaptionPositionY(Math.round(t.subtitles.position.y * 100));
+      } else if (t.subtitles.margin_v) {
+        setCaptionPositionY(Math.round(((1920 - t.subtitles.margin_v) / 1920) * 100));
+      }
     }
     setIsDirty(false);
     showToast(`Loaded template "${t.name}"`);
@@ -446,8 +452,13 @@ export default function TemplateStudio() {
         outline: Number(outlineWidth),
         shadow: 2.0,
         alignment: 2,
-        margin_v: 240,
+        margin_v: Math.round(1920 * (1 - captionPositionY / 100)),
         animation: animationPreset,
+        position: {
+          x: 0.5,
+          y: Number((captionPositionY / 100).toFixed(4)),
+          max_width: 0.85,
+        },
       },
       color_grade: {
         contrast: 1.03,
@@ -620,11 +631,51 @@ export default function TemplateStudio() {
       <div className="grid grid-cols-12 gap-6 items-start">
         {/* LEFT COLUMN: 16:9 Interactive Drag Canvas (Source Stream) - Expanded to 7 cols */}
         <div className="col-span-12 lg:col-span-7 bg-[#0D1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-              <Monitor size={15} className="text-[#8FD3FF]" />
-              16:9 Source Stream Canvas
-            </span>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
+                <Monitor size={15} className="text-[#8FD3FF]" />
+                16:9 Source Stream Canvas
+              </span>
+
+              {/* Streamer Frame Selector Dropdown */}
+              <div className="flex items-center gap-1.5 bg-[#13151A] border border-white/10 rounded-lg px-2 py-1">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase">Streamer:</span>
+                <select
+                  value={selectedChannel}
+                  onChange={(e) => handleChannelSelect(e.target.value)}
+                  className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer"
+                >
+                  {channels.map((c) => (
+                    <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                      @{c.display_name || c.channel_id_or_handle} ({c.platform})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Custom Image Upload or Sample Image Selector */}
+              <label className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 cursor-pointer transition-all">
+                <span>📁 Upload Image</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const reader = new FileReader();
+                      reader.onload = (event) => {
+                        setChannelFrameUrl(event.target.result);
+                        showToast(`Loaded custom image: ${file.name}`);
+                      };
+                      reader.readAsDataURL(file);
+                    }
+                  }}
+                />
+              </label>
+            </div>
+
             <div className="flex items-center gap-2">
               <button
                 onClick={handleResetAspect}
@@ -808,8 +859,11 @@ export default function TemplateStudio() {
                   FULL 9:16 CROP (NO CAM)
                 </span>
 
-                {/* Subtitle simulation overlay */}
-                <div className="text-center z-10 mb-8">
+                {/* Subtitle simulation overlay positioned dynamically */}
+                <div
+                  style={{ top: `${captionPositionY}%` }}
+                  className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-center z-10 w-[90%]"
+                >
                   <span
                     style={{
                       fontFamily: fontFamily.split(' ')[0],
@@ -842,8 +896,11 @@ export default function TemplateStudio() {
                 {!channelFrameUrl && <span className="text-xs text-slate-400">Centered 16:9 Source</span>}
               </div>
 
-              {/* Subtitles at bottom */}
-              <div className="absolute bottom-12 text-center z-20">
+              {/* Subtitles positioned dynamically */}
+              <div
+                style={{ top: `${captionPositionY}%` }}
+                className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-center z-20 w-[90%]"
+              >
                 <span
                   style={{
                     fontFamily: fontFamily.split(' ')[0],
@@ -886,8 +943,11 @@ export default function TemplateStudio() {
                   </span>
                 )}
 
-                {/* Subtitle simulation overlay */}
-                <div className="text-center z-10">
+                {/* Subtitle simulation overlay positioned dynamically */}
+                <div
+                  style={{ top: `${captionPositionY}%` }}
+                  className="absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-center z-10 w-[90%]"
+                >
                   <span
                     style={{
                       fontFamily: fontFamily.split(' ')[0],
@@ -990,6 +1050,45 @@ export default function TemplateStudio() {
                 className="w-full bg-[#13151A] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white"
               />
             </div>
+          </div>
+
+          <div>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                Caption Position Y ({captionPositionY}%)
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => { setCaptionPositionY(20); setIsDirty(true); }}
+                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
+                >
+                  Top
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCaptionPositionY(50); setIsDirty(true); }}
+                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
+                >
+                  Mid
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setCaptionPositionY(76); setIsDirty(true); }}
+                  className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
+                >
+                  Bottom
+                </button>
+              </div>
+            </div>
+            <input
+              type="range"
+              min="10"
+              max="90"
+              value={captionPositionY}
+              onChange={(e) => { setCaptionPositionY(Number(e.target.value)); setIsDirty(true); }}
+              className="w-full accent-[#8FD3FF] cursor-pointer"
+            />
           </div>
 
           <div>
