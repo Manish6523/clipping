@@ -76,6 +76,16 @@ class FFmpegRenderer:
             )
             last_v = "[tracked]"
 
+        elif l_type == "single_crop_9_16" or l_type == "full_9_16":
+            # Single custom 9:16 crop without facecam
+            crop_res = build_crop_filter(template, 1920, 1080)
+            bot = crop_res.get("bottom", {})
+            bx, by, bw, bh = bot.get("x", 656), bot.get("y", 0), bot.get("w", 608), bot.get("h", 1080)
+            filters.append(
+                f"[0:v]crop={bw}:{bh}:{bx}:{by},scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2[single_crop]"
+            )
+            last_v = "[single_crop]"
+
         elif l_type == "blurred_bg_center":
             # Blurred 9:16 background with sharp centered 16:9 foreground
             filters.append(

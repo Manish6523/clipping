@@ -51,6 +51,7 @@ export default function TemplateStudio() {
     gameplay: { x: 20, y: 0, w: 60, h: 100 },
   });
 
+  const [lockAspectRatio, setLockAspectRatio] = useState(true);
   const [activeBoxId, setActiveBoxId] = useState('facecam');
   const [dragState, setDragState] = useState(null);
 
@@ -211,22 +212,82 @@ export default function TemplateStudio() {
         const h = dragState.handle;
         let { x, y, w, h: boxH } = box;
 
-        if (h.includes('e')) w = Math.max(10, Math.min(100 - x, box.w + deltaXPercent));
-        if (h.includes('s')) boxH = Math.max(10, Math.min(100 - y, box.h + deltaYPercent));
-        if (h.includes('w')) {
-          const proposedW = Math.max(10, box.w - deltaXPercent);
-          const proposedX = box.x + (box.w - proposedW);
-          if (proposedX >= 0) {
-            w = proposedW;
-            x = proposedX;
+        // Target aspect ratio of the crop box in percentage terms (taking 16:9 canvas into account)
+        // In 16:9 canvas (1920x1080), aspect ratio in percentages = (pixelW / 1920) / (pixelH / 1080)
+        // If locked, maintain initial aspect ratio of the box
+        const shouldLock = lockAspectRatio || e.shiftKey;
+        const initialAspect = dragState.origBox.w > 0 && dragState.origBox.h > 0
+          ? dragState.origBox.w / dragState.origBox.h
+          : (dragState.boxId === 'facecam' ? 0.76 : 0.6);
+
+        if (shouldLock) {
+          // Proportionate corner resize
+          let scaleDelta = deltaXPercent;
+          if (Math.abs(deltaYPercent) > Math.abs(deltaXPercent)) {
+            scaleDelta = deltaYPercent * initialAspect;
           }
-        }
-        if (h.includes('n')) {
-          const proposedH = Math.max(10, box.h - deltaYPercent);
-          const proposedY = box.y + (box.h - proposedH);
-          if (proposedY >= 0) {
-            boxH = proposedH;
-            y = proposedY;
+
+          if (h === 'se') {
+            w = Math.max(10, Math.min(100 - x, box.w + scaleDelta));
+            boxH = Math.max(10, Math.min(100 - y, w / initialAspect));
+            w = boxH * initialAspect;
+          } else if (h === 'nw') {
+            const proposedW = Math.max(10, box.w - scaleDelta);
+            const proposedH = proposedW / initialAspect;
+            const newX = box.x + (box.w - proposedW);
+            const newY = box.y + (box.h - proposedH);
+            if (newX >= 0 && newY >= 0) {
+              w = proposedW;
+              boxH = proposedH;
+              x = newX;
+              y = newY;
+            }
+          } else if (h === 'ne') {
+            const proposedW = Math.max(10, Math.min(100 - x, box.w + scaleDelta));
+            const proposedH = proposedW / initialAspect;
+            const newY = box.y + (box.h - proposedH);
+            if (newY >= 0) {
+              w = proposedW;
+              boxH = proposedH;
+              y = newY;
+            }
+          } else if (h === 'sw') {
+            const proposedW = Math.max(10, box.w - scaleDelta);
+            const proposedH = proposedW / initialAspect;
+            const newX = box.x + (box.w - proposedW);
+            if (newX >= 0 && y + proposedH <= 100) {
+              w = proposedW;
+              boxH = proposedH;
+              x = newX;
+            }
+          } else if (h.includes('e') || h.includes('w')) {
+            w = h.includes('e') ? Math.max(10, Math.min(100 - x, box.w + deltaXPercent)) : Math.max(10, box.w - deltaXPercent);
+            if (h.includes('w')) x = box.x + (box.w - w);
+            boxH = Math.min(100 - y, w / initialAspect);
+          } else {
+            boxH = h.includes('s') ? Math.max(10, Math.min(100 - y, box.h + deltaYPercent)) : Math.max(10, box.h - deltaYPercent);
+            if (h.includes('n')) y = box.y + (box.h - boxH);
+            w = Math.min(100 - x, boxH * initialAspect);
+          }
+        } else {
+          // Freeform resize
+          if (h.includes('e')) w = Math.max(10, Math.min(100 - x, box.w + deltaXPercent));
+          if (h.includes('s')) boxH = Math.max(10, Math.min(100 - y, box.h + deltaYPercent));
+          if (h.includes('w')) {
+            const proposedW = Math.max(10, box.w - deltaXPercent);
+            const proposedX = box.x + (box.w - proposedW);
+            if (proposedX >= 0) {
+              w = proposedW;
+              x = proposedX;
+            }
+          }
+          if (h.includes('n')) {
+            const proposedH = Math.max(10, box.h - deltaYPercent);
+            const proposedY = box.y + (box.h - proposedH);
+            if (proposedY >= 0) {
+              boxH = proposedH;
+              y = proposedY;
+            }
           }
         }
 
@@ -369,7 +430,7 @@ export default function TemplateStudio() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 select-none">
+    <div className="w-full max-w-[1920px] mx-auto px-4 md:px-8 py-6 select-none">
       {/* Top Header Row */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
         <div>
@@ -482,24 +543,36 @@ export default function TemplateStudio() {
       </div>
 
       <div className="grid grid-cols-12 gap-6 items-start">
-        {/* LEFT COLUMN: 16:9 Interactive Drag Canvas (Source Stream) */}
-        <div className="col-span-12 lg:col-span-6 bg-[#0D1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
+        {/* LEFT COLUMN: 16:9 Interactive Drag Canvas (Source Stream) - Expanded to 7 cols */}
+        <div className="col-span-12 lg:col-span-7 bg-[#0D1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
           <div className="flex items-center justify-between">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
               <Monitor size={15} className="text-[#8FD3FF]" />
               16:9 Source Stream Canvas
             </span>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setActiveBoxId('facecam')}
-                className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                  activeBoxId === 'facecam'
-                    ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
-                    : 'bg-white/5 text-slate-400 hover:text-white'
-                }`}
-              >
-                🟡 Facecam Box
-              </button>
+              <label className="flex items-center gap-1.5 text-xs text-slate-300 font-semibold cursor-pointer bg-white/5 hover:bg-white/10 px-2.5 py-1 rounded-lg border border-white/10 select-none mr-2">
+                <input
+                  type="checkbox"
+                  checked={lockAspectRatio}
+                  onChange={(e) => setLockAspectRatio(e.target.checked)}
+                  className="accent-[#8FD3FF] rounded cursor-pointer"
+                />
+                Lock Ratio (No Stretch)
+              </label>
+
+              {layoutType !== 'single_crop_9_16' && layoutType !== 'blurred_bg_center' && (
+                <button
+                  onClick={() => setActiveBoxId('facecam')}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
+                    activeBoxId === 'facecam'
+                      ? 'bg-amber-400 text-black shadow-md shadow-amber-400/20'
+                      : 'bg-white/5 text-slate-400 hover:text-white'
+                  }`}
+                >
+                  🟡 Facecam Box
+                </button>
+              )}
               <button
                 onClick={() => setActiveBoxId('gameplay')}
                 className={`px-3 py-1 rounded-lg text-xs font-bold transition-all ${
@@ -508,7 +581,7 @@ export default function TemplateStudio() {
                     : 'bg-white/5 text-slate-400 hover:text-white'
                 }`}
               >
-                🔵 Gameplay Box
+                🔵 {layoutType === 'single_crop_9_16' ? '9:16 Action Crop' : 'Gameplay Box'}
               </button>
             </div>
           </div>
@@ -536,42 +609,44 @@ export default function TemplateStudio() {
               <div />
             </div>
 
-            {/* Facecam Box */}
-            <div
-              style={{
-                left: `${boxes.facecam.x}%`,
-                top: `${boxes.facecam.y}%`,
-                width: `${boxes.facecam.w}%`,
-                height: `${boxes.facecam.h}%`,
-              }}
-              onPointerDown={(e) => handlePointerDown(e, 'facecam', 'move')}
-              className={`absolute border-2 cursor-grab active:cursor-grabbing rounded-lg flex flex-col justify-between p-1.5 transition-shadow ${
-                activeBoxId === 'facecam'
-                  ? 'border-amber-400 bg-amber-400/15 shadow-[0_0_15px_rgba(251,191,36,0.3)] z-20'
-                  : 'border-amber-400/50 bg-amber-400/5 hover:border-amber-400'
-              }`}
-            >
-              <span className="text-[10px] font-mono font-bold text-amber-300 bg-black/60 px-1 py-0.5 rounded w-max select-none">
-                FACECAM CROP
-              </span>
-              <span className="text-[9px] font-mono text-amber-300/80 self-end bg-black/60 px-1 rounded select-none">
-                {boxes.facecam.w}% × {boxes.facecam.h}%
-              </span>
+            {/* Facecam Box (rendered only for dual-crop layouts) */}
+            {layoutType !== 'single_crop_9_16' && layoutType !== 'blurred_bg_center' && (
+              <div
+                style={{
+                  left: `${boxes.facecam.x}%`,
+                  top: `${boxes.facecam.y}%`,
+                  width: `${boxes.facecam.w}%`,
+                  height: `${boxes.facecam.h}%`,
+                }}
+                onPointerDown={(e) => handlePointerDown(e, 'facecam', 'move')}
+                className={`absolute border-2 cursor-grab active:cursor-grabbing rounded-lg flex flex-col justify-between p-1.5 transition-shadow ${
+                  activeBoxId === 'facecam'
+                    ? 'border-amber-400 bg-amber-400/15 shadow-[0_0_15px_rgba(251,191,36,0.3)] z-20'
+                    : 'border-amber-400/50 bg-amber-400/5 hover:border-amber-400'
+                }`}
+              >
+                <span className="text-[10px] font-mono font-bold text-amber-300 bg-black/60 px-1 py-0.5 rounded w-max select-none">
+                  FACECAM CROP
+                </span>
+                <span className="text-[9px] font-mono text-amber-300/80 self-end bg-black/60 px-1 rounded select-none">
+                  {boxes.facecam.w}% × {boxes.facecam.h}%
+                </span>
 
-              {/* 8 Resize Handles (rendered when active) */}
-              {activeBoxId === 'facecam' && (
-                <>
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'nw')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'n')} className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'w')} className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'e')} className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 's')} className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
-                  <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
-                </>
-              )}
-            </div>
+                {/* 8 Resize Handles (rendered when active) */}
+                {activeBoxId === 'facecam' && (
+                  <>
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'nw')} className="absolute -top-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'n')} className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'ne')} className="absolute -top-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'w')} className="absolute top-1/2 -left-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'e')} className="absolute top-1/2 -right-1.5 -translate-y-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ew-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'sw')} className="absolute -bottom-1.5 -left-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nesw-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 's')} className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3 h-3 bg-amber-400 rounded-sm cursor-ns-resize z-30 shadow" />
+                    <div onPointerDown={(e) => handlePointerDown(e, 'facecam', 'resize', 'se')} className="absolute -bottom-1.5 -right-1.5 w-3 h-3 bg-amber-400 rounded-sm cursor-nwse-resize z-30 shadow" />
+                  </>
+                )}
+              </div>
+            )}
 
             {/* Gameplay Box */}
             <div
@@ -639,11 +714,83 @@ export default function TemplateStudio() {
                 ✕ Close Sample
               </button>
             </div>
+          ) : layoutType === 'single_crop_9_16' ? (
+            /* Single Full 9:16 Crop Preview (No Facecam) */
+            <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex flex-col">
+              <div
+                className="w-full h-full relative overflow-hidden flex flex-col justify-between p-4 bg-no-repeat bg-slate-900"
+                style={
+                  channelFrameUrl
+                    ? {
+                        backgroundImage: `url(${channelFrameUrl})`,
+                        backgroundPosition: `${boxes.gameplay.w > 0 ? (boxes.gameplay.x / (100 - boxes.gameplay.w)) * 100 : 0}% ${
+                          boxes.gameplay.h > 0 ? (boxes.gameplay.y / (100 - boxes.gameplay.h)) * 100 : 0
+                        }%`,
+                        backgroundSize: `${boxes.gameplay.w > 0 ? (100 / boxes.gameplay.w) * 100 : 100}% ${
+                          boxes.gameplay.h > 0 ? (100 / boxes.gameplay.h) * 100 : 100
+                        }%`,
+                      }
+                    : undefined
+                }
+              >
+                <span className="text-[10px] font-mono text-cyan-400 bg-black/70 px-2 py-0.5 rounded w-max z-10 border border-cyan-400/30">
+                  FULL 9:16 CROP (NO CAM)
+                </span>
+
+                {/* Subtitle simulation overlay */}
+                <div className="text-center z-10 mb-8">
+                  <span
+                    style={{
+                      fontFamily: fontFamily.split(' ')[0],
+                      fontSize: `${fontSize * 0.22}px`,
+                      color: primaryColor,
+                      textShadow: `0 0 3px ${outlineColor}, 0 2px 4px rgba(0,0,0,0.8)`,
+                    }}
+                    className="font-black uppercase tracking-wide inline-block leading-tight drop-shadow-lg"
+                  >
+                    THIS IS <span style={{ color: highlightColor }}>INSANE!</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : layoutType === 'blurred_bg_center' ? (
+            /* 16:9 Center with Blurred 9:16 BG Preview */
+            <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center">
+              {/* Blurred background frame */}
+              {channelFrameUrl && (
+                <div
+                  className="absolute inset-0 bg-cover bg-center filter blur-md opacity-50 scale-110"
+                  style={{ backgroundImage: `url(${channelFrameUrl})` }}
+                />
+              )}
+              {/* Crisp 16:9 foreground clip */}
+              <div
+                className="w-full aspect-video bg-black/80 relative z-10 border-y border-white/20 bg-cover bg-center flex items-center justify-center"
+                style={channelFrameUrl ? { backgroundImage: `url(${channelFrameUrl})` } : undefined}
+              >
+                {!channelFrameUrl && <span className="text-xs text-slate-400">Centered 16:9 Source</span>}
+              </div>
+
+              {/* Subtitles at bottom */}
+              <div className="absolute bottom-12 text-center z-20">
+                <span
+                  style={{
+                    fontFamily: fontFamily.split(' ')[0],
+                    fontSize: `${fontSize * 0.22}px`,
+                    color: primaryColor,
+                    textShadow: `0 0 3px ${outlineColor}, 0 2px 4px rgba(0,0,0,0.8)`,
+                  }}
+                  className="font-black uppercase tracking-wide inline-block leading-tight drop-shadow-lg"
+                >
+                  THIS IS <span style={{ color: highlightColor }}>INSANE!</span>
+                </span>
+              </div>
+            </div>
           ) : (
             <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 relative shadow-2xl flex flex-col">
-              {/* Stacked Top 38% Section with Real Cropped Frame Preview */}
+              {/* Stacked Top Section with Real Cropped Frame Preview */}
               <div
-                className="h-[38%] bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center bg-no-repeat"
+                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[38%]'} bg-amber-950/40 border-b-2 border-slate-900 relative overflow-hidden flex items-center justify-center bg-no-repeat`}
                 style={
                   channelFrameUrl
                     ? {
@@ -664,13 +811,13 @@ export default function TemplateStudio() {
                   </span>
                 )}
                 <span className="absolute top-2 left-2 text-[9px] font-mono text-amber-500 bg-black/60 px-1 rounded z-10">
-                  TOP 38%
+                  {layoutType === 'split_screen_50_50' ? 'TOP 50%' : 'TOP 38%'}
                 </span>
               </div>
 
-              {/* Stacked Bottom 62% Section with Real Cropped Frame Preview */}
+              {/* Stacked Bottom Section with Real Cropped Frame Preview */}
               <div
-                className="h-[62%] bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4 bg-no-repeat"
+                className={`${layoutType === 'split_screen_50_50' ? 'h-[50%]' : 'h-[62%]'} bg-cyan-950/40 relative overflow-hidden flex flex-col items-center justify-between p-4 bg-no-repeat`}
                 style={
                   channelFrameUrl
                     ? {
@@ -708,15 +855,15 @@ export default function TemplateStudio() {
                 </div>
 
                 <span className="absolute bottom-2 left-2 text-[9px] font-mono text-cyan-500 bg-black/60 px-1 rounded z-10">
-                  BOTTOM 62%
+                  {layoutType === 'split_screen_50_50' ? 'BOTTOM 50%' : 'BOTTOM 62%'}
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        {/* RIGHT COLUMN: Typography & Layout Settings */}
-        <div className="col-span-12 lg:col-span-3 bg-[#0D1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
+        {/* RIGHT COLUMN: Typography & Layout Settings - Expanded to 3 cols */}
+        <div className="col-span-12 lg:col-span-2 bg-[#0D1017] border border-white/[0.08] rounded-2xl p-5 flex flex-col gap-4 shadow-xl">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
             <Type size={15} className="text-[#8FD3FF]" />
             Template Metadata &amp; Subtitles
@@ -740,11 +887,29 @@ export default function TemplateStudio() {
             </label>
             <select
               value={layoutType}
-              onChange={(e) => { setLayoutType(e.target.value); setIsDirty(true); }}
+              onChange={(e) => {
+                const newType = e.target.value;
+                setLayoutType(newType);
+                setIsDirty(true);
+                if (newType === 'single_crop_9_16') {
+                  setBoxes((prev) => ({
+                    ...prev,
+                    gameplay: { x: 34.1, y: 0, w: 31.7, h: 100 },
+                  }));
+                  setActiveBoxId('gameplay');
+                } else if (newType === 'blurred_bg_center') {
+                  setBoxes((prev) => ({
+                    ...prev,
+                    gameplay: { x: 0, y: 0, w: 100, h: 100 },
+                  }));
+                  setActiveBoxId('gameplay');
+                }
+              }}
               className="w-full bg-[#13151A] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
             >
               <option value="facecam_top_gameplay_bottom">Facecam Top (38%) + Game Bottom (62%)</option>
               <option value="split_screen_50_50">50/50 Vertical Split</option>
+              <option value="single_crop_9_16">Full 9:16 Crop (No Facecam)</option>
               <option value="blurred_bg_center">16:9 Center with Blurred 9:16 BG</option>
               <option value="dynamic_face_track">Full 9:16 Auto Face Tracker</option>
             </select>
