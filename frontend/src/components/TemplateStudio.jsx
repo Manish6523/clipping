@@ -260,87 +260,111 @@ export default function TemplateStudio() {
           [dragState.boxId]: { ...box, x: Math.round(newX * 10) / 10, y: Math.round(newY * 10) / 10 },
         }));
       } else if (dragState.type === 'resize') {
-        const h = dragState.handle;
-        let { x, y, w, h: boxH } = box;
+        const handle = dragState.handle;
+        let { x, y, w, h } = box;
 
-        // Target aspect ratio of the crop box in percentage terms (taking 16:9 canvas into account)
-        // In 16:9 canvas (1920x1080), aspect ratio in percentages = (pixelW / 1920) / (pixelH / 1080)
-        // If locked, maintain initial aspect ratio of the box
+        // Calculate aspect ratio in normalized percentages (w% / h% on 16:9 canvas)
+        // Default target aspect ratio:
+        // Full 9:16 crop: 1080/1920 on a 1920x1080 canvas = (1080/1920) * (1080/1920) = ~0.3164 (w% / h%)
+        // Split top (38%): 1080/730 on 1920x1080 canvas = (1080/730) * (1080/1920) = ~0.832
+        // Split bottom (62%): 1080/1190 on 1920x1080 canvas = (1080/1190) * (1080/1920) = ~0.510
         const shouldLock = lockAspectRatio || e.shiftKey;
-        const initialAspect = dragState.origBox.w > 0 && dragState.origBox.h > 0
-          ? dragState.origBox.w / dragState.origBox.h
-          : (dragState.boxId === 'facecam' ? 0.76 : 0.6);
+        const targetAspect = layoutType === 'single_crop_9_16'
+          ? (1080 / 1920) * (1080 / 1920)
+          : dragState.boxId === 'facecam'
+          ? (1080 / 730) * (1080 / 1920)
+          : (1080 / 1190) * (1080 / 1920);
 
-        if (shouldLock) {
-          // Proportionate corner resize
-          let scaleDelta = deltaXPercent;
-          if (Math.abs(deltaYPercent) > Math.abs(deltaXPercent)) {
-            scaleDelta = deltaYPercent * initialAspect;
+        // 1. Compute unconstrained new box boundaries based on dragged handle
+        if (handle.includes('e')) {
+          w = Math.max(8, Math.min(100 - x, box.w + deltaXPercent));
+        }
+        if (handle.includes('s')) {
+          h = Math.max(8, Math.min(100 - y, box.h + deltaYPercent));
+        }
+        if (handle.includes('w')) {
+          const propW = Math.max(8, box.w - deltaXPercent);
+          const propX = box.x + (box.w - propW);
+          if (propX >= 0) {
+            w = propW;
+            x = propX;
           }
+        }
+        if (handle.includes('n')) {
+          const propH = Math.max(8, box.h - deltaYPercent);
+          const propY = box.y + (box.h - propH);
+          if (propY >= 0) {
+            h = propH;
+            y = propY;
+          }
+        }
 
-          if (h === 'se') {
-            w = Math.max(10, Math.min(100 - x, box.w + scaleDelta));
-            boxH = Math.max(10, Math.min(100 - y, w / initialAspect));
-            w = boxH * initialAspect;
-          } else if (h === 'nw') {
-            const proposedW = Math.max(10, box.w - scaleDelta);
-            const proposedH = proposedW / initialAspect;
-            const newX = box.x + (box.w - proposedW);
-            const newY = box.y + (box.h - proposedH);
-            if (newX >= 0 && newY >= 0) {
-              w = proposedW;
-              boxH = proposedH;
-              x = newX;
-              y = newY;
-            }
-          } else if (h === 'ne') {
-            const proposedW = Math.max(10, Math.min(100 - x, box.w + scaleDelta));
-            const proposedH = proposedW / initialAspect;
-            const newY = box.y + (box.h - proposedH);
-            if (newY >= 0) {
-              w = proposedW;
-              boxH = proposedH;
-              y = newY;
-            }
-          } else if (h === 'sw') {
-            const proposedW = Math.max(10, box.w - scaleDelta);
-            const proposedH = proposedW / initialAspect;
-            const newX = box.x + (box.w - proposedW);
-            if (newX >= 0 && y + proposedH <= 100) {
-              w = proposedW;
-              boxH = proposedH;
-              x = newX;
-            }
-          } else if (h.includes('e') || h.includes('w')) {
-            w = h.includes('e') ? Math.max(10, Math.min(100 - x, box.w + deltaXPercent)) : Math.max(10, box.w - deltaXPercent);
-            if (h.includes('w')) x = box.x + (box.w - w);
-            boxH = Math.min(100 - y, w / initialAspect);
+        // 2. If aspect ratio is locked, smoothly constrain the secondary dimension
+        if (shouldLock && targetAspect > 0) {
+          if (handle === 'e' || handle === 'w') {
+            // Dragging horizontal edge: adjust height to match
+            const newH = Math.min(100 - y, w / targetAspect);
+            h = Math.max(8, newH);
+          } else if (handle === 'n' || handle === 's') {
+            // Dragging vertical edge: adjust width to match
+            const newW = Math.min(100 - x, h * targetAspect);
+            w = Math.max(8, newW);
           } else {
-            boxH = h.includes('s') ? Math.max(10, Math.min(100 - y, box.h + deltaYPercent)) : Math.max(10, box.h - deltaYPercent);
-            if (h.includes('n')) y = box.y + (box.h - boxH);
-            w = Math.min(100 - x, boxH * initialAspect);
-          }
-        } else {
-          // Freeform resize
-          if (h.includes('e')) w = Math.max(10, Math.min(100 - x, box.w + deltaXPercent));
-          if (h.includes('s')) boxH = Math.max(10, Math.min(100 - y, box.h + deltaYPercent));
-          if (h.includes('w')) {
-            const proposedW = Math.max(10, box.w - deltaXPercent);
-            const proposedX = box.x + (box.w - proposedW);
-            if (proposedX >= 0) {
-              w = proposedW;
-              x = proposedX;
-            }
-          }
-          if (h.includes('n')) {
-            const proposedH = Math.max(10, box.h - deltaYPercent);
-            const proposedY = box.y + (box.h - proposedH);
-            if (proposedY >= 0) {
-              boxH = proposedH;
-              y = proposedY;
+            // Corner handles (nw, ne, sw, se)
+            // Use whichever axis moved more to drive the scaling
+            if (Math.abs(deltaXPercent) >= Math.abs(deltaYPercent * targetAspect)) {
+              let newH = w / targetAspect;
+              if (handle.includes('n')) {
+                const newY = box.y + (box.h - newH);
+                if (newY >= 0) {
+                  y = newY;
+                  h = newH;
+                } else {
+                  h = box.y + box.h;
+                  y = 0;
+                  w = h * targetAspect;
+                  if (handle.includes('w')) x = box.x + (box.w - w);
+                }
+              } else {
+                if (y + newH <= 100) {
+                  h = newH;
+                } else {
+                  h = 100 - y;
+                  w = h * targetAspect;
+                  if (handle.includes('w')) x = box.x + (box.w - w);
+                }
+              }
+            } else {
+              let newW = h * targetAspect;
+              if (handle.includes('w')) {
+                const newX = box.x + (box.w - newW);
+                if (newX >= 0) {
+                  x = newX;
+                  w = newW;
+                } else {
+                  w = box.x + box.w;
+                  x = 0;
+                  h = w / targetAspect;
+                  if (handle.includes('n')) y = box.y + (box.h - h);
+                }
+              } else {
+                if (x + newW <= 100) {
+                  w = newW;
+                } else {
+                  w = 100 - x;
+                  h = w / targetAspect;
+                  if (handle.includes('n')) y = box.y + (box.h - h);
+                }
+              }
             }
           }
         }
+
+        // Final boundary clamping
+        x = Math.max(0, Math.min(100 - w, x));
+        y = Math.max(0, Math.min(100 - h, y));
+        w = Math.max(5, Math.min(100 - x, w));
+        h = Math.max(5, Math.min(100 - y, h));
 
         setBoxes((prev) => ({
           ...prev,
@@ -348,7 +372,7 @@ export default function TemplateStudio() {
             x: Math.round(x * 10) / 10,
             y: Math.round(y * 10) / 10,
             w: Math.round(w * 10) / 10,
-            h: Math.round(boxH * 10) / 10,
+            h: Math.round(h * 10) / 10,
           },
         }));
       }
