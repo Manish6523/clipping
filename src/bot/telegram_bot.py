@@ -38,6 +38,7 @@ from src.database import (
     update_clip_status,
     enqueue_clip,
     get_upcoming_queue,
+    delete_clip_completely,
 )
 from src.bot.trimmer import ClipTrimmer, load_template
 from src.publisher.youtube_shorts import YouTubeShortsPublisher
@@ -311,21 +312,13 @@ class AutoClipBot:
                 return
 
             if action == "discard":
-                await update_clip_status(clip_id, "rejected")
-                clip = await get_clip(clip_id)
-                if clip and clip.get("rendered_video_path"):
-                    try:
-                        p = Path(clip["rendered_video_path"])
-                        if p.exists():
-                            p.unlink()
-                    except Exception:
-                        pass
+                await delete_clip_completely(clip_id)
                 await callback.message.edit_caption(
-                    caption=f"❌ <b>Clip #{clip_id} Discarded &amp; Deleted.</b>",
+                    caption=f"❌ <b>Clip #{clip_id} Discarded &amp; Purged.</b>",
                     reply_markup=None,
                     parse_mode="HTML",
                 )
-                await callback.answer("Clip discarded.")
+                await callback.answer("Clip and all instances deleted.")
                 return
 
             if action == "post_now":
@@ -473,13 +466,35 @@ class AutoClipBot:
         kb = build_approval_keyboard(clip["id"], has_teaser=bool(clip.get("has_teaser", 1)))
 
         video_input = FSInputFile(video_path)
-        msg = await self.bot.send_video(
-            chat_id=self.admin_id,
-            video=video_input,
-            caption=caption,
-            reply_markup=kb,
-            parse_mode="HTML",
-            request_timeout=120,
-        )
-
-        await update_clip_telegram_info(clip["id"], self.admin_id, msg.message_id)
+        logger.info("Sending clip #%d to Telegram chat %s (%s)...", clip["id"], self.admin_id, video_path)
+        try:
+            msg = await self.bot.send_video(
+                chat_id=self.admin_id,
+                video=video_input,
+                caption=caption,
+                reply_markup=kb,
+                parse_mode="HTML",
+                request_timeout=180,
+            )
+            await update_clip_telegram_info(clip["id"], self.admin_id, msg.message_id)
+            logger.info("Successfully delivered clip #%d to Telegram (msg_id: %d)", clip["id"], msg.message_id)
+        except Exception as e:
+            logger.error("Failed delivering video to Telegram for clip #%d: %s. Sending text fallback alert.", clip["id"], e)
+            # Send notification card so user is still alerted immediately with action buttons
+            fallback_text = (
+                f"⚠️ <b>Clip #{clip['id']} Ready!</b> (Video upload to Telegram timed out)\n\n"
+                f"{caption}\n\n"
+                f"🔗 <b>Watch in Web UI:</b> http://localhost:8080"
+            )
+            try:
+                msg = await self.bot.send_message(
+                    chat_id=self.admin_id,
+                    text=fallback_text,
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                    request_timeout=30,
+                )
+                await update_clip_telegram_info(clip["id"], self.admin_id, msg.message_id)
+            except Exception:
+                pass
+            raise e

@@ -77,12 +77,12 @@ class FFmpegRenderer:
             last_v = "[tracked]"
 
         elif l_type == "single_crop_9_16" or l_type == "full_9_16":
-            # Single custom 9:16 crop without facecam
+            # Single custom 9:16 crop without facecam (fill completely without black bars)
             crop_res = build_crop_filter(template, 1920, 1080)
             bot = crop_res.get("bottom", {})
             bx, by, bw, bh = bot.get("x", 656), bot.get("y", 0), bot.get("w", 608), bot.get("h", 1080)
             filters.append(
-                f"[0:v]crop={bw}:{bh}:{bx}:{by},scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2[single_crop]"
+                f"[0:v]crop={bw}:{bh}:{bx}:{by},scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[single_crop]"
             )
             last_v = "[single_crop]"
 
@@ -190,9 +190,10 @@ class FFmpegRenderer:
 
         # Encoding codec selection
         if self.use_vaapi:
-            cmd.extend(["-c:v", "h264_vaapi", "-qp", "22"])
+            cmd.extend(["-c:v", "h264_vaapi", "-qp", "24"])
         else:
-            cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "21"])
+            # -crf 24 keeps pristine 1080x1920 quality while keeping files under 15-20MB for fast Telegram delivery
+            cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "24", "-maxrate", "4M", "-bufsize", "8M"])
 
         cmd.extend([
             "-c:a", "aac",

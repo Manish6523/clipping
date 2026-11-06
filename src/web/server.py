@@ -28,6 +28,7 @@ from src.database import (
     get_upcoming_queue,
     get_clip_edl,
     save_clip_edl,
+    delete_clip_completely,
 )
 from src.bot.trimmer import ClipTrimmer, load_template
 from src.publisher.youtube_shorts import YouTubeShortsPublisher
@@ -286,6 +287,48 @@ class WebUIServer:
                     except Exception:
                         pass
 
+            # Retrieve actual template layout if available
+            tpl_name = clip.get("template_name", "ishowspeed_gaming")
+            person_region = {"x": 0.05, "y": 0.05, "w": 0.33, "h": 0.44, "keyframes": []}
+            content_region = {"x": 0.16, "y": 0.0, "w": 0.67, "h": 1.0, "keyframes": []}
+            tpl_layout_type = "facecam_top_gameplay_bottom"
+            tpl_subtitles = {}
+
+            tpl_file = Path(TEMPLATES_DIR) / f"{tpl_name}.json"
+            if tpl_file.exists():
+                try:
+                    with open(tpl_file, "r", encoding="utf-8") as f:
+                        tpl_data = json.load(f)
+                        tpl_layout = tpl_data.get("layout", {})
+                        tpl_layout_type = tpl_layout.get("type", "facecam_top_gameplay_bottom")
+                        top_c = tpl_layout.get("top_crop", {})
+                        bot_c = tpl_layout.get("bottom_crop", {})
+                        if top_c:
+                            person_region = {
+                                "x": top_c.get("normalized_x", (top_c.get("source_x", 0) / 1920)),
+                                "y": top_c.get("normalized_y", (top_c.get("source_y", 0) / 1080)),
+                                "w": top_c.get("normalized_w", (top_c.get("source_w", 640) / 1920)),
+                                "h": top_c.get("normalized_h", (top_c.get("source_h", 480) / 1080)),
+                                "keyframes": [],
+                            }
+                        if bot_c:
+                            content_region = {
+                                "x": bot_c.get("normalized_x", (bot_c.get("source_x", 384) / 1920)),
+                                "y": bot_c.get("normalized_y", (bot_c.get("source_y", 0) / 1080)),
+                                "w": bot_c.get("normalized_w", (bot_c.get("source_w", 1152) / 1920)),
+                                "h": bot_c.get("normalized_h", (bot_c.get("source_h", 1080) / 1080)),
+                                "keyframes": [],
+                            }
+                        tpl_subtitles = tpl_data.get("subtitles", {})
+                except Exception as ex:
+                    logger.warning("Could not read template '%s' for EDL init: %s", tpl_name, ex)
+
+            caption_pos_y = 0.76
+            if tpl_subtitles.get("position", {}).get("y") is not None:
+                caption_pos_y = tpl_subtitles["position"]["y"]
+            elif tpl_subtitles.get("margin_v"):
+                caption_pos_y = round((1920 - tpl_subtitles["margin_v"]) / 1920, 4)
+
             edl = {
                 "version": 1,
                 "clip_id": clip_id,
@@ -303,21 +346,22 @@ class WebUIServer:
                 ],
                 "words": words,
                 "layout": {
-                    "preset": clip.get("template_name", "ishowspeed_gaming"),
+                    "type": tpl_layout_type,
+                    "preset": tpl_name,
                     "regions": {
-                        "person": {"x": 0.05, "y": 0.05, "w": 0.33, "h": 0.44, "keyframes": []},
-                        "content": {"x": 0.16, "y": 0.0, "w": 0.67, "h": 1.0, "keyframes": []},
+                        "person": person_region,
+                        "content": content_region,
                     }
                 },
                 "captions": {
-                    "font": "Montserrat ExtraBold",
-                    "size": 72,
+                    "font": tpl_subtitles.get("font_name", "Montserrat ExtraBold"),
+                    "size": tpl_subtitles.get("font_size", 72),
                     "color": "#FFFFFF",
                     "highlight": "#FACC15",
-                    "outline": {"color": "#000000", "width": 4},
-                    "animation": "pop",
+                    "outline": {"color": "#000000", "width": tpl_subtitles.get("outline", 4)},
+                    "animation": tpl_subtitles.get("animation", "pop"),
                     "words_per_line": 3,
-                    "position": {"x": 0.5, "y": 0.76}
+                    "position": {"x": 0.5, "y": caption_pos_y}
                 },
                 "overlays": [],
                 "audio": {"normalize": True, "music": None, "duck": True},
@@ -622,18 +666,11 @@ class WebUIServer:
         return web.json_response({"success": True, "queue_id": qid, "scheduled_for": next_slot})
 
     async def handle_discard_clip(self, request: web.Request) -> web.Response:
-        """Mark clip rejected and delete rendered MP4."""
+        """Purge clip and delete all its files, database rows, and instances."""
         clip_id = int(request.match_info["id"])
-        await update_clip_status(clip_id, "rejected")
-        clip = await get_clip(clip_id)
-        if clip and clip.get("rendered_video_path"):
-            try:
-                p = Path(clip["rendered_video_path"])
-                if p.exists():
-                    p.unlink()
-            except Exception:
-                pass
-        return web.json_response({"success": True})
+        success = await delete_clip_completely(clip_id)
+        await ws_manager.broadcast("clip_deleted", {"clip_id": clip_id})
+        return web.json_response({"success": success, "deleted": clip_id})
 
     async def handle_get_queue(self, request: web.Request) -> web.Response:
         """Get upcoming drip queue items."""

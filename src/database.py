@@ -470,6 +470,53 @@ async def update_queue_status(
         await db.commit()
 
 
+async def delete_clip_completely(clip_id: int) -> bool:
+    """
+    Permanently purge a clip and all its instances:
+    - Rendered MP4 & any variations
+    - Thumbnail JPG
+    - Subtitle .ass & .json word timestamps
+    - EDL records from clip_edls
+    - Scheduled queue entries from scheduled_queue
+    - Clip record from clips table
+    """
+    async with get_db_connection() as db:
+        cursor = await db.execute("SELECT * FROM clips WHERE id = ?", (clip_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return False
+
+        clip = dict(row)
+
+        # 1. Purge filesystem assets safely
+        paths_to_delete = [
+            clip.get("rendered_video_path"),
+            clip.get("thumbnail_path"),
+            clip.get("subtitle_path"),
+        ]
+        if clip.get("subtitle_path"):
+            paths_to_delete.append(str(Path(clip["subtitle_path"]).with_suffix(".json")))
+        if clip.get("rendered_video_path"):
+            rv = Path(clip["rendered_video_path"])
+            paths_to_delete.append(str(rv.parent / f"{rv.stem}_thumb.jpg"))
+
+        for p_str in paths_to_delete:
+            if p_str:
+                try:
+                    p = Path(p_str)
+                    if p.exists():
+                        p.unlink()
+                except Exception:
+                    pass
+
+        # 2. Purge DB rows in scheduled_queue, clip_edls, and clips
+        await db.execute("DELETE FROM scheduled_queue WHERE clip_id = ?", (clip_id,))
+        await db.execute("DELETE FROM clip_edls WHERE clip_id = ?", (clip_id,))
+        await db.execute("DELETE FROM clips WHERE id = ?", (clip_id,))
+        await db.commit()
+        return True
+
+
 # ==========================================
 # Edit Decision List (EDL) Storage
 # ==========================================

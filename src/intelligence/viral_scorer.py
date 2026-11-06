@@ -157,7 +157,35 @@ Return JSON with candidate clips meeting all criteria.
             return self._heuristic_fallback(transcript_data, min_score)
 
     def _heuristic_fallback(self, transcript_data: Dict[str, Any], min_score: int) -> List[ViralHookCandidate]:
-        """Heuristic rule-based fallback when Gemini API is offline or unconfigured."""
+        """
+        Smart transcript-driven heuristic title generator when Gemini API is offline or quota-exceeded.
+        Generates unique, engaging, content-derived titles based on actual speech words.
+        """
+        import re
+
+        def generate_title_from_text(text: str) -> str:
+            cleaned = re.sub(r"[^\w\s\?!']", "", text).strip()
+            words = cleaned.split()
+            if not words:
+                return "Insane Stream Moment!"
+            
+            # If the segment has a question or strong exclamation, use that
+            for s in re.split(r"[.!?]+", text):
+                s = s.strip()
+                if len(s.split()) >= 3 and len(s) <= 45:
+                    return f'"{s.capitalize()}"'
+
+            # Take the most impactful 4-7 words
+            sample = " ".join(words[:6]).title()
+            templates = [
+                f'"{sample}..."',
+                f"When He Said: {sample}!",
+                f"{sample} (UNREAL)",
+                f"No Way This Just Happened: {sample}",
+            ]
+            import random
+            return random.choice(templates)
+
         segments = transcript_data.get("segments", [])
         if not segments:
             return [
@@ -166,7 +194,7 @@ Return JSON with candidate clips meeting all criteria.
                     end_time=30.0,
                     teaser_hook_timestamp=None,
                     virality_score=80,
-                    suggested_title="INSANE Stream Moment!",
+                    suggested_title="UNREAL Stream Highlight!",
                     hashtags=["#Shorts", "#Viral", "#Trending"],
                     hook_summary="Opening reaction grabs attention",
                     punchline_summary="High-energy conclusion",
@@ -176,37 +204,45 @@ Return JSON with candidate clips meeting all criteria.
         candidates: List[ViralHookCandidate] = []
         cur_start = segments[0]["start"]
         cur_end = segments[0]["end"]
+        clip_texts = [segments[0].get("text", "")]
 
         for seg in segments[1:]:
             cur_end = seg["end"]
+            clip_texts.append(seg.get("text", ""))
             duration = cur_end - cur_start
             if 25.0 <= duration <= 55.0:
+                combined_text = " ".join(clip_texts).strip()
+                dynamic_title = generate_title_from_text(combined_text)
+
                 candidates.append(
                     ViralHookCandidate(
                         start_time=cur_start,
                         end_time=cur_end,
                         teaser_hook_timestamp=cur_end - 2.0,
                         virality_score=78,
-                        suggested_title="You Won't Believe What Happened!",
+                        suggested_title=dynamic_title,
                         hashtags=["#Shorts", "#Reels", "#Viral"],
                         hook_summary="Immediate dialogue hook",
                         punchline_summary="Scene resolution",
                     )
                 )
                 cur_start = seg["start"]
+                clip_texts = [seg.get("text", "")]
                 if len(candidates) >= 3:
                     break
 
         if not candidates:
             total_dur = segments[-1]["end"]
             clip_end = min(total_dur, 35.0)
+            combined_text = " ".join(s.get("text", "") for s in segments).strip()
+            dynamic_title = generate_title_from_text(combined_text)
             candidates.append(
                 ViralHookCandidate(
                     start_time=0.0,
                     end_time=clip_end,
                     teaser_hook_timestamp=None,
                     virality_score=75,
-                    suggested_title="Crazy Stream Moment!",
+                    suggested_title=dynamic_title,
                     hashtags=["#Shorts", "#Viral"],
                     hook_summary="Opening segment hook",
                     punchline_summary="Stream highlight",

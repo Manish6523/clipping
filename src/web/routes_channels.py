@@ -199,29 +199,65 @@ async def get_channel_live_frame(request: web.Request) -> web.Response:
     """Extract a real frame snapshot from channel's recent ring buffer for Template Studio canvas."""
     channel_handle = request.match_info["id"]
     c_buf = Path(BUFFER_DIR) / channel_handle
+    out_jpg = c_buf / "latest_frame.jpg"
+
+    # 1. Try extracting from active ring buffer chunks
     import glob
     chunks = sorted(glob.glob(str(c_buf / "chunk_*.ts")), key=os.path.getmtime)
-
-    out_jpg = c_buf / "latest_frame.jpg"
     if chunks:
         latest_chunk = chunks[-1]
-        cmd = [
-            "ffmpeg", "-y",
-            "-ss", "0.5",
-            "-i", str(latest_chunk),
-            "-vframes", "1",
-            "-q:v", "3",
-            str(out_jpg)
-        ]
-        proc = await asyncio.create_subprocess_exec(
-            *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
-        )
-        await proc.communicate()
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", "0.5",
+                "-i", str(latest_chunk),
+                "-vframes", "1",
+                "-q:v", "3",
+                str(out_jpg)
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
+        except Exception:
+            pass
 
-    if out_jpg.exists():
+    # 2. If latest_frame.jpg exists and is non-empty, serve it
+    if out_jpg.exists() and out_jpg.stat().st_size > 0:
         return web.FileResponse(out_jpg)
 
-    # Fallback to test frame
+    # 3. Fallback: check recent highlight mp4s or clip renders for this channel
+    highlights = sorted(glob.glob(str(c_buf / "highlight_*.mp4")), key=os.path.getmtime)
+    if highlights:
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", "2.0",
+                "-i", str(highlights[-1]),
+                "-vframes", "1",
+                "-q:v", "3",
+                str(out_jpg)
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if out_jpg.exists() and out_jpg.stat().st_size > 0:
+                return web.FileResponse(out_jpg)
+        except Exception:
+            pass
+
+    # 4. Check rendered clip thumbnails
+    from config.settings import RENDER_DIR
+    rendered_thumbs = sorted(glob.glob(str(Path(RENDER_DIR) / f"*{channel_handle}*thumb*.jpg")), key=os.path.getmtime)
+    if rendered_thumbs and Path(rendered_thumbs[-1]).exists():
+        return web.FileResponse(rendered_thumbs[-1])
+
+    # 5. Last fallback: any existing latest_frame.jpg anywhere in buffer
+    any_frames = sorted(glob.glob(str(Path(BUFFER_DIR) / "*" / "latest_frame.jpg")), key=os.path.getmtime)
+    if any_frames and Path(any_frames[-1]).exists():
+        return web.FileResponse(any_frames[-1])
+
     return make_json_error("NO_FRAME", f"No live video chunks available yet for {channel_handle}", status=404)
 
 

@@ -77,7 +77,33 @@ function SourceSubTab() {
     }
   };
 
-  const handleResetToTemplate = () => {
+  const handleResetToTemplate = async () => {
+    try {
+      const tName = clip?.template_name || edl?.layout?.preset;
+      if (tName) {
+        const res = await axios.get('/api/templates');
+        const tpl = res.data?.find((t) => t.name === tName);
+        if (tpl?.layout?.top_crop && tpl?.layout?.bottom_crop) {
+          const top = tpl.layout.top_crop;
+          const bot = tpl.layout.bottom_crop;
+          updateRegion('person', {
+            x: top.normalized_x ?? (top.source_x / 1920),
+            y: top.normalized_y ?? (top.source_y / 1080),
+            w: top.normalized_w ?? (top.source_w / 1920),
+            h: top.normalized_h ?? (top.source_h / 1080),
+          });
+          updateRegion('content', {
+            x: bot.normalized_x ?? (bot.source_x / 1920),
+            y: bot.normalized_y ?? (bot.source_y / 1080),
+            w: bot.normalized_w ?? (bot.source_w / 1920),
+            h: bot.normalized_h ?? (bot.source_h / 1080),
+          });
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Could not reset to template:', e);
+    }
     updateRegion('person', { x: 0.0, y: 0.58, w: 0.32, h: 0.42 });
     updateRegion('content', { x: 0.20, y: 0.0, w: 0.60, h: 1.0 });
   };

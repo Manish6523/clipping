@@ -123,6 +123,10 @@ def build_crop_filter(
     top_crop_str = f"crop={tw}:{th}:{tx}:{ty}"
     bot_crop_str = f"crop={bw}:{bh}:{bx}:{by}"
 
+    # Use increase + crop to ensure slots are fully filled with zero black padding/gap
+    top_scale_filter = f"{top_crop_str},scale=1080:{target_top_h}:force_original_aspect_ratio=increase,crop=1080:{target_top_h}"
+    bot_scale_filter = f"{bot_crop_str},scale=1080:{target_bot_h}:force_original_aspect_ratio=increase,crop=1080:{target_bot_h}"
+
     return {
         "layout_type": l_type,
         "src_width": src_w,
@@ -131,13 +135,13 @@ def build_crop_filter(
             "x": tx, "y": ty, "w": tw, "h": th,
             "target_w": 1080, "target_h": target_top_h,
             "crop_filter": top_crop_str,
-            "scale_filter": f"{top_crop_str},scale=1080:{target_top_h}:force_original_aspect_ratio=decrease,pad=1080:{target_top_h}:(ow-iw)/2:(oh-ih)/2",
+            "scale_filter": top_scale_filter,
         },
         "bottom": {
             "x": bx, "y": by, "w": bw, "h": bh,
             "target_w": 1080, "target_h": target_bot_h,
             "crop_filter": bot_crop_str,
-            "scale_filter": f"{bot_crop_str},scale=1080:{target_bot_h}:force_original_aspect_ratio=decrease,pad=1080:{target_bot_h}:(ow-iw)/2:(oh-ih)/2",
+            "scale_filter": bot_scale_filter,
         }
     }
 

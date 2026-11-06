@@ -1060,35 +1060,41 @@ export default function TemplateStudio() {
               <div className="flex items-center gap-1">
                 <button
                   type="button"
-                  onClick={() => { setCaptionPositionY(20); setIsDirty(true); }}
+                  onClick={() => { setCaptionPositionY(10); setIsDirty(true); }}
                   className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
                 >
-                  Top
+                  Top (10%)
                 </button>
                 <button
                   type="button"
                   onClick={() => { setCaptionPositionY(50); setIsDirty(true); }}
                   className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
                 >
-                  Mid
+                  Mid (50%)
                 </button>
                 <button
                   type="button"
                   onClick={() => { setCaptionPositionY(76); setIsDirty(true); }}
                   className="px-1.5 py-0.5 rounded text-[10px] bg-white/5 hover:bg-white/10 text-slate-300"
                 >
-                  Bottom
+                  Bottom (76%)
                 </button>
               </div>
             </div>
-            <input
-              type="range"
-              min="10"
-              max="90"
-              value={captionPositionY}
-              onChange={(e) => { setCaptionPositionY(Number(e.target.value)); setIsDirty(true); }}
-              className="w-full accent-[#8FD3FF] cursor-pointer"
-            />
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={captionPositionY}
+                onChange={(e) => { setCaptionPositionY(Number(e.target.value)); setIsDirty(true); }}
+                className="w-full accent-[#8FD3FF] cursor-pointer"
+              />
+              <span className="text-xs font-mono text-[#8FD3FF] font-bold min-w-[36px] text-right">
+                {captionPositionY}%
+              </span>
+            </div>
           </div>
 
           <div>
