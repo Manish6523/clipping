@@ -479,6 +479,7 @@ class AutoClipBot:
             caption=caption,
             reply_markup=kb,
             parse_mode="HTML",
+            request_timeout=120,
         )
 
         await update_clip_telegram_info(clip["id"], self.admin_id, msg.message_id)

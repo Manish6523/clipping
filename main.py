@@ -351,8 +351,11 @@ class AutoClipEngine:
             })
 
             clip_record = await get_clip(clip_id)
-            if clip_record:
-                await self.bot.send_clip_card(clip_record)
+            if clip_record and self.bot:
+                try:
+                    await self.bot.send_clip_card(clip_record)
+                except Exception as bot_err:
+                    logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
 
             async def _reset():
                 await asyncio.sleep(20)
@@ -462,8 +465,11 @@ class AutoClipEngine:
             })
 
             clip_record = await get_clip(clip_id)
-            if clip_record:
-                await self.bot.send_clip_card(clip_record)
+            if clip_record and self.bot:
+                try:
+                    await self.bot.send_clip_card(clip_record)
+                except Exception as bot_err:
+                    logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
 
             async def _reset():
                 await asyncio.sleep(20)

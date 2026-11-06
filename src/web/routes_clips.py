@@ -91,21 +91,28 @@ async def serve_file_range(file_path: Path, request: web.Request, content_type: 
     }
 
     resp = web.StreamResponse(status=206, headers=headers)
-    await resp.prepare(request)
+    try:
+        await resp.prepare(request)
+    except ConnectionError:
+        return resp
 
     chunk_size = 128 * 1024
-    with open(file_path, "rb") as f:
-        f.seek(start)
-        remaining = length
-        while remaining > 0:
-            read_len = min(chunk_size, remaining)
-            data = f.read(read_len)
-            if not data:
-                break
-            await resp.write(data)
-            remaining -= len(data)
+    try:
+        with open(file_path, "rb") as f:
+            f.seek(start)
+            remaining = length
+            while remaining > 0:
+                read_len = min(chunk_size, remaining)
+                data = f.read(read_len)
+                if not data:
+                    break
+                await resp.write(data)
+                remaining -= len(data)
+        await resp.write_eof()
+    except (ConnectionError, ConnectionResetError, OSError):
+        # Browser aborted stream seek or switched clips
+        pass
 
-    await resp.write_eof()
     return resp
 
 
