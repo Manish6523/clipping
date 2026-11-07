@@ -40,16 +40,42 @@ export default function Settings() {
     }
   };
 
-  const handleAddKey = () => {
+  const handleAddKey = async () => {
     const trimmed = newKey.trim();
     if (!trimmed) return;
     if (keys.includes(trimmed)) return;
-    setKeys([...keys, trimmed]);
+    const updated = [...keys, trimmed];
+    setKeys(updated);
     setNewKey('');
+    // Auto-save to DB immediately so refreshing never loses keys
+    try {
+      await axios.post('/api/settings', {
+        gemini_api_keys: updated,
+        gemini_model: model,
+        min_virality_score: minScore,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error('Auto-save key failed:', err);
+    }
   };
 
-  const handleRemoveKey = (idx) => {
-    setKeys(keys.filter((_, i) => i !== idx));
+  const handleRemoveKey = async (idx) => {
+    const updated = keys.filter((_, i) => i !== idx);
+    setKeys(updated);
+    // Auto-save removal to DB immediately
+    try {
+      await axios.post('/api/settings', {
+        gemini_api_keys: updated,
+        gemini_model: model,
+        min_virality_score: minScore,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+    } catch (err) {
+      console.error('Auto-save key removal failed:', err);
+    }
   };
 
   const handleTestKey = async (keyString, idx) => {
@@ -261,3 +287,4 @@ export default function Settings() {
     </div>
   );
 }
+
