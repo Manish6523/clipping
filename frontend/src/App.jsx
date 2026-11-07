@@ -14,6 +14,7 @@ const AccountsManager = lazy(() => import('./components/AccountsManager'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
+const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 
 function AppLayout() {
@@ -127,6 +128,7 @@ export default function App() {
         <Route path="channels" element={<ChannelManager />} />
         <Route path="accounts" element={<AccountsManager />} />
         <Route path="queue" element={<QueueCalendar />} />
+        <Route path="pipelines" element={<PipelineMonitor />} />
         <Route path="logs" element={<LogStreamer />} />
         <Route path="quickclip" element={<QuickClip />} />
       </Route>

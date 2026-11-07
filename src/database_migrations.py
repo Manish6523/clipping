@@ -302,6 +302,119 @@ async def migration_v9(db):
     await db.commit()
 
 
+@migration(10, "Best Clips Pipeline tables: candidates, pipeline_runs, llm_cache, clip_feedback_events, clip_metrics, channel_learning")
+async def migration_v10(db):
+    # Alter clips table with intelligence & scoring breakdown columns
+    cur = await db.execute("PRAGMA table_info(clips)")
+    cols = [r["name"] if isinstance(r, dict) else r[1] for r in await cur.fetchall()]
+
+    if "candidate_id" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN candidate_id TEXT")
+    if "final_score" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN final_score REAL DEFAULT 0.0")
+    if "score_breakdown" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN score_breakdown TEXT")
+    if "flags" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN flags TEXT")
+    if "prompt_version" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN prompt_version TEXT DEFAULT 'v1.0'")
+
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS pipeline_runs (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            stage TEXT NOT NULL,
+            status TEXT NOT NULL CHECK(status IN ('running', 'completed', 'failed')),
+            candidates_count INTEGER DEFAULT 0,
+            tokens_used INTEGER DEFAULT 0,
+            estimated_cost_usd REAL DEFAULT 0.0,
+            latency_seconds REAL DEFAULT 0.0,
+            prompt_version TEXT DEFAULT 'v1.0',
+            config_snapshot TEXT,
+            error_message TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS candidates (
+            id TEXT PRIMARY KEY,
+            source_id TEXT NOT NULL,
+            channel_id TEXT NOT NULL,
+            run_id TEXT REFERENCES pipeline_runs(id) ON DELETE CASCADE,
+            stage TEXT NOT NULL CHECK(stage IN ('generated', 'snapped', 'triage', 'detail', 'visual', 'selected', 'rejected')),
+            start_time REAL NOT NULL,
+            end_time REAL NOT NULL,
+            start_sentence_id TEXT,
+            end_sentence_id TEXT,
+            heat_score REAL DEFAULT 0.0,
+            triage_score REAL DEFAULT 0.0,
+            predicted_score REAL DEFAULT 0.0,
+            final_score REAL DEFAULT 0.0,
+            title TEXT,
+            hook_text TEXT,
+            description TEXT,
+            hashtags TEXT,
+            flags TEXT,
+            reject_reason TEXT,
+            raw_transcript_json TEXT,
+            score_breakdown TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS llm_cache (
+            cache_key TEXT PRIMARY KEY,
+            model_name TEXT NOT NULL,
+            prompt_version TEXT NOT NULL,
+            raw_response TEXT NOT NULL,
+            input_tokens INTEGER DEFAULT 0,
+            output_tokens INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS clip_feedback_events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER,
+            candidate_id TEXT,
+            channel_id TEXT,
+            event TEXT NOT NULL CHECK(event IN ('approved', 'rejected', 'trimmed', 'words_edited', 'layout_changed', 'published', 'deleted')),
+            payload_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS clip_metrics (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+            platform TEXT NOT NULL CHECK(platform IN ('youtube', 'instagram', 'tiktok')),
+            window TEXT NOT NULL CHECK(window IN ('24h', '72h', '7d')),
+            views INTEGER DEFAULT 0,
+            avg_view_duration REAL DEFAULT 0.0,
+            retention_pct REAL DEFAULT 0.0,
+            likes INTEGER DEFAULT 0,
+            comments INTEGER DEFAULT 0,
+            shares INTEGER DEFAULT 0,
+            performance_score REAL DEFAULT 0.0,
+            collected_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS channel_learning (
+            channel_id TEXT PRIMARY KEY,
+            weights_json TEXT NOT NULL,
+            boundary_bias_json TEXT NOT NULL,
+            stats_json TEXT NOT NULL,
+            is_paused INTEGER DEFAULT 0,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_candidates_source ON candidates(source_id);
+        CREATE INDEX IF NOT EXISTS idx_pipeline_runs_source ON pipeline_runs(source_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_clip ON clip_feedback_events(clip_id);
+        CREATE INDEX IF NOT EXISTS idx_feedback_channel ON clip_feedback_events(channel_id, created_at);
+        CREATE INDEX IF NOT EXISTS idx_clip_metrics_clip ON clip_metrics(clip_id, platform, window);
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

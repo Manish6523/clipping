@@ -27,6 +27,7 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
     { to: '/templates', label: 'Templates', shortLabel: 'Templates', icon: Palette },
     { to: '/channels', label: 'Channels & Live', shortLabel: 'Channels', icon: Radio },
     { to: '/accounts', label: 'YouTube & Distribution', shortLabel: 'Distribution', icon: Share2 },
+    { to: '/pipelines', label: 'Pipelines', shortLabel: 'Pipelines', icon: Flame },
     { to: '/queue', label: 'Drip Queue', shortLabel: 'Queue', icon: Calendar },
     { to: '/logs', label: 'Logs', shortLabel: 'Logs', icon: Terminal },
     { to: '/quickclip', label: 'Quick Clip', shortLabel: 'Clip', icon: Zap },

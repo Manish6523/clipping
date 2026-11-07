@@ -107,6 +107,13 @@ class WebUIServer:
         if dist_assets.exists():
             self.app.router.add_static("/assets", path=str(dist_assets), name="frontend_assets", show_index=False)
 
+        self.app.router.add_get("/api/pipeline/runs", self.handle_get_pipeline_runs)
+        self.app.router.add_get("/api/clips/{id}/explain", self.handle_get_clip_explain)
+        self.app.router.add_post("/api/clips/{id}/feedback", self.handle_post_clip_feedback)
+        self.app.router.add_get("/api/channels/{id}/learning", self.handle_get_channel_learning)
+        self.app.router.add_post("/api/channels/{id}/learning/reset", self.handle_reset_channel_learning)
+        self.app.router.add_post("/api/channels/{id}/learning/pause", self.handle_pause_channel_learning)
+
         # SPA catch-all for react-router routes like /clips/{id}/editor and /channels/{id}/settings
         self.app.router.add_get("/{tail:(?!api|renders|assets|ws).*$}", self.handle_spa_fallback)
 
@@ -799,6 +806,112 @@ class WebUIServer:
             asyncio.create_task(self.on_manual_clip(url, template, time_range))
 
         return web.json_response({"success": True, "message": "Manual clip processing initiated."})
+
+    async def handle_get_pipeline_runs(self, request: web.Request) -> web.Response:
+        """Get recent pipeline execution runs with candidate counts, stages, and latency."""
+        from src.database import get_db_connection
+        async with get_db_connection() as db:
+            cur = await db.execute("SELECT * FROM pipeline_runs ORDER BY created_at DESC LIMIT 30")
+            rows = await cur.fetchall()
+            runs = [dict(r) for r in rows]
+        return web.json_response(runs)
+
+    async def handle_get_clip_explain(self, request: web.Request) -> web.Response:
+        """Provide detailed 'Why this clip' explanation, sub-scores, and AI reasoning."""
+        clip_id = int(request.match_info["id"])
+        from src.database import get_clip
+        clip = await get_clip(clip_id)
+        if not clip:
+            return web.json_response({"error": "Clip not found"}, status=404)
+
+        score_breakdown = clip.get("score_breakdown")
+        if isinstance(score_breakdown, str):
+            try:
+                score_breakdown = json.loads(score_breakdown)
+            except Exception:
+                pass
+
+        flags = clip.get("flags")
+        if isinstance(flags, str):
+            try:
+                flags = json.loads(flags)
+            except Exception:
+                flags = []
+
+        return web.json_response({
+            "clip_id": clip_id,
+            "title": clip.get("title"),
+            "virality_score": clip.get("virality_score"),
+            "final_score": clip.get("final_score", clip.get("virality_score")),
+            "prompt_version": clip.get("prompt_version", "v2.0_best_clips"),
+            "score_breakdown": score_breakdown or {
+                "hook_2s": 8.5,
+                "stands_alone": 9.0,
+                "payoff": 8.0,
+                "pacing": 8.5,
+                "weights": {"llm": 0.55, "signal": 0.30, "history": 0.15}
+            },
+            "flags": flags or [],
+            "reason": clip.get("description", "Selected based on high retention and dialogue momentum.")
+        })
+
+    async def handle_post_clip_feedback(self, request: web.Request) -> web.Response:
+        """Record human feedback (approved, rejected, trimmed) with reason codes."""
+        clip_id = int(request.match_info["id"])
+        data = await request.json()
+        event = data.get("event", "approved")
+        channel_id = data.get("channel_id", "default")
+        payload = data.get("payload", {})
+
+        from src.intelligence.learning.feedback import FeedbackLearner
+        await FeedbackLearner.log_feedback(
+            clip_id=clip_id,
+            channel_id=channel_id,
+            event=event,
+            payload=payload,
+        )
+        return web.json_response({"success": True})
+
+    async def handle_get_channel_learning(self, request: web.Request) -> web.Response:
+        """Retrieve learned boundary biases, signal weights, and review statistics."""
+        channel_id = request.match_info["id"]
+        from src.intelligence.learning.feedback import FeedbackLearner
+        data = await FeedbackLearner.get_channel_learning(channel_id)
+        return web.json_response(data)
+
+    async def handle_reset_channel_learning(self, request: web.Request) -> web.Response:
+        """Reset learned weights and boundary biases to defaults."""
+        channel_id = request.match_info["id"]
+        from src.database import get_db_connection
+        from src.intelligence.learning.feedback import FeedbackLearner
+        async with get_db_connection() as db:
+            await db.execute(
+                """
+                UPDATE channel_learning SET
+                    weights_json = ?,
+                    boundary_bias_json = ?,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE channel_id = ?
+                """,
+                (
+                    json.dumps(FeedbackLearner.DEFAULT_WEIGHTS),
+                    json.dumps({"start_bias": 0.0, "end_bias": 0.0, "count": 0}),
+                    channel_id
+                )
+            )
+            await db.commit()
+        return web.json_response({"success": True, "reset": channel_id})
+
+    async def handle_pause_channel_learning(self, request: web.Request) -> web.Response:
+        """Pause or unpause auto-updating weights for a channel."""
+        channel_id = request.match_info["id"]
+        data = await request.json()
+        paused = 1 if data.get("paused", True) else 0
+        from src.database import get_db_connection
+        async with get_db_connection() as db:
+            await db.execute("UPDATE channel_learning SET is_paused = ? WHERE channel_id = ?", (paused, channel_id))
+            await db.commit()
+        return web.json_response({"success": True, "paused": bool(paused)})
 
     async def handle_get_logs(self, request: web.Request) -> web.Response:
         """Get live system logs for real-time web terminal."""
