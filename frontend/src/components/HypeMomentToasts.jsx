@@ -1,9 +1,10 @@
-import React, { useEffect } from 'react';
-import { Flame, ArrowUpRight, Scissors, X, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Flame, ArrowUpRight, Scissors, X, Loader2, Layers } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function HypeMomentToasts({ activePipelines = [], toasts = [], onDismissToast }) {
   const navigate = useNavigate();
+  const [isHovered, setIsHovered] = useState(false);
 
   // Auto-remove green completed toasts after 7 seconds
   useEffect(() => {
@@ -24,57 +25,119 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
   const hasItems = (activePipelines && activePipelines.length > 0) || (toasts && toasts.length > 0);
   if (!hasItems) return null;
 
+  const count = activePipelines.length;
+  const primary = activePipelines[0] || null;
+
   return (
     <aside
       aria-label="Active Hype Moments Feed"
-      className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-[340px] w-full pointer-events-auto select-none max-h-[82vh] overflow-y-auto custom-scrollbar pr-1"
+      className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-[340px] w-full pointer-events-auto select-none"
     >
-      {/* 1. Live Processing Hype Moments (Modern Minimalist Pill/Card Redesign) */}
-      {activePipelines.map((pipeline) => {
-        const channel = pipeline.channel_id || 'Streamer';
-        const step = Math.min(5, Math.max(1, pipeline.current_step || 1));
-        const progressPercent = Math.round((step / 5) * 100);
-        const stepName = pipeline.step_name || 'Processing clip...';
+      {/* 1. Live Processing Hype Moments Stacked Card (Single Card that reveals on hover like the image) */}
+      {count > 0 && (
+        <div
+          onMouseEnter={() => setIsHovered(true)}
+          onMouseLeave={() => setIsHovered(false)}
+          className="relative transition-all duration-300"
+        >
+          {/* Collapsed Stack Mode (Multiple items stacked with layers behind) */}
+          {!isHovered && count > 1 ? (
+            <div className="relative group cursor-pointer">
+              {/* Backing Card 2 (Top Stack Edge) */}
+              {count > 2 && (
+                <div className="absolute -top-3 inset-x-4 h-6 bg-[#0D111A]/60 border border-white/[0.04] rounded-2xl shadow-md pointer-events-none" />
+              )}
+              {/* Backing Card 1 (Middle Stack Edge) */}
+              <div className="absolute -top-1.5 inset-x-2 h-6 bg-[#0D111A]/80 border border-white/[0.06] rounded-2xl shadow-md pointer-events-none" />
 
-        return (
-          <div
-            key={`live-${channel}`}
-            className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.08] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-300 relative overflow-hidden group"
-          >
-            {/* Ambient subtle glow header */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
-                  <Loader2 size={13} className="animate-spin" />
-                </div>
-                <div className="min-w-0">
-                  <div className="font-extrabold text-white text-xs tracking-tight flex items-center gap-1.5 truncate">
-                    <span>@{channel}</span>
+              {/* Front Primary Card */}
+              <div className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.1] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/90 flex flex-col gap-2 text-xs relative z-10 transition-all">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                      <Loader2 size={13} className="animate-spin" />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-extrabold text-white text-xs tracking-tight flex items-center gap-1.5 truncate">
+                        <span>@{primary.channel_id || 'Streamer'}</span>
+                        <span className="text-[10px] text-amber-400/90 font-mono font-normal">
+                          (+{count - 1} more)
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full shrink-0">
+                    <span>Step {Math.min(5, Math.max(1, primary.current_step || 1))} of 5</span>
                   </div>
                 </div>
+
+                {/* Progress Bar */}
+                <div className="relative w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
+                  <div
+                    className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                    style={{ width: `${Math.round((Math.min(5, Math.max(1, primary.current_step || 1)) / 5) * 100)}%` }}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
+                  <span className="truncate pr-2">{primary.step_name || 'Processing clip...'}</span>
+                  <span className="font-mono text-slate-500 shrink-0">
+                    {Math.round((Math.min(5, Math.max(1, primary.current_step || 1)) / 5) * 100)}%
+                  </span>
+                </div>
               </div>
-
-              <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full shrink-0">
-                <span>Step {step} of 5</span>
-              </div>
             </div>
+          ) : (
+            /* Expanded Full List (Reveals on Hover or when count == 1) */
+            <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
+              {activePipelines.map((pipeline) => {
+                const channel = pipeline.channel_id || 'Streamer';
+                const step = Math.min(5, Math.max(1, pipeline.current_step || 1));
+                const progressPercent = Math.round((step / 5) * 100);
+                const stepName = pipeline.step_name || 'Processing clip...';
 
-            {/* Continuous Smooth Progress Bar */}
-            <div className="relative w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
-              <div
-                className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
+                return (
+                  <div
+                    key={`live-${channel}`}
+                    className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.08] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-200 relative overflow-hidden"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+                          <Loader2 size={13} className="animate-spin" />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="font-extrabold text-white text-xs tracking-tight truncate">
+                            <span>@{channel}</span>
+                          </div>
+                        </div>
+                      </div>
 
-            {/* Bottom Status text with percentage */}
-            <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
-              <span className="truncate pr-2">{stepName}</span>
-              <span className="font-mono text-slate-500 shrink-0">{progressPercent}%</span>
+                      <div className="flex items-center gap-1 text-[10px] font-mono font-bold text-amber-400 bg-amber-400/10 border border-amber-400/20 px-2 py-0.5 rounded-full shrink-0">
+                        <span>Step {step} of 5</span>
+                      </div>
+                    </div>
+
+                    {/* Continuous Smooth Progress Bar */}
+                    <div className="relative w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
+                      <div
+                        className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                        style={{ width: `${progressPercent}%` }}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between text-[10px] text-slate-400 font-medium pt-0.5">
+                      <span className="truncate pr-2">{stepName}</span>
+                      <span className="font-mono text-slate-500 shrink-0">{progressPercent}%</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-          </div>
-        );
-      })}
+          )}
+        </div>
+      )}
 
       {/* 2. Ready-To-Review Completed Clips (With Cancel Button & Auto-Remove after 7s) */}
       {toasts.map((toast) => {
