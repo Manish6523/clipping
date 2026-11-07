@@ -44,6 +44,10 @@ YOUTUBE_SCOPES = [
 ]
 
 
+# In-memory verifier store: state -> code_verifier
+OAUTH_FLOW_VERIFIERS: Dict[str, str] = {}
+
+
 async def get_app_config_handler(request: web.Request) -> web.Response:
     """Return stored OAuth Client ID and whether Client Secret is set."""
     cfg = await get_oauth_app_config("youtube")
@@ -115,6 +119,9 @@ async def get_auth_url_handler(request: web.Request) -> web.Response:
         state=account_key,
     )
 
+    if flow.code_verifier:
+        OAUTH_FLOW_VERIFIERS[account_key] = flow.code_verifier
+
     return web.json_response({"auth_url": auth_url, "account_key": account_key})
 
 
@@ -161,6 +168,9 @@ async def oauth2_callback_handler(request: web.Request) -> web.Response:
             scopes=YOUTUBE_SCOPES,
             redirect_uri=redirect_uri,
         )
+        saved_verifier = OAUTH_FLOW_VERIFIERS.pop(account_key, None)
+        if saved_verifier:
+            flow.code_verifier = saved_verifier
         flow.fetch_token(code=code)
         creds = flow.credentials
 
@@ -306,3 +316,4 @@ def register_youtube_routes(app: web.Application) -> None:
     app.router.add_post("/api/youtube/accounts/import", import_account_handler)
     app.router.add_get("/api/youtube/mappings", get_mappings_handler)
     app.router.add_post("/api/youtube/mappings", set_mappings_handler)
+
