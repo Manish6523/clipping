@@ -597,10 +597,15 @@ export default function LayoutBuilder({
           <div className="flex items-center gap-1 bg-[#13151A] px-2 py-0.5 rounded-lg border border-white/10">
             <span className="text-[10px] text-slate-400 font-semibold uppercase">Preset:</span>
             <select
-              onChange={(e) => handleSelectPreset(e.target.value)}
-              defaultValue="facecam_top_gameplay_bottom"
+              onChange={(e) => {
+                if (e.target.value) handleSelectPreset(e.target.value);
+              }}
+              value=""
               className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer"
             >
+              <option value="" disabled className="bg-slate-900 text-slate-400">
+                Choose Preset...
+              </option>
               {Object.values(PRESET_STARTERS).map((p) => (
                 <option key={p.id} value={p.id} className="bg-slate-900 text-white">
                   {p.label}

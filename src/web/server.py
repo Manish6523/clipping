@@ -296,6 +296,7 @@ class WebUIServer:
             content_region = {"x": 0.16, "y": 0.0, "w": 0.67, "h": 1.0, "keyframes": []}
             tpl_layout_type = "facecam_top_gameplay_bottom"
             tpl_subtitles = {}
+            tpl_schema2_layout = None
 
             tpl_file = Path(TEMPLATES_DIR) / f"{tpl_name}.json"
             if tpl_file.exists():
@@ -303,25 +304,30 @@ class WebUIServer:
                     with open(tpl_file, "r", encoding="utf-8") as f:
                         tpl_data = json.load(f)
                         tpl_layout = tpl_data.get("layout", {})
-                        tpl_layout_type = tpl_layout.get("type", "facecam_top_gameplay_bottom")
-                        top_c = tpl_layout.get("top_crop", {})
-                        bot_c = tpl_layout.get("bottom_crop", {})
-                        if top_c:
-                            person_region = {
-                                "x": top_c.get("normalized_x", (top_c.get("source_x", 0) / 1920)),
-                                "y": top_c.get("normalized_y", (top_c.get("source_y", 0) / 1080)),
-                                "w": top_c.get("normalized_w", (top_c.get("source_w", 640) / 1920)),
-                                "h": top_c.get("normalized_h", (top_c.get("source_h", 480) / 1080)),
-                                "keyframes": [],
-                            }
-                        if bot_c:
-                            content_region = {
-                                "x": bot_c.get("normalized_x", (bot_c.get("source_x", 384) / 1920)),
-                                "y": bot_c.get("normalized_y", (bot_c.get("source_y", 0) / 1080)),
-                                "w": bot_c.get("normalized_w", (bot_c.get("source_w", 1152) / 1920)),
-                                "h": bot_c.get("normalized_h", (bot_c.get("source_h", 1080) / 1080)),
-                                "keyframes": [],
-                            }
+                        
+                        # Schema v2 with layers directly in template!
+                        if tpl_layout.get("layers") and isinstance(tpl_layout["layers"], list):
+                            tpl_schema2_layout = tpl_layout
+                        else:
+                            tpl_layout_type = tpl_layout.get("type", "facecam_top_gameplay_bottom")
+                            top_c = tpl_layout.get("top_crop", {})
+                            bot_c = tpl_layout.get("bottom_crop", {})
+                            if top_c:
+                                person_region = {
+                                    "x": top_c.get("normalized_x", (top_c.get("source_x", 0) / 1920)),
+                                    "y": top_c.get("normalized_y", (top_c.get("source_y", 0) / 1080)),
+                                    "w": top_c.get("normalized_w", (top_c.get("source_w", 640) / 1920)),
+                                    "h": top_c.get("normalized_h", (top_c.get("source_h", 480) / 1080)),
+                                    "keyframes": [],
+                                }
+                            if bot_c:
+                                content_region = {
+                                    "x": bot_c.get("normalized_x", (bot_c.get("source_x", 384) / 1920)),
+                                    "y": bot_c.get("normalized_y", (bot_c.get("source_y", 0) / 1080)),
+                                    "w": bot_c.get("normalized_w", (bot_c.get("source_w", 1152) / 1920)),
+                                    "h": bot_c.get("normalized_h", (bot_c.get("source_h", 1080) / 1080)),
+                                    "keyframes": [],
+                                }
                         tpl_subtitles = tpl_data.get("subtitles", {})
                 except Exception as ex:
                     logger.warning("Could not read template '%s' for EDL init: %s", tpl_name, ex)
@@ -333,23 +339,15 @@ class WebUIServer:
                 caption_pos_y = round((1920 - tpl_subtitles["margin_v"]) / 1920, 4)
 
             # Modern Schema v2 Layout with Layers
-            edl = {
-                "version": 1,
-                "clip_id": clip_id,
-                "source": {
-                    "path": clip.get("source_video_path") or clip.get("rendered_video_path"),
-                    "start": clip.get("adjusted_start", 0.0),
-                    "end": clip.get("adjusted_end", 30.0),
-                },
-                "segments": [
-                    {
-                        "id": "seg_0",
-                        "src_in": clip.get("adjusted_start", 0.0),
-                        "src_out": clip.get("adjusted_end", 30.0),
-                    }
-                ],
-                "words": words,
-                "layout": {
+            if tpl_schema2_layout:
+                layout_obj = {
+                    "schema": 2,
+                    "canvas": tpl_schema2_layout.get("canvas", {"w": 1080, "h": 1920}),
+                    "background": tpl_schema2_layout.get("background", {"type": "solid", "color": "#000000", "blur": 0, "dim": 0.0}),
+                    "layers": tpl_schema2_layout["layers"],
+                }
+            else:
+                layout_obj = {
                     "schema": 2,
                     "canvas": {"w": 1080, "h": 1920},
                     "background": {"type": "solid", "color": "#000000", "blur": 0, "dim": 0.0},
@@ -405,7 +403,25 @@ class WebUIServer:
                             "tracking": {"mode": "off", "smooth": 0.8},
                         },
                     ],
+                }
+
+            edl = {
+                "version": 1,
+                "clip_id": clip_id,
+                "source": {
+                    "path": clip.get("source_video_path") or clip.get("rendered_video_path"),
+                    "start": clip.get("adjusted_start", 0.0),
+                    "end": clip.get("adjusted_end", 30.0),
                 },
+                "segments": [
+                    {
+                        "id": "seg_0",
+                        "src_in": clip.get("adjusted_start", 0.0),
+                        "src_out": clip.get("adjusted_end", 30.0),
+                    }
+                ],
+                "words": words,
+                "layout": layout_obj,
                 "captions": {
                     "font": tpl_subtitles.get("font_name", "Montserrat ExtraBold"),
                     "size": tpl_subtitles.get("font_size", 72),
