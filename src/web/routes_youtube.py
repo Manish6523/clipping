@@ -216,8 +216,9 @@ async def oauth2_callback_handler(request: web.Request) -> web.Response:
             thumbnail_url=thumbnail_url,
         )
 
-        # Redirect user back to Frontend Accounts page
-        frontend_url = f"http://localhost:5173/accounts?connected={urllib.parse.quote(account_key)}"
+        # Redirect user back to Frontend Accounts page dynamically preserving scheme and host
+        forwarded_proto = request.headers.get("X-Forwarded-Proto", "https" if request.secure else "http")
+        frontend_url = f"{forwarded_proto}://{host}/accounts?connected={urllib.parse.quote(account_key)}"
         raise web.HTTPFound(frontend_url)
 
     except web.HTTPFound:
@@ -225,7 +226,7 @@ async def oauth2_callback_handler(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error("OAuth token exchange failed: %s", e)
         return web.Response(
-            text=f"<h3>Authentication Failed</h3><p>{str(e)}</p><p><a href='http://localhost:5173/accounts'>Return to App</a></p>",
+            text=f"<h3>Authentication Failed</h3><p>{str(e)}</p><p><a href='/accounts'>Return to App</a></p>",
             content_type="text/html",
             status=500,
         )
