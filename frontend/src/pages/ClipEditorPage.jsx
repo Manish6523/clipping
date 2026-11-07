@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { useParams } from 'react-router-dom';
 import { useEditorStore } from '../store/editorStore';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import TopBar from '../components/editor/TopBar';
@@ -23,12 +24,12 @@ import {
 } from 'lucide-react';
 
 export default function ClipEditorPage() {
+  const { clipId } = useParams();
   const { 
-    clipId, 
     clip, 
     edl, 
     loading, 
-    loadClip, 
+    initClip, 
     saveEDL,
     updateEDL,
     undo,
@@ -54,9 +55,9 @@ export default function ClipEditorPage() {
 
   useEffect(() => {
     if (clipId) {
-      loadClip(clipId);
+      initClip(clipId);
     }
-  }, [clipId, loadClip]);
+  }, [clipId, initClip]);
 
   const handleRender = async () => {
     try {
