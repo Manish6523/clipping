@@ -225,11 +225,11 @@ export default function AccountsManager() {
           </div>
         </div>
 
-        {/* Tab Switcher */}
-        <div className="flex items-center gap-1 bg-[#0E121B] p-1 rounded-xl border border-white/[0.08]">
+        {/* Tab Switcher (Scrollable horizontally on mobile) */}
+        <div className="flex items-center gap-1 bg-[#0E121B] p-1 rounded-xl border border-white/[0.08] overflow-x-auto max-w-full custom-scrollbar">
           <button
             onClick={() => setActiveTab('accounts')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
               activeTab === 'accounts'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
@@ -239,7 +239,7 @@ export default function AccountsManager() {
           </button>
           <button
             onClick={() => setActiveTab('mappings')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
               activeTab === 'mappings'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
@@ -249,7 +249,7 @@ export default function AccountsManager() {
           </button>
           <button
             onClick={() => setActiveTab('oauth_setup')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
               activeTab === 'oauth_setup'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
@@ -504,8 +504,8 @@ export default function AccountsManager() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs">
+              <div className="overflow-x-auto custom-scrollbar">
+                <table className="w-full text-left text-xs min-w-[500px]">
                   <thead>
                     <tr className="border-b border-white/[0.08] text-slate-400 uppercase text-[10px] font-mono">
                       <th className="py-3 px-4">Streamer Channel</th>

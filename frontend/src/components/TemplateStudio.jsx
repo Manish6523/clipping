@@ -213,11 +213,11 @@ export default function TemplateStudio() {
   };
 
   return (
-    <div className="w-full h-[calc(100vh-61px)] flex flex-col px-4 py-2.5 select-none overflow-hidden bg-[#07090E]">
-      {/* Sleek Minimal Top Control Bar */}
-      <div className="flex items-center justify-between gap-3 pb-2.5 border-b border-white/[0.06] shrink-0">
+    <div className="w-full min-h-[calc(100vh-61px)] lg:h-[calc(100vh-61px)] flex flex-col px-3 sm:px-4 py-2.5 select-none overflow-y-auto lg:overflow-hidden bg-[#07090E]">
+      {/* Sleek Minimal Top Control Bar (Responsive wrap on mobile) */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-2.5 border-b border-white/[0.06] shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20 shrink-0">
             <LayoutTemplate size={16} />
           </div>
           <div>
@@ -238,33 +238,33 @@ export default function TemplateStudio() {
           </div>
         </div>
 
-        {/* Center Template Picker Dropdown */}
-        <div className="flex items-center gap-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-3 py-1">
-          <span className="text-[10px] uppercase font-bold text-[#8B90A0]">Active:</span>
-          <select
-            value={templateName}
-            onChange={(e) => handleLoadPreset(e.target.value)}
-            className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer pr-1"
-          >
-            {templates.map((t) => (
-              <option key={t.name} value={t.name} className="bg-slate-900 text-white font-mono">
-                {t.name}
-              </option>
-            ))}
-          </select>
-          <button
-            onClick={() => handleDeleteTemplate(templateName)}
-            title="Delete this template"
-            className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-          >
-            <Trash2 size={12} />
-          </button>
-        </div>
+        {/* Center & Right Control Actions */}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Center Template Picker Dropdown */}
+          <div className="flex items-center gap-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2.5 sm:px-3 py-1">
+            <span className="text-[10px] uppercase font-bold text-[#8B90A0]">Active:</span>
+            <select
+              value={templateName}
+              onChange={(e) => handleLoadPreset(e.target.value)}
+              className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer pr-1"
+            >
+              {templates.map((t) => (
+                <option key={t.name} value={t.name} className="bg-slate-900 text-white font-mono">
+                  {t.name}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => handleDeleteTemplate(templateName)}
+              title="Delete this template"
+              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
 
-        {/* Right Action Buttons */}
-        <div className="flex items-center gap-2">
           {/* Streamer Frame Reference */}
-          <div className="flex items-center gap-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2.5 py-1">
+          <div className="flex items-center gap-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2 sm:px-2.5 py-1">
             <span className="text-[10px] text-slate-400 font-bold uppercase">Sample:</span>
             <select
               value={selectedChannel}
@@ -287,9 +287,9 @@ export default function TemplateStudio() {
           </div>
 
           {/* Upload Custom Image */}
-          <label className="flex items-center gap-1.5 text-xs text-slate-300 font-bold bg-[#0E1118] hover:bg-white/10 px-2.5 py-1.5 rounded-xl border border-white/[0.08] cursor-pointer transition-all">
+          <label className="flex items-center gap-1.5 text-xs text-slate-300 font-bold bg-[#0E1118] hover:bg-white/10 px-2 sm:px-2.5 py-1.5 rounded-xl border border-white/[0.08] cursor-pointer transition-all">
             <FolderOpen size={13} className="text-[#8FD3FF]" />
-            <span>Upload Image</span>
+            <span className="hidden sm:inline">Upload Image</span>
             <input
               type="file"
               accept="image/*"
@@ -310,7 +310,7 @@ export default function TemplateStudio() {
 
           <button
             onClick={handleNewTemplate}
-            className="flex items-center gap-1.5 bg-[#0E1118] hover:bg-white/10 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition-all border border-white/[0.08]"
+            className="flex items-center gap-1.5 bg-[#0E1118] hover:bg-white/10 text-white font-bold py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all border border-white/[0.08]"
           >
             <Plus size={13} className="text-[#8FD3FF]" /> New
           </button>
@@ -318,7 +318,7 @@ export default function TemplateStudio() {
           {selectedChannel && (
             <button
               onClick={handleApplyToChannel}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-3 rounded-xl text-xs transition-all shadow-md shadow-emerald-600/20"
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-1.5 px-2.5 sm:px-3 rounded-xl text-xs transition-all shadow-md shadow-emerald-600/20"
             >
               Map to @{selectedChannel}
             </button>
@@ -326,17 +326,17 @@ export default function TemplateStudio() {
 
           <button
             onClick={handleSave}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-black py-1.5 px-4 rounded-xl text-xs shadow-lg shadow-[#8FD3FF]/20 transition-all"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-black py-1.5 px-3 sm:px-4 rounded-xl text-xs shadow-lg shadow-[#8FD3FF]/20 transition-all"
           >
             <Save size={13} /> Save Template
           </button>
         </div>
       </div>
 
-      {/* Main Studio Viewport (Fills Remaining Screen Height) */}
-      <div className="flex-1 flex flex-col min-h-0 pt-2 overflow-hidden">
+      {/* Main Studio Viewport */}
+      <div className="flex-1 flex flex-col min-h-0 pt-2 lg:overflow-hidden">
         {/* Core Free-Form LayoutBuilder with Dual Stage Canvases */}
-        <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
+        <div className="flex-1 min-h-0 lg:overflow-hidden flex flex-col">
           <LayoutBuilder
             layout={layoutState}
             onChange={(next) => {

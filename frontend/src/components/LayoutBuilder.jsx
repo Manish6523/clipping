@@ -649,9 +649,9 @@ export default function LayoutBuilder({
       </div>
 
       {/* Main Dual Canvases Row */}
-      <div className="grid grid-cols-12 gap-3 items-stretch flex-1 min-h-0">
+      <div className="grid grid-cols-12 gap-3 items-stretch flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-4 lg:pb-0">
         {/* LEFT COLUMN: 16:9 SOURCE CANVAS (Crop Selector) */}
-        <div className="col-span-12 lg:col-span-7 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-0">
+        <div className="col-span-12 lg:col-span-7 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[320px] lg:min-h-0">
           <div className="flex items-center justify-between shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Monitor size={14} className="text-[#8FD3FF]" /> 16:9 Source Stream (Crop Boundaries)
@@ -752,7 +752,7 @@ export default function LayoutBuilder({
         </div>
 
         {/* RIGHT COLUMN: 9:16 LIVE OUTPUT COMPOSITE CANVAS */}
-        <div className="col-span-12 lg:col-span-5 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-0">
+        <div className="col-span-12 lg:col-span-5 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[460px] lg:min-h-0">
           <div className="flex items-center justify-between shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
               <Smartphone size={14} className="text-[#8FD3FF]" /> 9:16 Live Canvas (Output Placement)

@@ -49,8 +49,8 @@ export default function LogStreamer() {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      <div className="flex items-center justify-between mb-4">
+    <div className="max-w-7xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
             <Terminal className="text-indigo-400" /> Real-Time Live Logs
@@ -78,7 +78,7 @@ export default function LogStreamer() {
         </div>
       </div>
 
-      <div className="bg-black/90 border border-white/10 rounded-xl p-4 font-mono text-xs shadow-2xl h-[640px] overflow-y-auto flex flex-col gap-1.5">
+      <div className="bg-black/90 border border-white/10 rounded-xl p-3 sm:p-4 font-mono text-xs shadow-2xl h-[calc(100vh-210px)] min-h-[400px] overflow-y-auto flex flex-col gap-1.5 custom-scrollbar">
         {logs.length === 0 ? (
           <div className="text-slate-600 italic text-center py-20">
             Waiting for daemon engine logs...

@@ -46,8 +46,8 @@ export default function QueueCalendar() {
         </p>
       </div>
 
-      <div className="bg-slate-900/60 border border-white/10 rounded-xl overflow-hidden shadow-2xl">
-        <table className="w-full text-left text-xs">
+      <div className="bg-slate-900/60 border border-white/10 rounded-xl overflow-x-auto shadow-2xl custom-scrollbar">
+        <table className="w-full text-left text-xs min-w-[650px]">
           <thead className="bg-slate-950/80 text-slate-400 font-bold uppercase tracking-wider border-b border-white/10">
             <tr>
               <th className="py-3 px-4">Clip ID</th>

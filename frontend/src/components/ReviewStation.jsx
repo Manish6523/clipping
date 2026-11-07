@@ -50,6 +50,7 @@ export default function ReviewStation({ onStatusChange }) {
   const [channelFilter, setChannelFilter] = useState('all');
   const [loading, setLoading] = useState(false);
   const [batchLoading, setBatchLoading] = useState(false);
+  const [mobileTab, setMobileTab] = useState('player'); // 'queue' | 'player' | 'details'
 
   // Active clip editor fields
   const [editingTitle, setEditingTitle] = useState('');
@@ -302,11 +303,11 @@ export default function ReviewStation({ onStatusChange }) {
   const isSomeSelected = selectedClipIds.size > 0 && selectedClipIds.size < clips.length;
 
   return (
-    <div className="w-full h-[calc(100vh-61px)] flex flex-col px-4 py-2 select-none overflow-hidden bg-[#07090E]">
+    <div className="w-full min-h-[calc(100vh-61px)] lg:h-[calc(100vh-61px)] flex flex-col px-2 sm:px-4 py-2 select-none overflow-y-auto lg:overflow-hidden bg-[#07090E]">
       {/* Top Universal Control Header */}
-      <div className="flex items-center justify-between gap-3 pb-2 border-b border-white/[0.06] shrink-0">
-        {/* Status Filter Pills */}
-        <div className="flex items-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.06]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2 border-b border-white/[0.06] shrink-0">
+        {/* Status Filter Pills (Horizontal scroll on mobile) */}
+        <div className="flex items-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.06] overflow-x-auto custom-scrollbar max-w-full">
           {[
             { id: 'pending_approval', label: 'Pending Approval' },
             { id: 'approved', label: 'Approved' },
@@ -317,7 +318,7 @@ export default function ReviewStation({ onStatusChange }) {
             <button
               key={s.id}
               onClick={() => setStatusFilter(s.id)}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
                 statusFilter === s.id
                   ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
                   : 'text-[#8B90A0] hover:text-white'
@@ -330,17 +331,17 @@ export default function ReviewStation({ onStatusChange }) {
 
         {/* Center: Multi-Select Discard Action Bar */}
         {selectedClipIds.size > 0 && (
-          <div className="flex items-center gap-2 bg-rose-500/15 border border-rose-500/40 px-3.5 py-1 rounded-xl animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center gap-2 bg-rose-500/15 border border-rose-500/40 px-3 py-1 rounded-xl animate-in fade-in zoom-in-95 duration-150">
             <span className="text-xs font-bold text-rose-300">
-              {selectedClipIds.size} clip{selectedClipIds.size === 1 ? '' : 's'} selected
+              {selectedClipIds.size} selected
             </span>
             <button
               onClick={handleBatchDiscard}
               disabled={batchLoading}
-              className="flex items-center gap-1.5 px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-extrabold transition-all shadow-md shadow-rose-600/30"
+              className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-extrabold transition-all shadow-md shadow-rose-600/30"
             >
               <Trash2 size={13} />
-              {batchLoading ? 'Deleting...' : 'Discard Selected'}
+              {batchLoading ? 'Deleting...' : 'Discard'}
             </button>
             <button
               onClick={() => setSelectedClipIds(new Set())}
@@ -352,7 +353,7 @@ export default function ReviewStation({ onStatusChange }) {
         )}
 
         {/* Right: Streamer Filter & Stats */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center justify-between sm:justify-end gap-2.5 w-full sm:w-auto">
           {channelsList.length > 0 && (
             <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase font-bold text-[#8B90A0]">Streamer:</span>
@@ -369,16 +370,52 @@ export default function ReviewStation({ onStatusChange }) {
             </div>
           )}
 
-          <div className="text-xs text-[#8FD3FF] font-mono px-2.5 py-1 rounded-lg bg-[#8FD3FF]/10 border border-[#8FD3FF]/20 font-bold">
+          <div className="text-xs text-[#8FD3FF] font-mono px-2.5 py-1 rounded-lg bg-[#8FD3FF]/10 border border-[#8FD3FF]/20 font-bold shrink-0">
             {clips.length} clip{clips.length === 1 ? '' : 's'}
           </div>
         </div>
       </div>
 
-      {/* Main Full-Height 3-Column Studio Grid */}
-      <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 pt-2 overflow-hidden">
-        {/* Left Column: Virtualized Review Queue Feed (Compact ~260px) */}
-        <div className="col-span-12 lg:col-span-3 xl:col-span-3 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col gap-2 shadow-xl min-h-0 overflow-hidden">
+      {/* Mobile Mode Tab Switcher (Visible on < lg screens) */}
+      <div className="lg:hidden flex items-center justify-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.08] my-2 shrink-0">
+        <button
+          onClick={() => setMobileTab('queue')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
+            mobileTab === 'queue'
+              ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Queue ({clips.length})
+        </button>
+        <button
+          onClick={() => setMobileTab('player')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
+            mobileTab === 'player'
+              ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Player
+        </button>
+        <button
+          onClick={() => setMobileTab('details')}
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
+            mobileTab === 'details'
+              ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
+              : 'text-slate-400 hover:text-white'
+          }`}
+        >
+          Details & Actions
+        </button>
+      </div>
+
+      {/* Main Studio Grid: Responsive 3-Column on Desktop (lg:), Tabs/Stacked on Mobile */}
+      <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 pt-1 lg:pt-2 lg:overflow-hidden">
+        {/* Left Column: Virtualized Review Queue Feed */}
+        <div className={`col-span-12 lg:col-span-3 xl:col-span-3 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col gap-2 shadow-xl min-h-[300px] lg:min-h-0 overflow-hidden ${
+          mobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'
+        }`}>
           {/* Header Row with Select All */}
           <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.04] shrink-0">
             <button
@@ -442,6 +479,7 @@ export default function ReviewStation({ onStatusChange }) {
                       className="p-1"
                     >
                       <div
+                        onClick={() => setMobileTab('player')}
                         className={`p-2.5 h-full rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                           isActive
                             ? 'border-[#8FD3FF] bg-[#181C26] shadow-lg shadow-[#8FD3FF]/15 ring-1 ring-[#8FD3FF]/30'
@@ -487,8 +525,10 @@ export default function ReviewStation({ onStatusChange }) {
           )}
         </div>
 
-        {/* Center Column: SINGLE 9:16 VIDEO PLAYER (Always Aspect-Preserved, Fills Center Space) */}
-        <div className="col-span-12 lg:col-span-4 xl:col-span-4 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-0 overflow-hidden">
+        {/* Center Column: SINGLE 9:16 VIDEO PLAYER */}
+        <div className={`col-span-12 lg:col-span-4 xl:col-span-4 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-[420px] lg:min-h-0 overflow-hidden ${
+          mobileTab !== 'player' ? 'hidden lg:flex' : 'flex'
+        }`}>
           <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-white/[0.12] relative shadow-2xl flex items-center justify-center max-w-full">
             {videoSrc ? (
               <div key={videoSrc} className="w-full h-full">
@@ -521,7 +561,9 @@ export default function ReviewStation({ onStatusChange }) {
         </div>
 
         {/* Right Column: Full Inspector & Production Controls */}
-        <div className="col-span-12 lg:col-span-5 xl:col-span-5 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden">
+        <div className={`col-span-12 lg:col-span-5 xl:col-span-5 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden ${
+          mobileTab !== 'details' ? 'hidden lg:flex' : 'flex'
+        }`}>
           {activeClipSummary ? (
             <>
               {/* Meta Chips */}
@@ -665,10 +707,10 @@ export default function ReviewStation({ onStatusChange }) {
               </div>
 
               {/* Bottom Action Buttons (Fixed Footer) */}
-              <div className="grid grid-cols-5 gap-2 pt-2 border-t border-white/[0.06] shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-white/[0.06] shrink-0">
                 <a
                   href={`/clips/${activeClipSummary.id}/editor`}
-                  className="flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-[#8FD3FF]/20"
+                  className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-[#8FD3FF]/20"
                 >
                   <Maximize2 size={13} /> Full Editor
                 </a>
