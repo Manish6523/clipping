@@ -261,7 +261,7 @@ export default function MobileStage({
       const ch = canvas.height;
       ctx.clearRect(0, 0, cw, ch);
 
-      const media = videoRef?.current && videoRef.current.readyState >= 2 ? videoRef.current : null;
+      const media = videoRef?.current && videoRef.current.readyState >= 1 ? videoRef.current : null;
 
       // Solid background
       ctx.fillStyle = layout?.background?.color || '#000000';
@@ -312,9 +312,7 @@ export default function MobileStage({
         ctx.setLineDash([]);
       }
 
-      if (videoRef?.current) {
-        animId = requestAnimationFrame(render);
-      }
+      animId = requestAnimationFrame(render);
     };
 
     render();
@@ -325,6 +323,24 @@ export default function MobileStage({
 
   return (
     <div className="relative w-full h-full flex items-center justify-center overflow-hidden p-2 select-none touch-none bg-black/40">
+      {/* 
+        MASTER PERSISTENT VIDEO ELEMENT:
+        Must ALWAYS remain mounted in the DOM regardless of mainView ('output' or 'source')
+        so that:
+        1. Media loads and buffers without being destroyed on view toggle.
+        2. Mobile browsers allow play/pause transport control.
+        3. Canvas 2D ctx.drawImage has a continuous, loaded video frame source.
+      */}
+      <video
+        ref={videoRef}
+        src={sourceMediaUrl || undefined}
+        crossOrigin="anonymous"
+        playsInline
+        webkit-playsinline="true"
+        preload="auto"
+        className={mainView === 'source' ? 'hidden' : 'sr-only'}
+      />
+
       {/* 1. PRIMARY STAGE (Either 9:16 Output Canvas or 16:9 Source Crop) */}
       {mainView === 'output' ? (
         /* MAIN VIEW = 9:16 LIVE OUTPUT */
@@ -398,12 +414,18 @@ export default function MobileStage({
         >
           {sourceMediaUrl && (
             <video
-              ref={videoRef}
               src={sourceMediaUrl}
               crossOrigin="anonymous"
               playsInline
+              webkit-playsinline="true"
               preload="auto"
               className="w-full h-full object-cover pointer-events-none"
+              ref={(el) => {
+                // Keep time in sync if rendered directly
+                if (el && videoRef?.current) {
+                  el.currentTime = videoRef.current.currentTime;
+                }
+              }}
             />
           )}
 
@@ -560,8 +582,14 @@ export default function MobileStage({
               <video
                 src={sourceMediaUrl}
                 playsInline
+                webkit-playsinline="true"
                 muted
                 className="w-full h-full object-cover pointer-events-none opacity-80"
+                ref={(el) => {
+                  if (el && videoRef?.current) {
+                    el.currentTime = videoRef.current.currentTime;
+                  }
+                }}
               />
             )}
             {layers.map((l) => (
