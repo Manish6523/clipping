@@ -12,7 +12,7 @@ import {
   Volume2,
   Share2
 } from 'lucide-react';
-import { useEditorStore } from '../../store/editorStore';
+import { useEditorStore } from '../../../store/editorStore';
 
 export default function ClipPanel({ isCompact = false }) {
   const { clip, edl, duration, sourceInfo, extending, changeClipBounds, transcribeClip } = useEditorStore();

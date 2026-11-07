@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Bookmark, Sparkles, Check, Trash2 } from 'lucide-react';
 import { useEditorStore } from '../../../store/editorStore';
 import { PRESET_STARTERS } from '../../LayoutBuilder';
-import { getPresets, deletePreset, getTemplates } from '../../../api';
+import { getTemplates } from '../../../api';
 
 export default function PresetsPanel({ isCompact = false }) {
   const { clip, edl, updateEDL } = useEditorStore();
@@ -10,9 +10,8 @@ export default function PresetsPanel({ isCompact = false }) {
   const [templates, setTemplates] = useState([]);
 
   useEffect(() => {
-    getPresets(clip?.channel_id).then(setCustomPresets).catch(() => {});
     getTemplates().then(setTemplates).catch(() => {});
-  }, [clip?.channel_id]);
+  }, []);
 
   const applyStarter = (presetKey) => {
     const starter = PRESET_STARTERS[presetKey];

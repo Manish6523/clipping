@@ -1,82 +1,138 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useEditorStore } from '../store/editorStore';
+import { useLayoutMode } from '../hooks/useLayoutMode';
+import TopBar from '../components/editor/TopBar';
+import LeftPanel from '../components/editor/LeftPanel';
+import PreviewStage from '../components/editor/PreviewStage';
+import Timeline from '../components/editor/Timeline';
+import PanelHost from '../components/editor/PanelHost';
+
+// Mobile specific components
+import MobileTopBar from '../components/editor/MobileTopBar';
+import MobileStage from '../components/editor/MobileStage';
+import LayerChipStrip from '../components/editor/LayerChipStrip';
+import MobileTimelineStrip from '../components/editor/MobileTimelineStrip';
+import MobileToolBar from '../components/editor/MobileToolBar';
+
 import { 
   FolderKanban, 
   Palette, 
   Settings,
   Layers,
-  Monitor,
-  Sliders,
-  Clock
+  Sparkles
 } from 'lucide-react';
-import { useEditorStore } from '../store/editorStore';
-import TopBar from '../components/editor/TopBar';
-import LeftPanel from '../components/editor/LeftPanel';
-import PreviewStage from '../components/editor/PreviewStage';
-import Inspector from '../components/editor/Inspector';
-import Timeline from '../components/editor/Timeline';
 
 export default function ClipEditorPage() {
-  const { clipId } = useParams();
-  const [mobileView, setMobileView] = useState('canvas'); // 'canvas' | 'layers' | 'inspector'
   const { 
-    initClip, 
+    clipId, 
+    clip, 
+    edl, 
     loading, 
-    edl,
-    clip,
-    duration,
-    currentTime,
+    loadClip, 
+    saveEDL,
+    updateEDL,
+    undo,
+    redo,
     setCurrentTime,
-    saveEDL, 
-    undo, 
-    redo, 
-    splitSegmentAtPlayhead,
-    changeClipBounds,
+    currentTime,
     selection,
-    clearSelection
+    setSelection,
+    clearSelection,
+    splitSegmentAtPlayhead,
+    activePanel,
+    setActivePanel,
+    sheetSnap,
+    setSheetSnap,
+    closeSheet
   } = useEditorStore();
+
+  const { isPhone, isTablet, isDesktop, isLandscape, isTouch } = useLayoutMode();
   const videoRef = useRef(null);
+  const [rendering, setRendering] = useState(false);
+  const [showSafeAreas, setShowSafeAreas] = useState(false);
+  const [fullTimelineOpen, setFullTimelineOpen] = useState(false);
 
   useEffect(() => {
     if (clipId) {
-      initClip(clipId);
+      loadClip(clipId);
     }
-  }, [clipId, initClip]);
+  }, [clipId, loadClip]);
 
-  // Central useShortcuts handler (frame-by-frame, 1s step, word boundaries, escape, space)
+  const handleRender = async () => {
+    try {
+      setRendering(true);
+      await saveEDL();
+      const res = await fetch(`/api/clips/${clipId}/render`, { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Render failed');
+      alert('Render job queued successfully!');
+    } catch (err) {
+      alert(`Render error: ${err.message}`);
+    } finally {
+      setRendering(false);
+    }
+  };
+
+  const updateCaptionPos = (x, y) => {
+    updateEDL((prev) => ({
+      ...prev,
+      captions: {
+        ...(prev.captions || {}),
+        position: {
+          x: Math.round(x * 1000) / 1000,
+          y: Math.round(y * 1000) / 1000,
+          max_width: prev.captions?.position?.max_width ?? 0.85,
+        },
+      },
+    }));
+  };
+
+  // Synchronize master video playback clock with store
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+
+    const handleTimeUpdate = () => {
+      const now = v.currentTime;
+      setCurrentTime(now);
+
+      if (edl?.words) {
+        for (const w of edl.words) {
+          if (w.deleted && now >= w.start && now < w.end) {
+            v.currentTime = w.end;
+            break;
+          }
+        }
+      }
+    };
+
+    v.addEventListener('timeupdate', handleTimeUpdate);
+    return () => v.removeEventListener('timeupdate', handleTimeUpdate);
+  }, [edl, setCurrentTime]);
+
+  // Keyboard Shortcuts (desktop)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Ignore if inside text input, textarea, select or contenteditable
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable) {
         return;
       }
-
       const v = videoRef.current;
-      const startOffset = edl?.source?.start || clip?.adjusted_start || 0;
-      const endOffset = edl?.source?.end || clip?.adjusted_end || (startOffset + duration);
 
-      // Escape clears selection
       if (e.key === 'Escape') {
         clearSelection();
         return;
       }
-
-      // Undo / Redo
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
         return;
       }
-
-      // Save EDL
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveEDL();
         return;
       }
-
-      // Space Play / Pause
       if (e.key === ' ') {
         e.preventDefault();
         if (v) {
@@ -85,101 +141,16 @@ export default function ClipEditorPage() {
         }
         return;
       }
-
-      // Split at Playhead
       if (e.key === 'c' || e.key === 'C') {
         e.preventDefault();
         splitSegmentAtPlayhead();
-        return;
-      }
-
-      // Set In Point (I)
-      if (e.key === 'i' || e.key === 'I') {
-        e.preventDefault();
-        if (currentTime < endOffset - 3.0) {
-          changeClipBounds(Math.round(currentTime * 10) / 10, endOffset);
-        }
-        return;
-      }
-
-      // Set Out Point (O)
-      if (e.key === 'o' || e.key === 'O') {
-        e.preventDefault();
-        if (currentTime > startOffset + 3.0) {
-          changeClipBounds(startOffset, Math.round(currentTime * 10) / 10);
-        }
-        return;
-      }
-
-      // Home: Jump to clip start
-      if (e.key === 'Home') {
-        e.preventDefault();
-        if (v) v.currentTime = startOffset;
-        setCurrentTime(startOffset);
-        return;
-      }
-
-      // End: Jump to clip end
-      if (e.key === 'End') {
-        e.preventDefault();
-        if (v) v.currentTime = endOffset;
-        setCurrentTime(endOffset);
-        return;
-      }
-
-      // Arrow keys (Frame-stepping & word boundary navigation)
-      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-        e.preventDefault(); // Stop timeline or window scroll
-        const isRight = e.key === 'ArrowRight';
-        const cur = v ? v.currentTime : currentTime;
-
-        if (e.ctrlKey || e.metaKey) {
-          // Jump to prev/next word boundary
-          const words = (edl?.words || []).filter((w) => !w.deleted);
-          if (isRight) {
-            const nextWord = words.find((w) => w.start > cur + 0.05);
-            if (nextWord) {
-              if (v) v.currentTime = nextWord.start;
-              setCurrentTime(nextWord.start);
-            }
-          } else {
-            const prevWord = [...words].reverse().find((w) => w.start < cur - 0.05);
-            if (prevWord) {
-              if (v) v.currentTime = prevWord.start;
-              setCurrentTime(prevWord.start);
-            }
-          }
-        } else if (e.shiftKey) {
-          // Step 1.0 second
-          const target = Math.max(startOffset, Math.min(endOffset, cur + (isRight ? 1.0 : -1.0)));
-          if (v) v.currentTime = target;
-          setCurrentTime(target);
-        } else {
-          // Step 1 frame (1/30s = ~0.0333s)
-          const frameTime = 1 / 30;
-          const target = Math.max(startOffset, Math.min(endOffset, cur + (isRight ? frameTime : -frameTime)));
-          if (v) v.currentTime = target;
-          setCurrentTime(target);
-        }
         return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [
-    undo,
-    redo,
-    saveEDL,
-    splitSegmentAtPlayhead,
-    changeClipBounds,
-    currentTime,
-    duration,
-    edl,
-    clip,
-    clearSelection,
-    setCurrentTime
-  ]);
+  }, [undo, redo, saveEDL, splitSegmentAtPlayhead, clearSelection]);
 
   if (loading) {
     return (
@@ -192,9 +163,172 @@ export default function ClipEditorPage() {
     );
   }
 
+  // =========================================================================
+  // 1. PHONE PORTRAIT LAYOUT: Height 100dvh, TopBar / Stage (Resizes) / Timeline / ToolBar
+  // =========================================================================
+  if (isPhone && !isLandscape) {
+    return (
+      <div 
+        className="h-[100dvh] w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col overflow-hidden select-none"
+        style={{ overscrollBehavior: 'none' }}
+      >
+        {/* 1. Mobile Top Bar (48dp) */}
+        <MobileTopBar 
+          onRender={handleRender}
+          rendering={rendering}
+          showSafeAreas={showSafeAreas}
+          onToggleSafeAreas={() => setShowSafeAreas(!showSafeAreas)}
+        />
+
+        {/* 2. Responsive Stage (Resizes gracefully when bottom sheet opens so you always see live video) */}
+        <div className="flex-1 min-h-[30vh] overflow-hidden flex flex-col relative">
+          <MobileStage 
+            layout={edl?.layout}
+            onChange={(nextLayout) => {
+              updateEDL((prev) => ({ ...prev, layout: nextLayout }));
+            }}
+            sourceMediaUrl={clipId ? `/api/clips/${clipId}/source` : null}
+            videoRef={videoRef}
+            captionsConfig={{
+              ...(edl?.captions || {}),
+              onChangePos: updateCaptionPos,
+            }}
+            words={edl?.words || []}
+            currentTime={currentTime}
+            selectedLayerId={selection?.type === 'layer' ? selection.id : null}
+            onSelectLayer={(id) => {
+              setSelection(id ? { type: 'layer', id } : { type: 'none', id: null });
+              if (id) setActivePanel('layout');
+            }}
+            onSelectCaption={() => {
+              setSelection({ type: 'caption', id: 'main' });
+              setActivePanel('captions');
+            }}
+            showSafeArea={showSafeAreas}
+            isPhone={true}
+          />
+        </div>
+
+        {/* 3. Layer Chip Quick Selector Strip */}
+        <LayerChipStrip />
+
+        {/* 4. Transport & Fixed-Center Scrub Strip */}
+        <MobileTimelineStrip 
+          videoRef={videoRef} 
+          onExpandTimeline={() => setFullTimelineOpen(!fullTimelineOpen)}
+        />
+
+        {/* 5. Mobile Bottom Sheet for Active Tool Settings (Resizes viewport) */}
+        <PanelHost 
+          mode="phone"
+          activePanel={activePanel}
+          onClose={() => setActivePanel(null)}
+          sheetSnap={sheetSnap}
+          onSetSnap={setSheetSnap}
+        />
+
+        {/* 6. Mobile Bottom Tool Bar (56dp + Safe Area) */}
+        <MobileToolBar />
+
+        {/* Full Timeline Modal Sheet if expanded */}
+        {fullTimelineOpen && (
+          <div className="fixed inset-x-0 bottom-0 top-12 bg-[#0E1118]/98 backdrop-blur-2xl border-t border-white/10 z-50 flex flex-col p-3 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <span className="font-extrabold text-xs text-white">Full Timeline &amp; Word Cuts</span>
+              <button
+                onClick={() => setFullTimelineOpen(false)}
+                className="text-slate-400 hover:text-white px-2 py-1 rounded bg-white/5 text-xs font-bold"
+              >
+                Done
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pt-3">
+              <Timeline videoRef={videoRef} />
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 2. PHONE LANDSCAPE LAYOUT: Side-by-Side Dual Canvases + Side Drawer
+  // =========================================================================
+  if (isPhone && isLandscape) {
+    return (
+      <div 
+        className="h-[100dvh] w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col overflow-hidden select-none"
+        style={{ overscrollBehavior: 'none' }}
+      >
+        {/* Slim Top Bar (36dp) */}
+        <MobileTopBar 
+          onRender={handleRender}
+          rendering={rendering}
+          showSafeAreas={showSafeAreas}
+          onToggleSafeAreas={() => setShowSafeAreas(!showSafeAreas)}
+        />
+
+        <div className="flex-1 flex min-h-0 overflow-hidden relative">
+          {/* Main Dual Stage Row */}
+          <div className="flex-1 flex items-center justify-center gap-2 p-1 overflow-hidden">
+            <MobileStage 
+              layout={edl?.layout}
+              onChange={(nextLayout) => {
+                updateEDL((prev) => ({ ...prev, layout: nextLayout }));
+              }}
+              sourceMediaUrl={clipId ? `/api/clips/${clipId}/source` : null}
+              videoRef={videoRef}
+              captionsConfig={{
+                ...(edl?.captions || {}),
+                onChangePos: updateCaptionPos,
+              }}
+              words={edl?.words || []}
+              currentTime={currentTime}
+              selectedLayerId={selection?.type === 'layer' ? selection.id : null}
+              onSelectLayer={(id) => {
+                setSelection(id ? { type: 'layer', id } : { type: 'none', id: null });
+                if (id) setActivePanel('layout');
+              }}
+              onSelectCaption={() => {
+                setSelection({ type: 'caption', id: 'main' });
+                setActivePanel('captions');
+              }}
+              showSafeArea={showSafeAreas}
+              isPhone={true}
+            />
+          </div>
+
+          {/* Side Drawer for Tool Panel */}
+          {activePanel && (
+            <div className="w-80 h-full border-l border-white/10 bg-[#0E1118] shrink-0 z-40">
+              <PanelHost 
+                mode="landscape"
+                activePanel={activePanel}
+                onClose={() => setActivePanel(null)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Bottom Timeline + Toolbar Strip */}
+        <div className="h-14 shrink-0 flex items-center border-t border-white/[0.06] bg-[#0A0B0E]">
+          <div className="flex-1 h-full">
+            <MobileTimelineStrip videoRef={videoRef} onExpandTimeline={() => setFullTimelineOpen(true)} />
+          </div>
+          <div className="w-auto h-full flex items-center pr-2">
+            <MobileToolBar />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================================================================
+  // 3. DESKTOP & TABLET LAYOUT: 3 Columns with shared panels
+  // =========================================================================
   return (
     <div className="h-screen w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col md:flex-row overflow-hidden">
-      {/* Slim 48px Far-Left Icon Rail (Hidden on mobile, visible on md+) */}
+      {/* Slim 48px Far-Left Icon Rail */}
       <aside className="hidden md:flex w-12 bg-[#0A0B0E] border-r border-white/[0.06] flex-col items-center justify-between py-4 select-none shrink-0 z-40">
         <div className="flex flex-col items-center gap-5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20">
@@ -222,68 +356,26 @@ export default function ClipEditorPage() {
         {/* Slim Top Bar */}
         <TopBar />
 
-        {/* Mobile View Toggle Tabs (Visible on < lg screens) */}
-        <div className="lg:hidden flex items-center justify-between px-3 py-1.5 bg-[#0D1017] border-b border-white/[0.06] shrink-0">
-          <div className="flex items-center gap-1 w-full">
-            <button
-              onClick={() => setMobileView('canvas')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                mobileView === 'canvas'
-                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Monitor size={13} /> Canvas
-            </button>
-            <button
-              onClick={() => setMobileView('layers')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                mobileView === 'layers'
-                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Layers size={13} /> Layers &amp; Script
-            </button>
-            <button
-              onClick={() => setMobileView('inspector')}
-              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                mobileView === 'inspector'
-                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Sliders size={13} /> Inspector
-            </button>
-          </div>
-        </div>
-
-        {/* 3-Column Studio Desktop / Responsive Stack on Mobile */}
-        <div className="flex-1 px-2 sm:px-3 py-2 flex flex-col lg:grid lg:grid-cols-[220px_1fr_280px] gap-2 sm:gap-3 min-h-0 overflow-hidden">
+        {/* 3-Column Studio: Left Tools | Center Dual Canvases | Right Contextual PanelHost */}
+        <div className="flex-1 px-3 py-2 grid grid-cols-[220px_1fr_280px] gap-3 min-h-0 overflow-hidden">
           {/* Left Tools Panel */}
-          <div className={`h-full min-h-0 overflow-hidden flex-col ${
-            mobileView === 'layers' ? 'flex' : 'hidden lg:flex'
-          }`}>
+          <div className="h-full min-h-0 overflow-hidden flex flex-col">
             <LeftPanel />
           </div>
 
           {/* Center Stage Row: Dual Canvases */}
-          <div className={`h-full min-h-0 flex-col ${
-            mobileView === 'canvas' ? 'flex' : 'hidden lg:flex'
-          }`}>
+          <div className="h-full min-h-0 flex flex-col">
             <PreviewStage videoRef={videoRef} />
           </div>
 
           {/* Right Inspector Panel */}
-          <div className={`h-full min-h-0 overflow-hidden flex-col ${
-            mobileView === 'inspector' ? 'flex' : 'hidden lg:flex'
-          }`}>
-            <Inspector />
+          <div className="h-full min-h-0 overflow-hidden flex flex-col">
+            <PanelHost mode="desktop" />
           </div>
         </div>
 
         {/* Unified Bottom Timeline Bar */}
-        <div className="px-2 sm:px-3 pb-2 shrink-0">
+        <div className="px-3 pb-2 shrink-0">
           <Timeline videoRef={videoRef} />
         </div>
       </div>
