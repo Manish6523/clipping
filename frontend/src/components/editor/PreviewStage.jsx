@@ -103,6 +103,7 @@ export default function PreviewStage({ videoRef }) {
             layout: nextLayout
           }));
         }}
+        sourceMediaUrl={clipId ? `/api/clips/${clipId}/source` : null}
         videoRef={videoRef}
         captionsConfig={edl?.captions}
         mode="clip"

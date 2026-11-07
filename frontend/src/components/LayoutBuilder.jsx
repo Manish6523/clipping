@@ -386,7 +386,7 @@ export default function LayoutBuilder({
         ctx.setLineDash([]);
       }
 
-      if (mode === 'clip' && videoRef?.current && !videoRef.current.paused) {
+      if (mode === 'clip' && videoRef?.current) {
         animId = requestAnimationFrame(renderDst);
       }
     };
@@ -602,11 +602,23 @@ export default function LayoutBuilder({
             ref={srcCanvasRef}
             className="w-full aspect-video bg-black rounded-xl relative overflow-hidden border border-white/10 shadow-2xl select-none"
             style={{
-              backgroundImage: sourceMediaUrl ? `url(${sourceMediaUrl})` : undefined,
+              backgroundImage: (mode === 'template' && sourceMediaUrl) ? `url(${sourceMediaUrl})` : undefined,
               backgroundSize: 'cover',
               backgroundPosition: 'center',
             }}
           >
+            {/* Live Video Player in Clip Editor Mode */}
+            {mode === 'clip' && (
+              <video
+                ref={videoRef}
+                src={sourceMediaUrl || undefined}
+                playsInline
+                preload="auto"
+                crossOrigin="anonymous"
+                className="w-full h-full object-contain pointer-events-none"
+              />
+            )}
+
             {/* Draw overlay boxes for each layer */}
             {layers.map((layer) => {
               if (!layer.visible) return null;
