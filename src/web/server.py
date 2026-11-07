@@ -90,6 +90,7 @@ class WebUIServer:
         self.app.router.add_post("/api/clips/{id}/post-now", self.handle_post_now)
         self.app.router.add_post("/api/clips/{id}/queue", self.handle_queue_clip)
         self.app.router.add_post("/api/clips/{id}/discard", self.handle_discard_clip)
+        self.app.router.add_post("/api/clips/batch-discard", self.handle_batch_discard_clips)
         self.app.router.add_get("/api/queue", self.handle_get_queue)
         self.app.router.add_post("/api/clip-manual", self.handle_clip_manual)
         self.app.router.add_get("/api/logs", self.handle_get_logs)
@@ -721,6 +722,25 @@ class WebUIServer:
         success = await delete_clip_completely(clip_id)
         await ws_manager.broadcast("clip_deleted", {"clip_id": clip_id})
         return web.json_response({"success": success, "deleted": clip_id})
+
+    async def handle_batch_discard_clips(self, request: web.Request) -> web.Response:
+        """Purge multiple clips in batch."""
+        data = await request.json()
+        clip_ids = data.get("clip_ids", [])
+        if not isinstance(clip_ids, list):
+            return web.json_response({"error": "clip_ids must be an array"}, status=400)
+        
+        deleted = []
+        for cid in clip_ids:
+            try:
+                ok = await delete_clip_completely(int(cid))
+                if ok:
+                    deleted.append(int(cid))
+                    await ws_manager.broadcast("clip_deleted", {"clip_id": int(cid)})
+            except Exception as ex:
+                logger.error("Failed to batch discard clip #%s: %s", cid, ex)
+
+        return web.json_response({"success": True, "deleted_count": len(deleted), "deleted_ids": deleted})
 
     async def handle_get_queue(self, request: web.Request) -> web.Response:
         """Get upcoming drip queue items."""

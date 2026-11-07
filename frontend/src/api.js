@@ -24,6 +24,7 @@ export const updateClip = (id, data) => api.post(`/api/clips/${id}/update`, data
 export const postClipNow = (id) => api.post(`/api/clips/${id}/post-now`).then(r => r.data);
 export const queueClip = (id) => api.post(`/api/clips/${id}/queue`).then(r => r.data);
 export const discardClip = (id) => api.post(`/api/clips/${id}/discard`).then(r => r.data);
+export const batchDiscardClips = (clipIds) => api.post('/api/clips/batch-discard', { clip_ids: clipIds }).then(r => r.data);
 
 export const getChannels = () => api.get('/api/channels').then(r => r.data);
 export const addChannel = (data) => api.post('/api/channels', data).then(r => r.data);
