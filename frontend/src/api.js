@@ -18,8 +18,10 @@ export const getClips = (status = '', limit = 50, cursor = '') =>
 export const getClip = (id) => api.get(`/api/clips/${id}`).then(r => r.data);
 export const getClipWords = (id) => api.get(`/api/clips/${id}/words`).then(r => r.data);
 export const getClipWaveform = (id) => api.get(`/api/clips/${id}/waveform`).then(r => r.data);
-export const trimClip = (id, deltaStart, deltaEnd) => api.post(`/api/clips/${id}/trim`, { delta_start: deltaStart, delta_end: deltaEnd }).then(r => r.data);
-export const toggleTeaser = (id) => api.post(`/api/clips/${id}/toggle-teaser`).then(r => r.data);
+export const trimClip = (id, deltaStart, deltaEnd) => 
+  api.post(`/api/clips/${id}/trim`, { delta_start: deltaStart, delta_end: deltaEnd }, { timeout: 180000 }).then(r => r.data);
+export const toggleTeaser = (id) => 
+  api.post(`/api/clips/${id}/toggle-teaser`, {}, { timeout: 180000 }).then(r => r.data);
 export const updateClip = (id, data) => api.post(`/api/clips/${id}/update`, data).then(r => r.data);
 export const postClipNow = (id) => api.post(`/api/clips/${id}/post-now`).then(r => r.data);
 export const queueClip = (id) => api.post(`/api/clips/${id}/queue`).then(r => r.data);
