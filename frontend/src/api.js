@@ -46,5 +46,15 @@ export const testTemplateSample = (data) => api.post('/api/templates/test-sample
 export const getQueue = () => api.get('/api/queue').then(r => r.data);
 export const clipManual = (data) => api.post('/api/clip-manual', data).then(r => r.data);
 
+// YouTube Accounts & Streamer Mappings
+export const getYouTubeAppConfig = () => api.get('/api/youtube/app-config').then(r => r.data);
+export const saveYouTubeAppConfig = (data) => api.post('/api/youtube/app-config', data).then(r => r.data);
+export const getYouTubeAuthUrl = (accountKey) => api.get(`/api/youtube/auth-url?account_key=${encodeURIComponent(accountKey)}`).then(r => r.data);
+export const getYouTubeAccounts = () => api.get('/api/youtube/accounts').then(r => r.data);
+export const deleteYouTubeAccount = (key) => api.delete(`/api/youtube/accounts/${encodeURIComponent(key)}`).then(r => r.data);
+export const importYouTubeAccount = (data) => api.post('/api/youtube/accounts/import', data).then(r => r.data);
+export const getYouTubeMappings = () => api.get('/api/youtube/mappings').then(r => r.data);
+export const setYouTubeMappings = (data) => api.post('/api/youtube/mappings', data).then(r => r.data);
+
 export default api;
 

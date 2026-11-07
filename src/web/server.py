@@ -43,6 +43,7 @@ from src.web.routes_channels import register_channel_routes
 from src.web.routes_templates import register_template_routes
 from src.web.routes_health import register_health_routes
 from src.web.routes_presets import register_presets_routes
+from src.web.routes_youtube import register_youtube_routes
 from src.maintenance import execute_database_reset
 from src.compositor.render_swap import SafeRenderManager, compute_edl_hash, drain_pending_deletes
 
@@ -73,6 +74,7 @@ class WebUIServer:
         register_channel_routes(self.app)
         register_template_routes(self.app)
         register_presets_routes(self.app)
+        register_youtube_routes(self.app)
 
         self.app.router.add_post("/api/admin/reset", self.handle_admin_reset)
         self.app.router.add_get("/api/channels", self.handle_get_channels)
@@ -675,37 +677,54 @@ class WebUIServer:
         title = clip.get("title", "Stream Highlight")
         description = clip.get("description", "")
         hashtags = [h.strip() for h in (clip.get("hashtags") or "").split() if h.strip()]
+        channel_id = clip.get("channel_id") or ""
+
+        # Check streamer-to-YouTube mappings first
+        from src.database import get_accounts_for_streamer
+        mapped_yt_keys = await get_accounts_for_streamer(channel_id)
+        if not mapped_yt_keys and channel_id.startswith("@"):
+            mapped_yt_keys = await get_accounts_for_streamer(channel_id[1:])
+        elif not mapped_yt_keys:
+            mapped_yt_keys = await get_accounts_for_streamer(f"@{channel_id}")
 
         dests = load_template_destinations(template_name)
-        yt_key = dests.get("youtube_account_key")
+        if not mapped_yt_keys and dests.get("youtube_account_key"):
+            mapped_yt_keys = [dests.get("youtube_account_key")]
+
         ig_key = dests.get("instagram_account_key")
 
         tasks = []
-        if yt_key:
-            yt_pub = YouTubeShortsPublisher(yt_key)
+        task_types = []
+        for yt_k in mapped_yt_keys:
+            yt_pub = YouTubeShortsPublisher(yt_k)
             tasks.append(yt_pub.upload_short(video_path, title, description, hashtags))
+            task_types.append(("youtube", yt_k))
+
         if ig_key:
             ig_pub = InstagramReelsPublisher(ig_key)
             tasks.append(ig_pub.upload_reel(video_path, title, hashtags))
+            task_types.append(("instagram", ig_key))
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        yt_res = {"success": False, "error": "Not configured"}
+        yt_results = []
         ig_res = {"success": False, "error": "Not configured"}
-        idx = 0
-        if yt_key:
-            yt_res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
-            idx += 1
-        if ig_key:
-            ig_res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
 
-        overall_success = yt_res.get("success", False) or ig_res.get("success", False)
+        for (kind, key), res in zip(task_types, results):
+            formatted_res = res if not isinstance(res, Exception) else {"success": False, "error": str(res), "account_key": key}
+            if kind == "youtube":
+                yt_results.append(formatted_res)
+            elif kind == "instagram":
+                ig_res = formatted_res
+
+        has_yt_success = any(r.get("success") for r in yt_results)
+        overall_success = has_yt_success or ig_res.get("success", False)
         if overall_success:
             await update_clip_status(clip_id, "published")
 
         return web.json_response({
             "success": overall_success,
-            "youtube": yt_res,
+            "youtube": yt_results if yt_results else {"success": False, "error": "No mapped YouTube account"},
             "instagram": ig_res,
         })
 

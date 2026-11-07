@@ -232,6 +232,41 @@ async def migration_v7(db):
     await db.commit()
 
 
+@migration(8, "Add youtube_accounts and streamer_yt_mappings tables")
+async def migration_v8(db):
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS youtube_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_key TEXT UNIQUE NOT NULL,
+            channel_id TEXT,
+            channel_title TEXT NOT NULL,
+            custom_url TEXT,
+            thumbnail_url TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS streamer_yt_mappings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            streamer_handle TEXT NOT NULL,
+            account_key TEXT NOT NULL REFERENCES youtube_accounts(account_key) ON DELETE CASCADE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(streamer_handle, account_key)
+        );
+
+        CREATE TABLE IF NOT EXISTS oauth_app_config (
+            provider TEXT PRIMARY KEY,
+            client_id TEXT NOT NULL,
+            client_secret TEXT NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_streamer_yt_handle ON streamer_yt_mappings(streamer_handle);
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

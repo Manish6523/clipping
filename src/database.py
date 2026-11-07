@@ -560,3 +560,122 @@ async def save_clip_edl(clip_id: int, edl_data: Dict[str, Any]) -> int:
         )
         await db.commit()
         return new_version
+
+
+# ==========================================
+# YouTube Accounts & Streamer Mappings
+# ==========================================
+
+async def get_all_youtube_accounts() -> List[Dict[str, Any]]:
+    """List all registered YouTube accounts."""
+    async with get_db_connection() as db:
+        cursor = await db.execute("SELECT * FROM youtube_accounts ORDER BY created_at ASC")
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def get_youtube_account(account_key: str) -> Optional[Dict[str, Any]]:
+    """Get single YouTube account by account_key."""
+    async with get_db_connection() as db:
+        cursor = await db.execute("SELECT * FROM youtube_accounts WHERE account_key = ?", (account_key,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def upsert_youtube_account(
+    account_key: str,
+    channel_id: Optional[str],
+    channel_title: str,
+    custom_url: Optional[str] = None,
+    thumbnail_url: Optional[str] = None,
+) -> None:
+    """Save or update YouTube account record."""
+    async with get_db_connection() as db:
+        await db.execute(
+            """
+            INSERT INTO youtube_accounts (account_key, channel_id, channel_title, custom_url, thumbnail_url, is_active, updated_at)
+            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+            ON CONFLICT(account_key) DO UPDATE SET
+                channel_id = excluded.channel_id,
+                channel_title = excluded.channel_title,
+                custom_url = excluded.custom_url,
+                thumbnail_url = excluded.thumbnail_url,
+                is_active = 1,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (account_key, channel_id, channel_title, custom_url, thumbnail_url),
+        )
+        await db.commit()
+
+
+async def delete_youtube_account(account_key: str) -> bool:
+    """Remove a YouTube account and its mappings."""
+    async with get_db_connection() as db:
+        await db.execute("DELETE FROM streamer_yt_mappings WHERE account_key = ?", (account_key,))
+        await db.execute("DELETE FROM youtube_accounts WHERE account_key = ?", (account_key,))
+        await db.commit()
+        return True
+
+
+async def get_streamer_yt_mappings() -> List[Dict[str, Any]]:
+    """Get all streamer-to-YouTube account mappings."""
+    async with get_db_connection() as db:
+        cursor = await db.execute(
+            """
+            SELECT m.id, m.streamer_handle, m.account_key, a.channel_title, a.custom_url, a.thumbnail_url
+            FROM streamer_yt_mappings m
+            LEFT JOIN youtube_accounts a ON m.account_key = a.account_key
+            ORDER BY m.streamer_handle ASC
+            """
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def set_streamer_yt_mappings(streamer_handle: str, account_keys: List[str]) -> None:
+    """Replace all YouTube account mappings for a given streamer."""
+    async with get_db_connection() as db:
+        await db.execute("DELETE FROM streamer_yt_mappings WHERE streamer_handle = ?", (streamer_handle,))
+        for ak in account_keys:
+            if ak.strip():
+                await db.execute(
+                    "INSERT OR IGNORE INTO streamer_yt_mappings (streamer_handle, account_key) VALUES (?, ?)",
+                    (streamer_handle.strip(), ak.strip()),
+                )
+        await db.commit()
+
+
+async def get_accounts_for_streamer(streamer_handle: str) -> List[str]:
+    """Retrieve list of account_keys mapped to a specific streamer."""
+    async with get_db_connection() as db:
+        cursor = await db.execute(
+            "SELECT account_key FROM streamer_yt_mappings WHERE streamer_handle = ?",
+            (streamer_handle,),
+        )
+        rows = await cursor.fetchall()
+        return [r["account_key"] for r in rows]
+
+
+async def get_oauth_app_config(provider: str = "youtube") -> Optional[Dict[str, str]]:
+    """Get stored OAuth App Client ID and Secret."""
+    async with get_db_connection() as db:
+        cursor = await db.execute("SELECT client_id, client_secret FROM oauth_app_config WHERE provider = ?", (provider,))
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def save_oauth_app_config(client_id: str, client_secret: str, provider: str = "youtube") -> None:
+    """Save OAuth App Client ID and Secret."""
+    async with get_db_connection() as db:
+        await db.execute(
+            """
+            INSERT INTO oauth_app_config (provider, client_id, client_secret, updated_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(provider) DO UPDATE SET
+                client_id = excluded.client_id,
+                client_secret = excluded.client_secret,
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (provider, client_id.strip(), client_secret.strip()),
+        )
+        await db.commit()

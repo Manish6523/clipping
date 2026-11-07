@@ -10,6 +10,7 @@ import HypeMomentToasts from './components/HypeMomentToasts';
 // Code-split heavy routes with React.lazy
 const TemplateStudio = lazy(() => import('./components/TemplateStudio'));
 const ChannelManager = lazy(() => import('./components/ChannelManager'));
+const AccountsManager = lazy(() => import('./components/AccountsManager'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
@@ -159,6 +160,7 @@ export default function App() {
         <Route index element={<ReviewStationWrapper />} />
         <Route path="templates" element={<TemplateStudio />} />
         <Route path="channels" element={<ChannelManager />} />
+        <Route path="accounts" element={<AccountsManager />} />
         <Route path="queue" element={<QueueCalendar />} />
         <Route path="logs" element={<LogStreamer />} />
         <Route path="quickclip" element={<QuickClip />} />

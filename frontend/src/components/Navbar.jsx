@@ -7,7 +7,8 @@ import {
   Calendar, 
   Terminal, 
   Zap, 
-  Flame
+  Flame,
+  Share2
 } from 'lucide-react';
 
 export default function Navbar({ pendingCount = 0 }) {
@@ -15,6 +16,7 @@ export default function Navbar({ pendingCount = 0 }) {
     { to: '/', label: 'Review Station', icon: Film, badge: pendingCount, end: true },
     { to: '/templates', label: 'Template Studio', icon: Palette },
     { to: '/channels', label: 'Channels & Live', icon: Radio },
+    { to: '/accounts', label: 'YouTube & Distribution', icon: Share2 },
     { to: '/queue', label: 'Drip Queue', icon: Calendar },
     { to: '/logs', label: 'Live Logs', icon: Terminal },
     { to: '/quickclip', label: 'Quick Clip', icon: Zap },

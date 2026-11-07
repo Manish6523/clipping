@@ -64,22 +64,44 @@ class DripScheduler:
         hashtags = [h.strip() for h in hashtags_raw.split() if h.strip()]
 
         destinations = load_template_destinations(template_name)
-        yt_key = destinations.get("youtube_account_key")
+        channel_id = item.get("channel_id") or ""
+        
+        # Check mapped YouTube accounts for streamer
+        from src.database import get_accounts_for_streamer
+        mapped_yt_keys = await get_accounts_for_streamer(channel_id)
+        if not mapped_yt_keys and channel_id.startswith("@"):
+            mapped_yt_keys = await get_accounts_for_streamer(channel_id[1:])
+        elif not mapped_yt_keys:
+            mapped_yt_keys = await get_accounts_for_streamer(f"@{channel_id}")
+
+        if not mapped_yt_keys and destinations.get("youtube_account_key"):
+            mapped_yt_keys = [destinations.get("youtube_account_key")]
+
         ig_key = destinations.get("instagram_account_key")
 
-        logger.info("Executing scheduled upload for queue #%d (Clip #%d)...", queue_id, clip_id)
+        logger.info("Executing scheduled upload for queue #%d (Clip #%d, Streamer: %s, Mapped YT: %s)...", 
+                    queue_id, clip_id, channel_id, mapped_yt_keys)
         await update_clip_status(clip_id, "publishing")
 
         yt_res = {"success": False, "error": "No YT account configured"}
         ig_res = {"success": False, "error": "No IG account configured"}
 
-        # 1. YouTube Shorts Upload
-        if yt_key and item.get("yt_status") == "pending":
-            try:
-                yt_pub = YouTubeShortsPublisher(yt_key)
-                yt_res = await yt_pub.upload_short(video_path, title, description, hashtags)
-            except Exception as e:
-                yt_res = {"success": False, "error": str(e)}
+        # 1. Multi-account YouTube Shorts Upload
+        if mapped_yt_keys and item.get("yt_status") == "pending":
+            yt_upload_tasks = []
+            for yk in mapped_yt_keys:
+                pub = YouTubeShortsPublisher(yk)
+                yt_upload_tasks.append(pub.upload_short(video_path, title, description, hashtags))
+            yt_results = await asyncio.gather(*yt_upload_tasks, return_exceptions=True)
+            
+            # Select first successful or last result
+            for res in yt_results:
+                if not isinstance(res, Exception) and res.get("success"):
+                    yt_res = res
+                    break
+            if not yt_res.get("success") and yt_results:
+                first = yt_results[0]
+                yt_res = first if not isinstance(first, Exception) else {"success": False, "error": str(first)}
 
         # 2. Instagram Reels Upload
         if ig_key and item.get("ig_status") == "pending":
