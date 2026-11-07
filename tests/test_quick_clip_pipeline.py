@@ -13,6 +13,7 @@ from src.intelligence.sentences import SentenceChunker
 from src.intelligence.boundaries import BoundarySnapper
 from src.intelligence.heat import HeatCurve
 from src.intelligence.dedupe import Deduplicator
+from src.intelligence.llm.client import GeminiClient
 from src.bot.trimmer import load_template
 from src.compositor.ass_generator import generate_ass_subtitles
 from src.database import get_db_connection, create_clip, get_clip
@@ -63,13 +64,31 @@ async def test_quick_clip_pipeline():
     print(f" -> OK: Snapped boundary: {cand['start_time']:.2f}s -> {cand['end_time']:.2f}s (Score: {cand['score']:.2f})")
 
     # 4. Multi-Signal Heat Fallback Windows
-    print("\n[Step 4/6] Testing HeatCurve & Fallback Windows...")
+    print("\n[Step 4/7] Testing HeatCurve & Fallback Windows...")
     windows = HeatCurve.generate_fallback_windows(sentences, window_seconds=20.0, overlap_seconds=5.0)
     assert len(windows) > 0, "HeatCurve failed to generate fallback windows!"
     print(f" -> OK: Generated {len(windows)} candidate windows across timeline.")
 
-    # 5. ASS Subtitle Rendering Generation
-    print("\n[Step 5/6] Testing ASS Subtitle Generation...")
+    # 5. Gemini AI Live Evaluation & Key Rotation Test
+    print("\n[Step 5/7] Testing Gemini Multi-Key Rotation & Structured Scoring...")
+    from pydantic import BaseModel
+    class TestPing(BaseModel):
+        status: str
+        message: str
+
+    client = GeminiClient()
+    print(f" -> Active Gemini Key Pool: {len(client.api_keys)} keys loaded.")
+    test_result = await client.generate_structured(
+        system_instruction="You are AutoClip AI scoring engine. Output JSON matching the schema.",
+        user_prompt="Say status='OK' and message='AutoClip Gemini AI Ready'.",
+        response_model=TestPing,
+        use_cache=False,
+    )
+    assert test_result is not None, "Gemini API structured call returned None!"
+    print(f" -> OK: Gemini AI Response: status='{test_result.status}', message='{test_result.message}' (Model: {client.model_name})")
+
+    # 6. ASS Subtitle Rendering Generation
+    print("\n[Step 6/7] Testing ASS Subtitle Generation...")
     out_ass = Path("temp") / "test_quick_clip.ass"
     out_ass.parent.mkdir(parents=True, exist_ok=True)
     generate_ass_subtitles(
@@ -82,8 +101,8 @@ async def test_quick_clip_pipeline():
     assert out_ass.exists() and out_ass.stat().st_size > 0, "ASS Subtitle file generation failed!"
     print(f" -> OK: Subtitles rendered successfully ({out_ass.stat().st_size} bytes)")
 
-    # 6. Database Insertion & API Persistence Test
-    print("\n[Step 6/6] Testing Database Persistence & Clip Retrieval...")
+    # 7. Database Insertion & API Persistence Test
+    print("\n[Step 7/7] Testing Database Persistence & Clip Retrieval...")
     test_clip_id = await create_clip(
         source_type="vod",
         source_id="DcAHosNxz9E",
@@ -112,7 +131,7 @@ async def test_quick_clip_pipeline():
     print(" -> OK: Test clip safely cleaned up.")
 
     print("\n" + "=" * 60)
-    print("ALL QUICK CLIP TESTS PASSED SUCCESSFULLY! (6/6)")
+    print("ALL QUICK CLIP TESTS PASSED SUCCESSFULLY! (7/7)")
     print("=" * 60)
 
 if __name__ == "__main__":
