@@ -1,104 +1,91 @@
-# Deploying AutoClip on Oracle Cloud (Always-Free 24/7 VPS)
+# AutoClip - Oracle Cloud Always-Free Setup & Operations Guide
 
-Oracle Cloud gives you **4 ARM Ampere Cores + 24 GB RAM + 200 GB SSD** completely free forever. This guide walks you through setting up AutoClip to run 24/7 without keeping your laptop on.
-
----
-
-## Step 1: Create Your Always-Free Instance in Oracle Cloud
-
-1. Log in to [Oracle Cloud Console](https://cloud.oracle.com/).
-2. Under **Quick Actions**, click **Create a VM instance**.
-3. **Configure the VM**:
-   - **Name**: `autoclip-server`
-   - **Image**: Ubuntu 22.04 or 24.04 Minimal/Standard.
-   - **Shape**: Click **Change Shape** -> Select **Ampere** (ARM) -> **VM.Standard.A1.Flex**.
-     - Set **OCPUs**: 2 or 4 (Free tier allows up to 4).
-     - Set **Memory**: 12 GB or 24 GB (Free tier allows up to 24 GB).
-   - **Networking**: Keep defaults (assign a public IPv4 address).
-   - **SSH Keys**: Click **Save private key** (save the `.key` file on your laptop to connect).
-   - Click **Create**.
+This guide documents what we configured, how your server is set up, and the exact steps to reconnect or run AutoClip in the future.
 
 ---
 
-## Step 2: Open Port 8080 in Oracle Cloud Firewall
+## 1. Cloud Infrastructure Details
 
-By default, Oracle blocks incoming traffic. You must allow Port `8080`:
-
-1. On your instance page, click your **Subnet** link (under **Primary VNIC**).
-2. Click the **Default Security List for...**.
-3. Click **Add Ingress Rules**:
-   - **Source CIDR**: `0.0.0.0/0`
-   - **IP Protocol**: `TCP`
-   - **Destination Port Range**: `8080`
-   - **Description**: `AutoClip Web UI & API`
-4. Click **Add Ingress Rules**.
+* **Cloud Provider**: Oracle Cloud Infrastructure (OCI)
+* **Region**: `ap-mumbai-1` (India West - Mumbai)
+* **Instance Name**: `instance-20261107-2002`
+* **Shape**: `VM.Standard.E2.1.Micro` (AMD Always Free, 100% Free Forever)
+* **Operating System**: Canonical Ubuntu 24.04 LTS
+* **Public IP**: `137.23.61.124`
+* **Private Key Location (Your Laptop)**: `C:\Users\krish\Downloads\cloud-infra-oracle\ssh-key-2026-11-07.key`
+* **Virtual Cloud Network**: `autoclip-vcn`
+* **Public Subnet**: `public subnet-autoclip-vcn`
+* **Firewall Ingress Rule**: TCP Port `8080` open to `0.0.0.0/0` (for Web Dashboard)
 
 ---
 
-## Step 3: Connect to your Server
+## 2. How to SSH Into Your Server Next Time
 
-Open PowerShell or Terminal on your laptop and SSH into your server:
+Whenever you want to log in to your server from your Windows laptop, open **Command Prompt (`cmd`)** or **PowerShell** and run:
 
-```bash
-ssh -i "path/to/your-key.key" ubuntu@<YOUR_PUBLIC_IP>
+```cmd
+cd C:\Users\krish\Downloads\cloud-infra-oracle
+ssh -i "ssh-key-2026-11-07.key" ubuntu@137.23.61.124
 ```
 
+> **Note on Permissions**:
+> Windows SSH key permissions have already been secured using `icacls`, so you can directly run the command above without repeating the permission steps.
+
 ---
 
-## Step 4: Clone AutoClip & Run the 1-Click Setup Script
+## 3. Recommended Initial Setup on the Server (First Login)
 
-Once inside your server, run:
+Run these commands inside your server terminal (`ubuntu@instance-20261107-2002:~$`):
+
+### Step 3.1: Add 4 GB Virtual Swap Memory
+Because the AMD micro instance has 1 GB of physical RAM, creating a 4 GB swap space prevents `faster-whisper` and `FFmpeg` from running out of memory:
 
 ```bash
-# 1. Clone your repository
+sudo fallocate -l 4G /swapfile
+sudo chmod 600 /swapfile
+sudo mkswap /swapfile
+sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+```
+
+### Step 3.2: Clone AutoClip Code & Run 1-Click Deployment
+```bash
+# 1. Clone your repository (or copy your code files over)
 git clone <YOUR_GIT_REPO_URL> clipping
 cd clipping
 
-# 2. Make setup script executable and run it
+# 2. Make our automated setup script executable and run it
 chmod +x deploy_vps.sh
 ./deploy_vps.sh
 ```
 
-The script will automatically:
-- Install Python 3, FFmpeg, Node.js, and build tools.
-- Create the virtual environment and install all dependencies.
+The script will:
+- Install Python 3.12, `ffmpeg`, Node.js 20, and C/C++ compilation tools.
+- Create the Python `venv` and install `requirements.txt`.
 - Build the optimized production React frontend.
-- Open port 8080 in the Ubuntu OS firewall.
-- Configure `autoclip.service` as a 24/7 background service managed by `systemd`.
+- Open port 8080 in the Ubuntu Linux firewall (`iptables`).
+- Create and register `autoclip.service` as a 24/7 background system daemon.
 
 ---
 
-## Step 5: Configure `.env` & Start AutoClip
+## 4. Daily Management Commands
 
-1. Edit your environment file on the server:
-   ```bash
-   nano config/.env
-   ```
-   Add your keys (`TELEGRAM_BOT_TOKEN`, `GEMINI_API_KEY`, etc.) and save with `Ctrl+O`, then `Ctrl+X`.
-
-2. Start the 24/7 background service:
-   ```bash
-   sudo systemctl start autoclip
-   ```
-
-3. Check that it's running:
-   ```bash
-   sudo systemctl status autoclip
-   ```
-
-4. View live logs anytime:
-   ```bash
-   journalctl -u autoclip -f
-   ```
+| Action | Command (on server) |
+|---|---|
+| **Start AutoClip** | `sudo systemctl start autoclip` |
+| **Stop AutoClip** | `sudo systemctl stop autoclip` |
+| **Restart AutoClip** | `sudo systemctl restart autoclip` |
+| **Check Live Status** | `sudo systemctl status autoclip` |
+| **View Live Logs in Realtime** | `journalctl -u autoclip -f` |
+| **Edit Environment / API Keys** | `nano config/.env` |
 
 ---
 
-## Step 6: Access AutoClip from Any Device
+## 5. Accessing Your Dashboard
 
-Open your browser (on your phone, tablet, or PC):
-```
-http://<YOUR_PUBLIC_IP>:8080
-```
+Once the service is started, you can access AutoClip from **any device** (phone, tablet, office PC, etc.):
 
-> **Pro Tip (Free HTTPS & Custom Domain without Port 8080):**
-> You can install **Cloudflare Tunnel** (`cloudflared`) on this VPS. It gives you free SSL (`https://clips.yourdomain.com`) with zero port exposure.
+```
+http://137.23.61.124:8080
+```
+*(Your laptop does NOT need to remain turned on).*
