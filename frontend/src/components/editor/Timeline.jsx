@@ -204,6 +204,14 @@ export default function Timeline({ videoRef }) {
   const playheadX = Math.max(0, Math.min(timelineWidth, (currentTime - startOffset) * pixelsPerSecond));
   const thumbUrl = clip?.thumbnail_url || (clip?.thumbnail_path ? `/api/clips/${clipId}/thumbnail` : null);
 
+  // Live drag positions for instant visual animation feedback
+  const inHandleX = draggingEdge?.edge === 'in' 
+    ? (draggingEdge.currStart - startOffset) * pixelsPerSecond 
+    : 0;
+  const outHandleX = draggingEdge?.edge === 'out' 
+    ? (draggingEdge.currEnd - startOffset) * pixelsPerSecond 
+    : timelineWidth;
+
   return (
     <div className="w-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-2xl select-none overflow-hidden">
       {/* Header Toolbar Row */}
@@ -314,10 +322,23 @@ export default function Timeline({ videoRef }) {
           {/* Left In-Point Resize Extension Handle */}
           <div
             onPointerDown={(e) => handleStartEdgeDrag(e, 'in')}
-            className="absolute left-0 top-5 bottom-0 w-3 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize z-30 flex items-center justify-center rounded-l shadow-md"
+            style={{
+              transform: `translateX(${inHandleX}px)`,
+              transition: draggingEdge?.edge === 'in' ? 'none' : 'transform 0.15s ease-out',
+            }}
+            className={`absolute left-0 top-0 bottom-0 w-4 z-40 cursor-ew-resize flex flex-col items-center justify-center rounded-l shadow-xl transition-colors group ${
+              draggingEdge?.edge === 'in' 
+                ? 'bg-[#8FD3FF] ring-2 ring-[#8FD3FF]/50 scale-105' 
+                : 'bg-indigo-600 hover:bg-indigo-500'
+            }`}
             title="Drag outward to extend clip start, inward to shorten"
           >
-            <div className="w-0.5 h-6 bg-white rounded-full" />
+            <div className="w-0.5 h-7 bg-white rounded-full group-hover:scale-110 transition-transform" />
+            {draggingEdge?.edge === 'in' && (
+              <div className="absolute -top-6 left-0 bg-[#8FD3FF] text-[#0A0B0E] font-mono text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
+                {draggingEdge.currStart.toFixed(1)}s
+              </div>
+            )}
           </div>
 
           {/* Video Segment Strip Track with Real Filmstrip Thumbnails */}
@@ -372,10 +393,23 @@ export default function Timeline({ videoRef }) {
           {/* Right Out-Point Resize Extension Handle */}
           <div
             onPointerDown={(e) => handleStartEdgeDrag(e, 'out')}
-            className="absolute right-0 top-5 bottom-0 w-3 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize z-30 flex items-center justify-center rounded-r shadow-md"
+            style={{
+              transform: `translateX(${outHandleX - timelineWidth}px)`,
+              transition: draggingEdge?.edge === 'out' ? 'none' : 'transform 0.15s ease-out',
+            }}
+            className={`absolute right-0 top-0 bottom-0 w-4 z-40 cursor-ew-resize flex flex-col items-center justify-center rounded-r shadow-xl transition-colors group ${
+              draggingEdge?.edge === 'out' 
+                ? 'bg-[#8FD3FF] ring-2 ring-[#8FD3FF]/50 scale-105' 
+                : 'bg-indigo-600 hover:bg-indigo-500'
+            }`}
             title="Drag outward to extend clip end, inward to shorten"
           >
-            <div className="w-0.5 h-6 bg-white rounded-full" />
+            <div className="w-0.5 h-7 bg-white rounded-full group-hover:scale-110 transition-transform" />
+            {draggingEdge?.edge === 'out' && (
+              <div className="absolute -top-6 right-0 bg-[#8FD3FF] text-[#0A0B0E] font-mono text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
+                {draggingEdge.currEnd.toFixed(1)}s
+              </div>
+            )}
           </div>
 
           {/* Audio Waveform Canvas Track */}
