@@ -102,6 +102,13 @@ class AutoClipEngine:
     async def _on_manual_clip(self, url: str, template_name: str, time_range: Optional[str] = None) -> None:
         """Handle manual URL clip triggered from Web UI or Telegram (/clip)."""
         logger.info("Processing manual clip for URL: %s (Template: %s, TimeRange: %s)", url, template_name, time_range)
+        
+        # Guard: Check if any AI quota exists before downloading or starting heavy operations
+        from src.database import has_available_ai_quota
+        if not await has_available_ai_quota() and not time_range:
+            logger.warning("⛔ All Gemini API keys are quota-exhausted. Refusing to start pipeline.")
+            update_pipeline_progress("error", channel_id="manual", error="All Gemini API keys are quota-exhausted. Add active keys in Settings.")
+            return
         timestamp_id = int(time.time())
         fake_vod_id = f"manual_{timestamp_id}"
         work_dir = Path(RENDER_DIR) / "manual" / fake_vod_id

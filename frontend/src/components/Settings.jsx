@@ -204,6 +204,7 @@ export default function Settings() {
             keys.map((item, idx) => {
               const kStr = typeof item === 'object' ? item.key : item;
               const kLabel = typeof item === 'object' ? item.label : `Account ${idx + 1}`;
+              const kStatus = typeof item === 'object' ? item.status : null;
               const result = testResults[kStr];
 
               return (
@@ -218,12 +219,22 @@ export default function Settings() {
                     <span className="font-mono text-xs text-slate-300">
                       {kStr.slice(0, 10)}••••••••••••••••••••{kStr.slice(-6)}
                     </span>
-                    {result && (
+                    {result ? (
                       <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
                         result.ok ? 'bg-emerald-950 text-emerald-400 border border-emerald-800' : 'bg-red-950 text-red-400 border border-red-800'
                       }`}>
                         {result.ok ? <CheckCircle2 className="w-3 h-3" /> : <AlertCircle className="w-3 h-3" />}
                         {result.msg}
+                      </span>
+                    ) : kStatus === 'Quota Exhausted' ? (
+                      <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 bg-amber-950 text-amber-400 border border-amber-800 animate-pulse">
+                        <AlertCircle className="w-3 h-3" />
+                        Quota Exhausted (429)
+                      </span>
+                    ) : (
+                      <span className="text-xs px-2 py-0.5 rounded-full flex items-center gap-1 bg-emerald-950/40 text-emerald-400 border border-emerald-900/50">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Active
                       </span>
                     )}
                   </div>

@@ -170,7 +170,9 @@ Return JSON with candidate clips meeting all criteria.
         except Exception as e:
             err_str = str(e).lower()
             if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit", "rate limit"]):
-                logger.warning("🛑 Gemini AI quota reached on key #%d. Attempting key rotation...", self.current_key_idx + 1)
+                logger.warning("🛑 Gemini AI quota reached on key #%d (%s). Recording exhausted status...", self.current_key_idx + 1, self.api_key[:10])
+                from src.database import mark_key_exhausted
+                await mark_key_exhausted(self.api_key)
                 if len(self.api_keys) > 1:
                     self._rotate_key()
                     # Retry with next key once

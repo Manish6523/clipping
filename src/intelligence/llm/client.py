@@ -185,7 +185,9 @@ class GeminiClient:
                 except Exception as e:
                     err_str = str(e).lower()
                     if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit"]):
-                        logger.warning("Gemini rate limit encountered on key #%d. Attempting rotation or backoff...", self.current_key_idx + 1)
+                        logger.warning("Gemini rate limit encountered on key #%d (%s). Recording exhausted status...", self.current_key_idx + 1, self.current_api_key[:10])
+                        from src.database import mark_key_exhausted
+                        await mark_key_exhausted(self.current_api_key)
                         self._rotate_key()
                         await asyncio.sleep(backoff)
                         backoff *= 1.5

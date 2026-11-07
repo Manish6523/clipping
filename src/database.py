@@ -769,6 +769,43 @@ async def set_system_setting(key: str, value: str, category: str = "general", de
         await db.commit()
 
 
+async def mark_key_exhausted(api_key: str) -> None:
+    """Mark an API key as exhausted in the database so Settings page can show warning status."""
+    import json
+    raw_val = await get_system_setting("gemini_api_keys")
+    if not raw_val:
+        return
+    try:
+        keys_list = json.loads(raw_val)
+        updated = False
+        for item in keys_list:
+            if isinstance(item, dict) and item.get("key") == api_key:
+                item["status"] = "Quota Exhausted"
+                item["exhausted_at"] = datetime.now(timezone.utc).isoformat()
+                updated = True
+        if updated:
+            await set_system_setting("gemini_api_keys", json.dumps(keys_list), category="ai")
+    except Exception:
+        pass
+
+
+async def has_available_ai_quota() -> bool:
+    """Check if at least one Gemini key is active and not marked exhausted."""
+    import json
+    raw_val = await get_system_setting("gemini_api_keys")
+    if not raw_val:
+        from config.settings import GEMINI_API_KEY
+        return bool(GEMINI_API_KEY)
+    try:
+        keys_list = json.loads(raw_val)
+        if not keys_list:
+            return False
+        # Return True if any key is NOT marked 'Quota Exhausted'
+        return any(item.get("status") != "Quota Exhausted" for item in keys_list if isinstance(item, dict))
+    except Exception:
+        return True
+
+
 async def get_all_system_settings() -> Dict[str, Any]:
     """Return all system settings grouped as a dictionary."""
     async with get_db_connection() as db:
