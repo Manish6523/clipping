@@ -9,7 +9,7 @@ import asyncio
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 import sys
 sys.path.insert(0, ".")
 
@@ -73,3 +73,4 @@ if __name__ == "__main__":
     parser.add_argument("--channel", type=str, default=None, help="Filter by channel ID")
     args = parser.parse_args()
     asyncio.run(run_evaluation(args.channel))
+
