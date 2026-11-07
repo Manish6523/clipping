@@ -287,3 +287,4 @@ class BestClipsPipeline:
                 await db.commit()
         except Exception as e:
             logger.warning("Failed to record pipeline run: %s", e)
+

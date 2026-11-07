@@ -119,3 +119,4 @@ class FeedbackLearner:
                 "stats": json.loads(r_dict.get("stats_json") or "{}"),
                 "is_paused": bool(r_dict.get("is_paused", 0)),
             }
+

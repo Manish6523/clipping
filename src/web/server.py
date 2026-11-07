@@ -808,12 +808,39 @@ class WebUIServer:
         return web.json_response({"success": True, "message": "Manual clip processing initiated."})
 
     async def handle_get_pipeline_runs(self, request: web.Request) -> web.Response:
-        """Get recent pipeline execution runs with candidate counts, stages, and latency."""
+        """Get recent pipeline execution runs with candidate counts, stages, and latency, including in-flight pipelines."""
         from src.database import get_db_connection
-        async with get_db_connection() as db:
-            cur = await db.execute("SELECT * FROM pipeline_runs ORDER BY created_at DESC LIMIT 30")
-            rows = await cur.fetchall()
-            runs = [dict(r) for r in rows]
+        from src.web.logger_stream import get_pipeline_state
+
+        runs = []
+        # First check in-flight pipelines from memory state
+        p_state = get_pipeline_state()
+        active_list = p_state.get("active_pipelines", [])
+        for act in active_list:
+            runs.append({
+                "id": f"live_{act.get('channel_id', 'job')}",
+                "source_id": f"Manual / Live ({act.get('trigger_reason', 'stream')})",
+                "channel_id": act.get("channel_id", "live"),
+                "stage": act.get("step_name", "processing"),
+                "status": "running" if act.get("status") in ("processing", "triggered") else act.get("status", "running"),
+                "candidates_count": 1,
+                "latency_seconds": round(time.time() - act.get("updated_at", time.time()), 1),
+                "prompt_version": "v2.0_best_clips",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+            })
+
+        # Next load persisted runs from DB
+        try:
+            async with get_db_connection() as db:
+                cur = await db.execute("SELECT * FROM pipeline_runs ORDER BY created_at DESC LIMIT 30")
+                rows = await cur.fetchall()
+                for r in rows:
+                    r_dict = dict(r)
+                    if not any(run["id"] == r_dict["id"] for run in runs):
+                        runs.append(r_dict)
+        except Exception as e:
+            logger.warning("Could not query pipeline_runs table: %s", e)
+
         return web.json_response(runs)
 
     async def handle_get_clip_explain(self, request: web.Request) -> web.Response:

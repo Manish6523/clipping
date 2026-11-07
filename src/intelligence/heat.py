@@ -177,3 +177,4 @@ class HeatCurve:
             i = max(k, i + 1)
 
         return windows
+

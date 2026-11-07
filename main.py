@@ -108,6 +108,21 @@ class AutoClipEngine:
         work_dir.mkdir(parents=True, exist_ok=True)
         template = load_template(template_name)
 
+        run_id = f"run_{fake_vod_id}"
+        run_start_time = time.time()
+
+        # Record in pipeline_runs so it displays in the dedicated Pipelines page
+        from src.database import get_db_connection
+        async with get_db_connection() as db:
+            await db.execute(
+                """
+                INSERT INTO pipeline_runs (id, source_id, channel_id, stage, status, candidates_count, latency_seconds, prompt_version)
+                VALUES (?, ?, 'manual', 'downloading', 'running', 1, 0.0, 'v2.0_best_clips')
+                """,
+                (run_id, url[:80])
+            )
+            await db.commit()
+
         update_pipeline_progress(
             "processing",
             channel_id="manual",
@@ -135,6 +150,9 @@ class AutoClipEngine:
                 if not downloaded or not slice_source.exists():
                     logger.error("Failed to download targeted manual section.")
                     update_pipeline_progress("error", channel_id="manual", error="Download failed")
+                    async with get_db_connection() as db:
+                        await db.execute("UPDATE pipeline_runs SET status = 'failed', error_message = 'Download failed' WHERE id = ?", (run_id,))
+                        await db.commit()
                     return
 
                 update_pipeline_progress("processing", channel_id="manual", step=3, step_name="Transcribing words with faster-whisper...")
@@ -180,6 +198,21 @@ class AutoClipEngine:
                 )
 
                 update_pipeline_progress("completed", channel_id="manual", step=5, step_name=f"Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
+
+                elapsed_latency = round(time.time() - run_start_time, 2)
+                async with get_db_connection() as db:
+                    await db.execute(
+                        """
+                        UPDATE pipeline_runs SET
+                            stage = 'completed',
+                            status = 'completed',
+                            candidates_count = 1,
+                            latency_seconds = ?
+                        WHERE id = ?
+                        """,
+                        (elapsed_latency, run_id)
+                    )
+                    await db.commit()
 
                 from src.web.ws_manager import ws_manager
                 await ws_manager.broadcast("clip_created", {

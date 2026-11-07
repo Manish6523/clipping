@@ -108,3 +108,4 @@ class CandidateSelector:
 
         # Return sorted chronologically for consistent pipeline processing
         return sorted(selected, key=lambda x: float(x.get("start_time", 0.0)))
+

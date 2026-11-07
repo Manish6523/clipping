@@ -175,3 +175,4 @@ class GeminiClient:
                         break
 
         return None
+

@@ -66,3 +66,4 @@ class StageBDetailCandidate(BaseModel):
 
 class StageBDetailResponse(BaseModel):
     candidates: List[StageBDetailCandidate] = Field(default_factory=list)
+

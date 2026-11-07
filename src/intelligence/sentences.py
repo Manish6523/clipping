@@ -174,3 +174,4 @@ class SentenceChunker:
         import json
         dumped = json.dumps(compact_sentences, ensure_ascii=False)
         return max(1, int(len(dumped) / 3.8))
+

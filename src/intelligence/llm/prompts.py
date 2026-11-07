@@ -55,3 +55,4 @@ Candidates to Evaluate:
 
 Return structured JSON with comprehensive scores, sentence boundaries, titles, and safety flags.
 """
+

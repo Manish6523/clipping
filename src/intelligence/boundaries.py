@@ -154,3 +154,4 @@ class BoundarySnapper:
             "end_text": s_last.text,
             "score": round(best_score, 2),
         }
+

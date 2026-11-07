@@ -87,3 +87,4 @@ class Deduplicator:
 
         # Restore chronological order for the downstream pipeline
         return sorted(kept, key=lambda c: float(c.get("start_time", 0.0)))
+
