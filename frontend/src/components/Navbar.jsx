@@ -27,12 +27,12 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
     { to: '/', label: 'Review', shortLabel: 'Review', icon: Film, badge: pendingCount, end: true },
     { to: '/templates', label: 'Templates', shortLabel: 'Templates', icon: Palette },
     { to: '/channels', label: 'Channels & Live', shortLabel: 'Channels', icon: Radio },
-    { to: '/accounts', label: 'YouTube & Distribution', shortLabel: 'Distribution', icon: Share2 },
+    { to: '/accounts', label: 'Distribution', shortLabel: 'Distribution', icon: Share2 },
     { to: '/pipelines', label: 'Pipelines', shortLabel: 'Pipelines', icon: Flame },
-    { to: '/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
     { to: '/queue', label: 'Drip Queue', shortLabel: 'Queue', icon: Calendar },
     { to: '/logs', label: 'Logs', shortLabel: 'Logs', icon: Terminal },
     { to: '/quickclip', label: 'Quick Clip', shortLabel: 'Clip', icon: Zap },
+    { to: '/settings', label: 'Settings', shortLabel: 'Settings', icon: Settings },
   ];
 
   const pipelineCount = activePipelines.length;
@@ -40,24 +40,26 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
 
   return (
     <header className="border-b border-white/[0.08] bg-[#0A0D14]/95 backdrop-blur-md sticky top-0 z-50 select-none">
-      <div className="max-w-7xl mx-auto px-3 sm:px-4 h-14 flex items-center justify-between gap-2">
-        {/* Brand Logo */}
-        <NavLink to="/" className="flex items-center gap-2 group shrink-0">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-xs shadow-md shadow-[#8FD3FF]/20 group-hover:scale-105 transition-all">
-            M
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="font-extrabold text-xs sm:text-sm tracking-tight text-white group-hover:text-[#8FD3FF] transition-colors">
-              AUTOCLIP
-            </span>
-            <span className="text-[9px] uppercase font-mono font-bold tracking-wider px-1 py-0.2 rounded bg-white/[0.06] border border-white/[0.08] text-[#8FD3FF] hidden xs:inline-block">
-              SUITE
-            </span>
-          </div>
-        </NavLink>
+      <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between">
+        {/* Left: Brand Logo */}
+        <div className="flex items-center shrink-0">
+          <NavLink to="/" className="flex items-center gap-2 group">
+            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20 group-hover:scale-105 transition-all">
+              M
+            </div>
+            <div className="flex items-center gap-1.5">
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white group-hover:text-[#8FD3FF] transition-colors">
+                AUTOCLIP
+              </span>
+              <span className="text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-[#8FD3FF] hidden sm:inline-block">
+                SUITE
+              </span>
+            </div>
+          </NavLink>
+        </div>
 
-        {/* Desktop Navigation Links */}
-        <nav className="hidden lg:flex items-center gap-1">
+        {/* Middle: Navigation Links (Centrally Aligned) */}
+        <nav className="hidden xl:flex items-center justify-center gap-1 px-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -66,7 +68,7 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
                 to={item.to}
                 end={item.end}
                 className={({ isActive }) => `
-                  flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 whitespace-nowrap
+                  flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap
                   ${isActive
                     ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-md shadow-[#8FD3FF]/10'
                     : 'text-[#8B90A0] hover:text-white hover:bg-white/[0.04]'
@@ -85,8 +87,8 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
           })}
         </nav>
 
-        {/* Medium Screen Compact Navigation (Tablets / Laptops with smaller viewport) */}
-        <nav className="hidden md:flex lg:hidden items-center gap-1">
+        {/* Compact Navigation for medium screens */}
+        <nav className="hidden md:flex xl:hidden items-center justify-center gap-1 px-2">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -96,7 +98,7 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
                 end={item.end}
                 title={item.label}
                 className={({ isActive }) => `
-                  flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 whitespace-nowrap
+                  flex items-center gap-1 px-2 py-1.5 rounded-lg text-xs font-semibold transition-all whitespace-nowrap
                   ${isActive
                     ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-md shadow-[#8FD3FF]/10'
                     : 'text-[#8B90A0] hover:text-white hover:bg-white/[0.04]'
@@ -115,8 +117,8 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
           })}
         </nav>
 
-        {/* Right Status Actions: IN-NAVBAR PIPELINE HOVER PILL + DAEMON STATUS */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right: Status Pill, Daemon Active, and Mobile Toggle */}
+        <div className="flex items-center gap-3 shrink-0">
           {/* In-Navbar Active Pipelines Pill with Hover Dropdown */}
           {pipelineCount > 0 && (
             <div
