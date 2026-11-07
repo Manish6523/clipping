@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Flame, ArrowUpRight, Scissors, X, Loader2, Layers } from 'lucide-react';
+import { Flame, ArrowUpRight, Scissors, X, Loader2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 export default function HypeMomentToasts({ activePipelines = [], toasts = [], onDismissToast }) {
@@ -31,27 +31,27 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
   return (
     <aside
       aria-label="Active Hype Moments Feed"
-      className="fixed bottom-5 right-5 z-50 flex flex-col gap-2.5 max-w-[340px] w-full pointer-events-auto select-none"
+      className="fixed top-16 left-5 z-50 flex flex-col gap-2.5 max-w-[340px] w-full pointer-events-auto select-none transition-all duration-300"
     >
-      {/* 1. Live Processing Hype Moments Stacked Card (Single Card that reveals on hover like the image) */}
+      {/* 1. Live Processing Hype Moments (Stacked Card with fluid 3D tilt & expand animation) */}
       {count > 0 && (
         <div
           onMouseEnter={() => setIsHovered(true)}
           onMouseLeave={() => setIsHovered(false)}
-          className="relative transition-all duration-300"
+          className="relative transition-all duration-300 ease-out"
         >
-          {/* Collapsed Stack Mode (Multiple items stacked with layers behind) */}
+          {/* Collapsed Stack Mode with layered edge animation */}
           {!isHovered && count > 1 ? (
-            <div className="relative group cursor-pointer">
-              {/* Backing Card 2 (Top Stack Edge) */}
+            <div className="relative group cursor-pointer transition-transform duration-300 hover:scale-[1.02]">
+              {/* Backing Card 2 (Bottom Stack Edge) */}
               {count > 2 && (
-                <div className="absolute -top-3 inset-x-4 h-6 bg-[#0D111A]/60 border border-white/[0.04] rounded-2xl shadow-md pointer-events-none" />
+                <div className="absolute -bottom-2.5 inset-x-4 h-6 bg-[#0D111A]/60 border border-white/[0.04] rounded-2xl shadow-md pointer-events-none transition-all duration-300 transform group-hover:translate-y-1" />
               )}
               {/* Backing Card 1 (Middle Stack Edge) */}
-              <div className="absolute -top-1.5 inset-x-2 h-6 bg-[#0D111A]/80 border border-white/[0.06] rounded-2xl shadow-md pointer-events-none" />
+              <div className="absolute -bottom-1.5 inset-x-2 h-6 bg-[#0D111A]/80 border border-white/[0.06] rounded-2xl shadow-md pointer-events-none transition-all duration-300 transform group-hover:translate-y-0.5" />
 
               {/* Front Primary Card */}
-              <div className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.1] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/90 flex flex-col gap-2 text-xs relative z-10 transition-all">
+              <div className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.1] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/90 flex flex-col gap-2 text-xs relative z-10 transition-all duration-300">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     <div className="w-6 h-6 rounded-lg bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
@@ -72,10 +72,10 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
                   </div>
                 </div>
 
-                {/* Progress Bar */}
+                {/* Smooth Gradient Progress Bar */}
                 <div className="relative w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
                   <div
-                    className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                    className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(245,158,11,0.5)]"
                     style={{ width: `${Math.round((Math.min(5, Math.max(1, primary.current_step || 1)) / 5) * 100)}%` }}
                   />
                 </div>
@@ -89,9 +89,9 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
               </div>
             </div>
           ) : (
-            /* Expanded Full List (Reveals on Hover or when count == 1) */
-            <div className="flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-200">
-              {activePipelines.map((pipeline) => {
+            /* Expanded Full List (Smooth Slide-Down Stagger Animation) */
+            <div className="flex flex-col gap-2 transition-all duration-300">
+              {activePipelines.map((pipeline, idx) => {
                 const channel = pipeline.channel_id || 'Streamer';
                 const step = Math.min(5, Math.max(1, pipeline.current_step || 1));
                 const progressPercent = Math.round((step / 5) * 100);
@@ -100,7 +100,8 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
                 return (
                   <div
                     key={`live-${channel}`}
-                    className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.08] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-200 relative overflow-hidden"
+                    style={{ animationDelay: `${idx * 40}ms` }}
+                    className="bg-[#0D111A]/95 backdrop-blur-xl border border-white/[0.08] hover:border-amber-500/40 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-200 relative overflow-hidden animate-in slide-in-from-top-2 fade-in"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2 min-w-0">
@@ -122,7 +123,7 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
                     {/* Continuous Smooth Progress Bar */}
                     <div className="relative w-full h-1.5 bg-white/[0.06] rounded-full overflow-hidden mt-0.5">
                       <div
-                        className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]"
+                        className="h-full bg-gradient-to-r from-amber-500 to-amber-300 rounded-full transition-all duration-700 ease-out shadow-[0_0_8px_rgba(245,158,11,0.5)]"
                         style={{ width: `${progressPercent}%` }}
                       />
                     </div>
@@ -139,7 +140,7 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
         </div>
       )}
 
-      {/* 2. Ready-To-Review Completed Clips (With Cancel Button & Auto-Remove after 7s) */}
+      {/* 2. Ready-To-Review Completed Clips (Slide-In from Top with Fade & Auto-Dismiss) */}
       {toasts.map((toast) => {
         const isRendered = Boolean(toast.clip_id || toast.id);
         const score = toast.virality_score || 85;
@@ -150,7 +151,7 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
         return (
           <div
             key={toastId}
-            className="bg-[#0D111A]/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-300 border-l-4 border-l-emerald-400 animate-in slide-in-from-bottom-2"
+            className="bg-[#0D111A]/95 backdrop-blur-xl border border-emerald-500/30 rounded-2xl p-3.5 shadow-2xl shadow-black/80 flex flex-col gap-2 text-xs transition-all duration-300 border-l-4 border-l-emerald-400 animate-in slide-in-from-top-3 fade-in duration-300"
           >
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-center gap-2 min-w-0">
