@@ -739,3 +739,48 @@ async def save_oauth_app_config(client_id: str, client_secret: str, provider: st
             (provider, client_id.strip(), client_secret.strip()),
         )
         await db.commit()
+
+
+async def get_system_setting(key: str, default: Optional[str] = None) -> Optional[str]:
+    """Retrieve dynamic system setting from database with fallback to default."""
+    async with get_db_connection() as db:
+        cur = await db.execute("SELECT value FROM system_settings WHERE key = ?", (key,))
+        row = await cur.fetchone()
+        if row:
+            return row["value"] if isinstance(row, dict) else row[0]
+        return default
+
+
+async def set_system_setting(key: str, value: str, category: str = "general", description: Optional[str] = None) -> None:
+    """Insert or update dynamic system setting."""
+    async with get_db_connection() as db:
+        await db.execute(
+            """
+            INSERT INTO system_settings (key, value, category, description, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                category = excluded.category,
+                description = COALESCE(excluded.description, system_settings.description),
+                updated_at = CURRENT_TIMESTAMP
+            """,
+            (key, value, category, description)
+        )
+        await db.commit()
+
+
+async def get_all_system_settings() -> Dict[str, Any]:
+    """Return all system settings grouped as a dictionary."""
+    async with get_db_connection() as db:
+        cur = await db.execute("SELECT key, value, category, description, updated_at FROM system_settings")
+        rows = await cur.fetchall()
+        settings = {}
+        for r in rows:
+            r_dict = dict(r)
+            settings[r_dict["key"]] = {
+                "value": r_dict["value"],
+                "category": r_dict["category"],
+                "description": r_dict["description"],
+                "updated_at": r_dict["updated_at"],
+            }
+        return settings

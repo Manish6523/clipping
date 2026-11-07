@@ -415,6 +415,20 @@ async def migration_v10(db):
     await db.commit()
 
 
+@migration(11, "Add system_settings table for dynamic UI configuration")
+async def migration_v11(db):
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS system_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL,
+            category TEXT DEFAULT 'general',
+            description TEXT,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

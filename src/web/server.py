@@ -110,6 +110,9 @@ class WebUIServer:
             self.app.router.add_static("/assets", path=str(dist_assets), name="frontend_assets", show_index=False)
 
         self.app.router.add_get("/api/pipeline/runs", self.handle_get_pipeline_runs)
+        self.app.router.add_get("/api/settings", self.handle_get_settings)
+        self.app.router.add_post("/api/settings", self.handle_save_settings)
+        self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
         self.app.router.add_get("/api/clips/{id}/explain", self.handle_get_clip_explain)
         self.app.router.add_post("/api/clips/{id}/feedback", self.handle_post_clip_feedback)
         self.app.router.add_get("/api/channels/{id}/learning", self.handle_get_channel_learning)
@@ -808,6 +811,84 @@ class WebUIServer:
             asyncio.create_task(self.on_manual_clip(url, template, time_range))
 
         return web.json_response({"success": True, "message": "Manual clip processing initiated."})
+
+    async def handle_get_settings(self, request: web.Request) -> web.Response:
+        """Get all system settings with environment fallbacks."""
+        from src.database import get_all_system_settings
+        from config.settings import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_MODEL, DEFAULT_MIN_VIRALITY_SCORE
+        
+        db_settings = await get_all_system_settings()
+
+        # Build clean response payload
+        keys_val = db_settings.get("gemini_api_keys", {}).get("value")
+        if keys_val:
+            keys_list = [k.strip() for k in keys_val.split(",") if k.strip()]
+        else:
+            keys_list = list(GEMINI_API_KEYS) or ([GEMINI_API_KEY] if GEMINI_API_KEY else [])
+
+        model_val = db_settings.get("gemini_model", {}).get("value") or GEMINI_MODEL or "gemini-flash-lite-latest"
+        min_score = db_settings.get("min_virality_score", {}).get("value") or DEFAULT_MIN_VIRALITY_SCORE
+
+        return web.json_response({
+            "gemini_api_keys": keys_list,
+            "gemini_model": model_val,
+            "min_virality_score": int(min_score),
+            "total_keys_count": len(keys_list),
+        })
+
+    async def handle_save_settings(self, request: web.Request) -> web.Response:
+        """Save settings to database and immediately update running in-memory configurations."""
+        from src.database import set_system_setting
+        import config.settings as s
+        data = await request.json()
+
+        keys = data.get("gemini_api_keys", [])
+        if isinstance(keys, list):
+            keys_str = ",".join([k.strip() for k in keys if k.strip()])
+            await set_system_setting("gemini_api_keys", keys_str, category="ai", description="Pool of Gemini API keys for auto-failover")
+            s.GEMINI_API_KEYS = [k.strip() for k in keys if k.strip()]
+            if s.GEMINI_API_KEYS:
+                s.GEMINI_API_KEY = s.GEMINI_API_KEYS[0]
+
+        model = data.get("gemini_model")
+        if model:
+            await set_system_setting("gemini_model", model.strip(), category="ai", description="Primary Google Gemini model")
+            s.GEMINI_MODEL = model.strip()
+
+        min_score = data.get("min_virality_score")
+        if min_score is not None:
+            await set_system_setting("min_virality_score", str(int(min_score)), category="scoring", description="Minimum threshold for clip extraction")
+            s.DEFAULT_MIN_VIRALITY_SCORE = int(min_score)
+
+        return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
+
+    async def handle_test_gemini_key(self, request: web.Request) -> web.Response:
+        """Test a candidate Gemini API key for validity and quota status."""
+        import urllib.request
+        data = await request.json()
+        key = data.get("api_key", "").strip()
+        model = data.get("model", "gemini-flash-lite-latest").strip()
+
+        if not key:
+            return web.json_response({"valid": False, "error": "API key required"}, status=400)
+
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+        payload = json.dumps({"contents": [{"parts": [{"text": "Reply with 'OK'"}]}]}).encode("utf-8")
+        req = urllib.request.Request(url, headers={"Content-Type": "application/json"}, data=payload)
+
+        try:
+            loop = asyncio.get_running_loop()
+            res = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=8.0))
+            resp_data = json.loads(res.read().decode())
+            text = resp_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+            return web.json_response({"valid": True, "message": "Key is active and responding!", "preview": text.strip()})
+        except Exception as e:
+            err_msg = str(e)
+            if "429" in err_msg or "ResourceExhausted" in err_msg:
+                err_msg = "Rate limit / Quota exceeded (429)"
+            elif "400" in err_msg or "API key not valid" in err_msg:
+                err_msg = "Invalid API Key"
+            return web.json_response({"valid": False, "error": err_msg})
 
     async def handle_get_pipeline_runs(self, request: web.Request) -> web.Response:
         """Get recent pipeline execution runs with candidate counts, stages, and latency, including in-flight pipelines."""
