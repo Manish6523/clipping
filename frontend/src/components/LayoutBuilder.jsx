@@ -662,30 +662,31 @@ export default function LayoutBuilder({
           </div>
 
           {/* Interactive Source Canvas */}
-          <div
-            ref={srcCanvasRef}
-            className="w-full flex-1 aspect-video bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center min-h-0"
-          >
-            {mode === 'clip' && sourceMediaUrl ? (
-              <video
-                key={sourceMediaUrl}
-                ref={videoRef}
-                src={sourceMediaUrl}
-                crossOrigin="anonymous"
-                playsInline
-                preload="auto"
-                className="w-full h-full object-contain pointer-events-none"
-              />
-            ) : sourceMediaUrl ? (
-              <img
-                key={sourceMediaUrl}
-                src={sourceMediaUrl}
-                alt="Source Frame"
-                className="w-full h-full object-contain pointer-events-none"
-              />
-            ) : (
-              <div className="text-slate-600 text-xs">No media loaded</div>
-            )}
+          <div className="w-full flex-1 flex items-center justify-center min-h-0 overflow-hidden">
+            <div
+              ref={srcCanvasRef}
+              className="h-full aspect-video bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center max-w-full"
+            >
+              {mode === 'clip' && sourceMediaUrl ? (
+                <video
+                  key={sourceMediaUrl}
+                  ref={videoRef}
+                  src={sourceMediaUrl}
+                  crossOrigin="anonymous"
+                  playsInline
+                  preload="auto"
+                  className="w-full h-full object-fill pointer-events-none"
+                />
+              ) : sourceMediaUrl ? (
+                <img
+                  key={sourceMediaUrl}
+                  src={sourceMediaUrl}
+                  alt="Source Frame"
+                  className="w-full h-full object-fill pointer-events-none"
+                />
+              ) : (
+                <div className="text-slate-600 text-xs">No media loaded</div>
+              )}
 
             {/* Source Crop Boxes Overlay */}
             {layers.map((layer) => {
@@ -746,6 +747,7 @@ export default function LayoutBuilder({
                 </div>
               );
             })}
+            </div>
           </div>
         </div>
 

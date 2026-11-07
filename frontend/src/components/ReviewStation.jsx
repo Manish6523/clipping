@@ -46,8 +46,6 @@ import {
 export default function ReviewStation({ onStatusChange }) {
   const queryClient = useQueryClient();
   const [activeClipId, setActiveClipId] = useState(null);
-  const [compareClipId, setCompareClipId] = useState(null);
-  const [viewMode, setViewMode] = useState('compare'); // 'compare' (side-by-side) | 'single'
   const [statusFilter, setStatusFilter] = useState('pending_approval');
   const [channelFilter, setChannelFilter] = useState('all');
   const [loading, setLoading] = useState(false);
@@ -64,9 +62,8 @@ export default function ReviewStation({ onStatusChange }) {
   // Multi-select state
   const [selectedClipIds, setSelectedClipIds] = useState(new Set());
 
-  // Video refs for simultaneous or individual playback control
-  const primaryVideoRef = useRef(null);
-  const secondaryVideoRef = useRef(null);
+  // Single video player ref
+  const videoRef = useRef(null);
   const parentRef = useRef(null);
 
   // TanStack Query for lightweight clip list
@@ -94,20 +91,12 @@ export default function ReviewStation({ onStatusChange }) {
     return rawClips.filter(c => c.channel_id === channelFilter);
   }, [rawClips, channelFilter]);
 
-  // Set default primary and secondary (comparison) clips
+  // Set default active clip when list loads or filters change
   useEffect(() => {
-    if (clips.length > 0) {
-      if (!activeClipId || !clips.some(c => c.id === activeClipId)) {
-        setActiveClipId(clips[0].id);
-      }
-      if (!compareClipId || !clips.some(c => c.id === compareClipId) || compareClipId === activeClipId) {
-        const alt = clips.find(c => c.id !== (activeClipId || clips[0].id));
-        if (alt) setCompareClipId(alt.id);
-        else setCompareClipId(null);
-      }
-    } else {
+    if (clips.length > 0 && (!activeClipId || !clips.some(c => c.id === activeClipId))) {
+      setActiveClipId(clips[0].id);
+    } else if (clips.length === 0) {
       setActiveClipId(null);
-      setCompareClipId(null);
     }
   }, [clips, activeClipId]);
 
@@ -166,15 +155,8 @@ export default function ReviewStation({ onStatusChange }) {
     return clips.find(c => c.id === activeClipId) || clipData;
   }, [clips, activeClipId, clipData]);
 
-  const compareClipSummary = useMemo(() => {
-    return clips.find(c => c.id === compareClipId) || compareClipData;
-  }, [clips, compareClipId, compareClipData]);
-
-  const primaryVideoSrc = clipData?.video_url || (activeClipSummary?.rendered_video_path ? `/api/clips/${activeClipId}/video` : null);
-  const primaryPosterUrl = clipData?.thumbnail_url || activeClipSummary?.thumbnail_url;
-
-  const compareVideoSrc = compareClipData?.video_url || (compareClipSummary?.rendered_video_path ? `/api/clips/${compareClipId}/video` : null);
-  const comparePosterUrl = compareClipData?.thumbnail_url || compareClipSummary?.thumbnail_url;
+  const videoSrc = clipData?.video_url || (activeClipSummary?.rendered_video_path ? `/api/clips/${activeClipId}/video` : null);
+  const posterUrl = clipData?.thumbnail_url || activeClipSummary?.thumbnail_url;
 
   const showFeedback = (msg) => {
     setFeedbackMsg(msg);
@@ -252,9 +234,9 @@ export default function ReviewStation({ onStatusChange }) {
   };
 
   const handleSeek = (seconds) => {
-    if (primaryVideoRef.current && seconds !== undefined) {
-      primaryVideoRef.current.currentTime = seconds;
-      primaryVideoRef.current.play();
+    if (videoRef.current && seconds !== undefined) {
+      videoRef.current.currentTime = seconds;
+      videoRef.current.play();
     }
   };
 
@@ -358,7 +340,7 @@ export default function ReviewStation({ onStatusChange }) {
         </div>
 
         {/* Center: Multi-Select Discard Action Bar */}
-        {selectedClipIds.size > 0 ? (
+        {selectedClipIds.size > 0 && (
           <div className="flex items-center gap-2 bg-rose-500/15 border border-rose-500/40 px-3.5 py-1 rounded-xl animate-in fade-in zoom-in-95 duration-150">
             <span className="text-xs font-bold text-rose-300">
               {selectedClipIds.size} clip{selectedClipIds.size === 1 ? '' : 's'} selected
@@ -376,30 +358,6 @@ export default function ReviewStation({ onStatusChange }) {
               className="text-xs text-slate-400 hover:text-white px-1.5 py-0.5"
             >
               Cancel
-            </button>
-          </div>
-        ) : (
-          /* View Mode Toggle: Side-by-Side Dual Preview vs Single Preview */
-          <div className="flex items-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.06]">
-            <button
-              onClick={() => setViewMode('compare')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'compare'
-                  ? 'bg-[#8FD3FF]/20 text-[#8FD3FF] border border-[#8FD3FF]/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Columns2 size={14} /> Side-by-Side Dual View
-            </button>
-            <button
-              onClick={() => setViewMode('single')}
-              className={`flex items-center gap-1.5 px-3 py-1 rounded-lg text-xs font-bold transition-all ${
-                viewMode === 'single'
-                  ? 'bg-[#8FD3FF]/20 text-[#8FD3FF] border border-[#8FD3FF]/30'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Film size={14} /> Single Player
             </button>
           </div>
         )}
@@ -484,14 +442,7 @@ export default function ReviewStation({ onStatusChange }) {
                   return (
                     <div
                       key={clip.id}
-                      onClick={() => {
-                        if (viewMode === 'compare' && activeClipId && activeClipId !== clip.id) {
-                          // Clicking another card sets it as primary or comparison
-                          setActiveClipId(clip.id);
-                        } else {
-                          setActiveClipId(clip.id);
-                        }
-                      }}
+                      onClick={() => setActiveClipId(clip.id)}
                       style={{
                         position: 'absolute',
                         top: 0,
@@ -506,8 +457,6 @@ export default function ReviewStation({ onStatusChange }) {
                         className={`p-2.5 h-full rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
                           isActive
                             ? 'border-[#8FD3FF] bg-[#181C26] shadow-lg shadow-[#8FD3FF]/15 ring-1 ring-[#8FD3FF]/30'
-                            : isCompare && viewMode === 'compare'
-                            ? 'border-purple-500/50 bg-[#161324] shadow-md shadow-purple-500/10'
                             : 'border-white/[0.04] bg-[#12151D]/80 hover:bg-[#161A24] hover:border-white/10'
                         }`}
                       >
@@ -527,16 +476,6 @@ export default function ReviewStation({ onStatusChange }) {
                             <span className="font-bold text-white truncate">
                               #{clip.id} • {clip.channel_id}
                             </span>
-                            {isActive && (
-                              <span className="text-[9px] font-bold px-1.5 rounded bg-[#8FD3FF] text-black shrink-0">
-                                Primary
-                              </span>
-                            )}
-                            {isCompare && viewMode === 'compare' && !isActive && (
-                              <span className="text-[9px] font-bold px-1.5 rounded bg-purple-500 text-white shrink-0">
-                                Side-B
-                              </span>
-                            )}
                           </div>
                           <span className="flex items-center gap-1 font-extrabold text-amber-400 font-mono text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
                             🔥 {clip.virality_score}
@@ -548,22 +487,8 @@ export default function ReviewStation({ onStatusChange }) {
                         </div>
 
                         <div className="flex items-center justify-between text-[10px] text-[#8B90A0] font-mono pl-5">
-                          <span className="truncate max-w-[110px]">{clip.template_name}</span>
-                          <div className="flex items-center gap-2">
-                            {viewMode === 'compare' && !isCompare && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setCompareClipId(clip.id);
-                                }}
-                                className="text-[9px] font-bold text-purple-400 hover:text-purple-300 px-1 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/20"
-                                title="Set as side-by-side comparison"
-                              >
-                                Compare
-                              </button>
-                            )}
-                            <span>⏱️ {dur}s</span>
-                          </div>
+                          <span className="truncate max-w-[130px]">{clip.template_name}</span>
+                          <span>⏱️ {dur}s</span>
                         </div>
                       </div>
                     </div>
@@ -574,93 +499,28 @@ export default function ReviewStation({ onStatusChange }) {
           )}
         </div>
 
-        {/* Center Column: DUAL VIDEOS SIDE BY SIDE (Fills Center Space) */}
-        <div className={`col-span-12 ${viewMode === 'compare' ? 'lg:col-span-5 xl:col-span-5' : 'lg:col-span-4 xl:col-span-4'} bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-0 overflow-hidden`}>
-          {viewMode === 'compare' ? (
-            /* DUAL VIDEOS SIDE-BY-SIDE */
-            <div className="w-full h-full flex items-center justify-center gap-3">
-              {/* Left Video: Primary Active Clip */}
-              <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-[#8FD3FF]/40 relative shadow-2xl flex flex-col items-center justify-center flex-1 max-w-[50%]">
-                <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-full bg-black/80 border border-[#8FD3FF]/40 text-[#8FD3FF] font-mono font-bold text-[10px]">
-                  Primary: #{activeClipId || '--'}
-                </div>
-                {primaryVideoSrc ? (
-                  <div key={`prim-${primaryVideoSrc}`} className="w-full h-full">
-                    <video
-                      ref={primaryVideoRef}
-                      src={primaryVideoSrc}
-                      poster={primaryPosterUrl || undefined}
-                      controls
-                      loop
-                      preload="metadata"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="text-[#8B90A0] text-xs font-medium flex flex-col items-center gap-2">
-                    <Scissors className="animate-pulse text-[#8FD3FF]" size={24} />
-                    <span>Select a primary clip</span>
-                  </div>
-                )}
+        {/* Center Column: SINGLE 9:16 VIDEO PLAYER (Always Aspect-Preserved, Fills Center Space) */}
+        <div className="col-span-12 lg:col-span-4 xl:col-span-4 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-0 overflow-hidden">
+          <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-white/[0.12] relative shadow-2xl flex items-center justify-center max-w-full">
+            {videoSrc ? (
+              <div key={videoSrc} className="w-full h-full">
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  poster={posterUrl || undefined}
+                  controls
+                  loop
+                  preload="metadata"
+                  className="w-full h-full object-contain"
+                />
               </div>
-
-              {/* Right Video: Secondary Compare Clip */}
-              <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-purple-500/40 relative shadow-2xl flex flex-col items-center justify-center flex-1 max-w-[50%]">
-                <div className="absolute top-2 left-2 z-20 px-2 py-0.5 rounded-full bg-black/80 border border-purple-500/40 text-purple-300 font-mono font-bold text-[10px] flex items-center gap-1.5">
-                  <span>Compare: #{compareClipId || '--'}</span>
-                  {compareClipId && (
-                    <button
-                      onClick={() => setCompareClipId(null)}
-                      className="hover:text-white"
-                      title="Clear comparison"
-                    >
-                      <X size={10} />
-                    </button>
-                  )}
-                </div>
-                {compareVideoSrc ? (
-                  <div key={`comp-${compareVideoSrc}`} className="w-full h-full">
-                    <video
-                      ref={secondaryVideoRef}
-                      src={compareVideoSrc}
-                      poster={comparePosterUrl || undefined}
-                      controls
-                      loop
-                      preload="metadata"
-                      className="w-full h-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="text-slate-500 text-xs font-medium flex flex-col items-center gap-2 p-4 text-center">
-                    <Columns2 size={24} className="text-purple-400" />
-                    <span>Click "Compare" on any clip in the list to play side-by-side</span>
-                  </div>
-                )}
+            ) : (
+              <div className="text-[#8B90A0] text-xs font-medium flex flex-col items-center gap-2">
+                <Scissors className="animate-pulse text-[#8FD3FF]" size={28} />
+                <span>Select a clip or rendering...</span>
               </div>
-            </div>
-          ) : (
-            /* SINGLE VIDEO PLAYER (Standard Full Height) */
-            <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-white/[0.12] relative shadow-2xl flex items-center justify-center">
-              {primaryVideoSrc ? (
-                <div key={primaryVideoSrc} className="w-full h-full">
-                  <video
-                    ref={primaryVideoRef}
-                    src={primaryVideoSrc}
-                    poster={primaryPosterUrl || undefined}
-                    controls
-                    loop
-                    preload="metadata"
-                    className="w-full h-full object-contain"
-                  />
-                </div>
-              ) : (
-                <div className="text-[#8B90A0] text-xs font-medium flex flex-col items-center gap-2">
-                  <Scissors className="animate-pulse text-[#8FD3FF]" size={28} />
-                  <span>Select a clip or rendering...</span>
-                </div>
-              )}
-            </div>
-          )}
+            )}
+          </div>
 
           {loading && (
             <div className="absolute inset-0 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center gap-3 z-30">
@@ -673,7 +533,7 @@ export default function ReviewStation({ onStatusChange }) {
         </div>
 
         {/* Right Column: Full Inspector & Production Controls */}
-        <div className={`col-span-12 ${viewMode === 'compare' ? 'lg:col-span-4 xl:col-span-4' : 'lg:col-span-5 xl:col-span-5'} bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden`}>
+        <div className="col-span-12 lg:col-span-5 xl:col-span-5 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden">
           {activeClipSummary ? (
             <>
               {/* Meta Chips */}
