@@ -18,6 +18,7 @@ import axios from 'axios';
 export default function Settings() {
   const [keys, setKeys] = useState([]);
   const [newKey, setNewKey] = useState('');
+  const [newLabel, setNewLabel] = useState('');
   const [model, setModel] = useState('gemini-flash-lite-latest');
   const [minScore, setMinScore] = useState(70);
   const [testingKey, setTestingKey] = useState(null);
@@ -41,13 +42,18 @@ export default function Settings() {
   };
 
   const handleAddKey = async () => {
-    const trimmed = newKey.trim();
-    if (!trimmed) return;
-    if (keys.includes(trimmed)) return;
-    const updated = [...keys, trimmed];
+    const trimmedKey = newKey.trim();
+    if (!trimmedKey) return;
+    const label = newLabel.trim() || `Account ${keys.length + 1}`;
+    if (keys.some((item) => (typeof item === 'object' ? item.key : item) === trimmedKey)) return;
+
+    const newItem = { key: trimmedKey, label: label };
+    const updated = [...keys, newItem];
     setKeys(updated);
     setNewKey('');
-    // Auto-save to DB immediately so refreshing never loses keys
+    setNewLabel('');
+
+    // Auto-save to DB immediately
     try {
       await axios.post('/api/settings', {
         gemini_api_keys: updated,
@@ -64,7 +70,6 @@ export default function Settings() {
   const handleRemoveKey = async (idx) => {
     const updated = keys.filter((_, i) => i !== idx);
     setKeys(updated);
-    // Auto-save removal to DB immediately
     try {
       await axios.post('/api/settings', {
         gemini_api_keys: updated,
@@ -163,7 +168,14 @@ export default function Settings() {
         </p>
 
         {/* Key Add Bar */}
-        <div className="flex gap-2">
+        <div className="flex flex-col sm:flex-row gap-2">
+          <input
+            type="text"
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="Label (e.g. Account 1, Backup Account...)"
+            className="sm:w-1/3 bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-sans"
+          />
           <input
             type="text"
             value={newKey}
@@ -174,7 +186,7 @@ export default function Settings() {
           />
           <button
             onClick={handleAddKey}
-            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-medium text-sm flex items-center justify-center gap-1.5 transition-colors cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" /> Add Key
           </button>
@@ -187,19 +199,22 @@ export default function Settings() {
               No keys added yet. Add at least one key to enable AI clip scoring.
             </div>
           ) : (
-            keys.map((k, idx) => {
-              const result = testResults[k];
+            keys.map((item, idx) => {
+              const kStr = typeof item === 'object' ? item.key : item;
+              const kLabel = typeof item === 'object' ? item.label : `Account ${idx + 1}`;
+              const result = testResults[kStr];
+
               return (
                 <div
                   key={idx}
-                  className="flex items-center justify-between p-3 rounded-xl bg-slate-950/80 border border-slate-800 text-sm"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-sm gap-2"
                 >
-                  <div className="flex items-center gap-3">
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-400">
-                      #{idx + 1}
+                  <div className="flex flex-wrap items-center gap-2.5">
+                    <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-cyan-950/70 border border-cyan-800/80 text-cyan-400">
+                      {kLabel}
                     </span>
-                    <span className="font-mono text-xs text-slate-200">
-                      {k.slice(0, 10)}••••••••••••••••••••{k.slice(-6)}
+                    <span className="font-mono text-xs text-slate-300">
+                      {kStr.slice(0, 10)}••••••••••••••••••••{kStr.slice(-6)}
                     </span>
                     {result && (
                       <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1 ${
@@ -211,9 +226,9 @@ export default function Settings() {
                     )}
                   </div>
 
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
                     <button
-                      onClick={() => handleTestKey(k, idx)}
+                      onClick={() => handleTestKey(kStr, idx)}
                       disabled={testingKey === idx}
                       className="px-2.5 py-1 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/50 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
                     >

@@ -821,10 +821,25 @@ class WebUIServer:
 
         # Build clean response payload
         keys_val = db_settings.get("gemini_api_keys", {}).get("value")
+        keys_list = []
         if keys_val:
-            keys_list = [k.strip() for k in keys_val.split(",") if k.strip()]
+            try:
+                # Support new JSON array format: [{"key": "...", "label": "..."}, ...]
+                parsed = json.loads(keys_val)
+                if isinstance(parsed, list):
+                    for item in parsed:
+                        if isinstance(item, dict):
+                            keys_list.append(item)
+                        elif isinstance(item, str):
+                            keys_list.append({"key": item, "label": "Google Account"})
+            except Exception:
+                for k in keys_val.split(","):
+                    if k.strip():
+                        keys_list.append({"key": k.strip(), "label": "Google Account"})
         else:
-            keys_list = list(GEMINI_API_KEYS) or ([GEMINI_API_KEY] if GEMINI_API_KEY else [])
+            raw_pool = list(GEMINI_API_KEYS) or ([GEMINI_API_KEY] if GEMINI_API_KEY else [])
+            for idx, k in enumerate(raw_pool):
+                keys_list.append({"key": k, "label": f"Account {idx + 1}"})
 
         model_val = db_settings.get("gemini_model", {}).get("value") or GEMINI_MODEL or "gemini-flash-lite-latest"
         min_score = db_settings.get("min_virality_score", {}).get("value") or DEFAULT_MIN_VIRALITY_SCORE
@@ -844,11 +859,21 @@ class WebUIServer:
 
         keys = data.get("gemini_api_keys", [])
         if isinstance(keys, list):
-            keys_str = ",".join([k.strip() for k in keys if k.strip()])
-            await set_system_setting("gemini_api_keys", keys_str, category="ai", description="Pool of Gemini API keys for auto-failover")
-            s.GEMINI_API_KEYS = [k.strip() for k in keys if k.strip()]
-            if s.GEMINI_API_KEYS:
-                s.GEMINI_API_KEY = s.GEMINI_API_KEYS[0]
+            # Store full list with labels as JSON in database
+            keys_json_str = json.dumps(keys)
+            await set_system_setting("gemini_api_keys", keys_json_str, category="ai", description="Labeled pool of Gemini API keys for auto-failover")
+            
+            # Extract plain key strings for in-memory settings
+            plain_keys = []
+            for item in keys:
+                if isinstance(item, dict) and item.get("key"):
+                    plain_keys.append(item["key"].strip())
+                elif isinstance(item, str) and item.strip():
+                    plain_keys.append(item.strip())
+
+            s.GEMINI_API_KEYS = plain_keys
+            if plain_keys:
+                s.GEMINI_API_KEY = plain_keys[0]
 
         model = data.get("gemini_model")
         if model:
