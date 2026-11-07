@@ -119,11 +119,11 @@
     "outline": 4,
     "shadow": 2,
     "alignment": 2,
-    "margin_v": 230,
+    "margin_v": 960,
     "animation": "pop",
     "position": {
       "x": 0.5,
-      "y": 0.88,
+      "y": 0.5,
       "max_width": 0.85
     }
   },

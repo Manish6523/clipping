@@ -19,6 +19,7 @@ const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 function AppLayout() {
   const [status, setStatus] = useState({});
   const [pipelineAlert, setPipelineAlert] = useState(null);
+  const [activePipelines, setActivePipelines] = useState([]);
   const [toasts, setToasts] = useState([]);
   const queryClient = useQueryClient();
 
@@ -53,21 +54,17 @@ function AppLayout() {
       } else if (event === 'channel_status' || event === 'channel_settings_changed') {
         queryClient.invalidateQueries({ queryKey: ['channels'] });
       } else if (event === 'job_progress') {
-        setPipelineAlert({
-          status: data.status === 'completed' ? 'completed' : 'processing',
-          channel_id: data.channel_id,
-          step_name: `Stage ${data.stage}: ${data.status}`,
-          current_step: data.stage === 'render' ? 4 : data.stage === 'transcribe' ? 2 : 3,
-        });
+        fetchSystemStatus();
       }
     });
 
-    return () => unsubscribe();
-  }, [queryClient]);
+    const statusInterval = setInterval(fetchSystemStatus, 4000);
 
-  const handleDismissToast = (toastId) => {
-    setToasts((prev) => prev.filter((t) => t.toast_id !== toastId));
-  };
+    return () => {
+      unsubscribe();
+      clearInterval(statusInterval);
+    };
+  }, [queryClient]);
 
   const fetchSystemStatus = async () => {
     try {
@@ -77,6 +74,13 @@ function AppLayout() {
       ]);
       setStatus(sData);
       setPipelineAlert(pData);
+      if (pData?.active_pipelines) {
+        setActivePipelines(pData.active_pipelines);
+      } else if (pData && (pData.status === 'triggered' || pData.status === 'processing')) {
+        setActivePipelines([pData]);
+      } else {
+        setActivePipelines([]);
+      }
     } catch (err) {
       console.error('Status fetch error:', err);
     }
@@ -142,8 +146,8 @@ function AppLayout() {
         </Suspense>
       </main>
 
-      {/* Persistent Bottom-Left Hype Moment Toasts */}
-      <HypeMomentToasts toasts={toasts} onDismiss={handleDismissToast} />
+      {/* Persistent Bottom-Right Hype Moment Toasts (Stack showing all simultaneous hype moments, non-cancellable) */}
+      <HypeMomentToasts activePipelines={activePipelines} toasts={toasts} />
     </div>
   );
 }

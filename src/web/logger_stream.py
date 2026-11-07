@@ -10,9 +10,10 @@ MAX_LOGS = 300
 _log_buffer: deque = deque(maxlen=MAX_LOGS)
 _log_counter = 0
 
-# Active Pipeline Generation State Tracker
+# Active Pipeline Generation State Tracker (dictionary mapping channel_id -> progress state)
+_active_pipelines: Dict[str, Dict[str, Any]] = {}
 _active_pipeline: Dict[str, Any] = {
-    "status": "idle",  # "idle" | "triggered" | "processing" | "completed" | "error"
+    "status": "idle",
     "channel_id": None,
     "trigger_reason": None,
     "current_step": 0,
@@ -85,8 +86,8 @@ def update_pipeline_progress(
     clip_id: Optional[int] = None,
     error: Optional[str] = None,
 ) -> None:
-    """Update global live progress state for Web UI display."""
-    global _active_pipeline
+    """Update global and per-channel live progress state for Web UI display."""
+    global _active_pipeline, _active_pipelines
     _active_pipeline["status"] = status
     if channel_id is not None:
         _active_pipeline["channel_id"] = channel_id
@@ -101,10 +102,34 @@ def update_pipeline_progress(
     if error is not None:
         _active_pipeline["error_message"] = error
 
+    # Also update per-channel pipeline tracking
+    if channel_id:
+        c_key = channel_id.lower()
+        if status in ("idle", "completed") and step == 0:
+            _active_pipelines.pop(c_key, None)
+        else:
+            _active_pipelines[c_key] = {
+                "channel_id": channel_id,
+                "status": status,
+                "current_step": step,
+                "step_name": step_name,
+                "trigger_reason": trigger_reason,
+                "error_message": error,
+                "updated_at": time.time(),
+            }
+
 
 def get_pipeline_state() -> Dict[str, Any]:
-    """Get active pipeline status for dashboard banner."""
-    return dict(_active_pipeline)
+    """Get active pipeline status for dashboard banner along with all active pipelines."""
+    now = time.time()
+    # Prune stale pipelines older than 5 minutes
+    active_list = [
+        p for p in _active_pipelines.values()
+        if (now - p.get("updated_at", now)) < 300
+    ]
+    state = dict(_active_pipeline)
+    state["active_pipelines"] = active_list
+    return state
 
 
 def update_streamer_status(channel_id: str, platform: str, is_live: bool, current_mps: float = 0.0, chunks_count: int = 0) -> None:
