@@ -215,9 +215,9 @@ export default function Timeline({ videoRef }) {
   return (
     <div className="w-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-2xl select-none overflow-hidden">
       {/* Header Toolbar Row */}
-      <div className="h-9 px-3 bg-[#0A0B0E] border-b border-white/[0.04] flex items-center justify-between text-xs text-[#8B90A0]">
+      <div className="h-9 px-2 sm:px-3 bg-[#0A0B0E] border-b border-white/[0.04] flex items-center justify-between text-xs text-[#8B90A0] overflow-x-auto custom-scrollbar">
         {/* Left Playback & Split Tools */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={togglePlay}
             className="w-6 h-6 rounded-lg bg-[#8FD3FF] hover:bg-[#A9B8FF] text-[#0A0B0E] flex items-center justify-center transition-all shadow-md shadow-[#8FD3FF]/20"
@@ -236,7 +236,7 @@ export default function Timeline({ videoRef }) {
           </button>
 
           {/* Speed Presets */}
-          <div className="flex items-center gap-0.5 ml-2 bg-[#1A1D24] p-0.5 rounded-lg border border-white/5">
+          <div className="hidden xs:flex items-center gap-0.5 ml-1 sm:ml-2 bg-[#1A1D24] p-0.5 rounded-lg border border-white/5">
             {[1, 1.5, 2].map((s) => (
               <button
                 key={s}
@@ -252,19 +252,14 @@ export default function Timeline({ videoRef }) {
         </div>
 
         {/* Time Counters & Zoom Controls */}
-        <div className="flex items-center gap-2.5 font-mono text-xs">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 font-mono text-[11px] sm:text-xs shrink-0">
           <span className="text-white font-bold">
-            {(currentTime - startOffset).toFixed(2)}s
+            {(currentTime - startOffset).toFixed(1)}s
           </span>
           <span>/</span>
-          <span>{duration.toFixed(2)}s</span>
-          {sourceInfo && (
-            <span className="text-[10px] text-slate-500 font-sans">
-              (max {sourceInfo.available_end.toFixed(1)}s available)
-            </span>
-          )}
+          <span>{duration.toFixed(1)}s</span>
 
-          <div className="h-3.5 w-px bg-white/10 mx-1" />
+          <div className="h-3.5 w-px bg-white/10 mx-0.5" />
 
           <div className="flex items-center gap-1">
             <button
@@ -279,7 +274,7 @@ export default function Timeline({ videoRef }) {
               max="200"
               value={pixelsPerSecond}
               onChange={(e) => setPixelsPerSecond(Number(e.target.value))}
-              className="w-14 h-1 accent-[#8FD3FF] cursor-pointer"
+              className="w-10 sm:w-14 h-1 accent-[#8FD3FF] cursor-pointer"
             />
             <button
               onClick={() => setPixelsPerSecond((p) => Math.min(200, p + 15))}
@@ -289,7 +284,7 @@ export default function Timeline({ videoRef }) {
             </button>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
-              className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white ml-1"
+              className="hidden sm:inline-block p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white ml-0.5"
               title="Keyboard Shortcuts"
             >
               <HelpCircle size={13} />

@@ -95,31 +95,31 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="h-11 bg-[#0A0B0E] border-b border-white/[0.06] px-4 flex items-center justify-between select-none shrink-0 z-30 text-xs">
+      <header className="h-11 bg-[#0A0B0E] border-b border-white/[0.06] px-2 sm:px-4 flex items-center justify-between gap-1.5 select-none shrink-0 z-30 text-xs">
         {/* Left: Back & Clip Title */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button
             onClick={handleBack}
-            className="p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/[0.04] transition-all"
+            className="p-1 sm:p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/[0.04] transition-all shrink-0"
             title="Return to Review Station"
           >
             <ArrowLeft size={16} />
           </button>
 
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-white max-w-sm truncate">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className="font-bold text-white max-w-[120px] sm:max-w-xs md:max-w-sm truncate text-xs">
               {clip?.title || 'Editing Clip'}
             </span>
-            <span className="px-2 py-0.5 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-extrabold text-[10px]">
-              🔥 {clip?.virality_score || 85}/100
+            <span className="px-1.5 py-0.2 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 font-extrabold text-[9px] shrink-0">
+              🔥 {clip?.virality_score || 85}
             </span>
           </div>
 
-          <div className="text-[11px] font-mono ml-2">
+          <div className="text-[10px] font-mono ml-1 hidden xs:inline shrink-0">
             {saving ? (
               <span className="text-[#8FD3FF] animate-pulse">Saving...</span>
             ) : hasUnsavedChanges ? (
-              <span className="text-amber-400">Unsaved edits</span>
+              <span className="text-amber-400">Unsaved</span>
             ) : lastSaved ? (
               <span className="text-emerald-400">Saved</span>
             ) : null}
@@ -127,28 +127,28 @@ export default function TopBar() {
         </div>
 
         {/* Center: Undo / Redo */}
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5 sm:gap-1 shrink-0">
           <button
             onClick={undo}
-            className="p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/5"
+            className="p-1 sm:p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/5"
             title="Undo (Ctrl+Z)"
           >
-            <RotateCcw size={14} />
+            <RotateCcw size={13} />
           </button>
           <button
             onClick={redo}
-            className="p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/5"
+            className="p-1 sm:p-1.5 rounded-lg text-[#8B90A0] hover:text-white hover:bg-white/5"
             title="Redo (Ctrl+Shift+Z)"
           >
-            <RotateCw size={14} />
+            <RotateCw size={13} />
           </button>
         </div>
 
         {/* Right: Save Preset & Render 9:16 Action */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
           <button
             onClick={() => setShowPresetModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1A1D24] hover:bg-[#1A1D24]/80 text-[#8FD3FF] font-bold border border-white/10 transition-all"
+            className="hidden sm:flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-[#1A1D24] hover:bg-[#1A1D24]/80 text-[#8FD3FF] font-bold border border-white/10 transition-all text-xs"
           >
             <BookmarkPlus size={13} />
             <span>Save Preset</span>
@@ -157,9 +157,9 @@ export default function TopBar() {
           <button
             onClick={handleRender}
             disabled={rendering}
-            className="flex items-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-black px-4 py-1.5 rounded-xl shadow-lg shadow-[#8FD3FF]/20 hover:scale-[1.02] transition-all"
+            className="flex items-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-black px-2.5 sm:px-4 py-1 rounded-xl shadow-lg shadow-[#8FD3FF]/20 hover:scale-[1.02] transition-all text-xs"
           >
-            <Scissors size={14} className={rendering ? "animate-spin" : ""} />
+            <Scissors size={13} className={rendering ? "animate-spin" : ""} />
             <span>{rendering ? 'RENDERING...' : 'RENDER 9:16'}</span>
           </button>
         </div>

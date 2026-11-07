@@ -1,9 +1,13 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { 
   FolderKanban, 
   Palette, 
-  Settings 
+  Settings,
+  Layers,
+  Monitor,
+  Sliders,
+  Clock
 } from 'lucide-react';
 import { useEditorStore } from '../store/editorStore';
 import TopBar from '../components/editor/TopBar';
@@ -14,6 +18,7 @@ import Timeline from '../components/editor/Timeline';
 
 export default function ClipEditorPage() {
   const { clipId } = useParams();
+  const [mobileView, setMobileView] = useState('canvas'); // 'canvas' | 'layers' | 'inspector'
   const { 
     initClip, 
     loading, 
@@ -188,9 +193,9 @@ export default function ClipEditorPage() {
   }
 
   return (
-    <div className="h-screen w-screen bg-[#0A0B0E] text-[#E8EAF0] flex overflow-hidden">
-      {/* Slim 48px Far-Left Icon Rail */}
-      <aside className="w-12 bg-[#0A0B0E] border-r border-white/[0.06] flex flex-col items-center justify-between py-4 select-none shrink-0 z-40">
+    <div className="h-screen w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col md:flex-row overflow-hidden">
+      {/* Slim 48px Far-Left Icon Rail (Hidden on mobile, visible on md+) */}
+      <aside className="hidden md:flex w-12 bg-[#0A0B0E] border-r border-white/[0.06] flex-col items-center justify-between py-4 select-none shrink-0 z-40">
         <div className="flex flex-col items-center gap-5">
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20">
             M
@@ -212,31 +217,73 @@ export default function ClipEditorPage() {
         </div>
       </aside>
 
-      {/* Main Studio Viewport (One Screen, Height-Fit 100dvh, No Page Scroll) */}
+      {/* Main Studio Viewport */}
       <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden">
         {/* Slim Top Bar */}
         <TopBar />
 
-        {/* 3-Column Studio: Left Tools (~220px) | Center Dual Canvases (Expanded) | Right Inspector (~280px) */}
-        <div className="flex-1 px-3 py-2 grid grid-cols-[220px_1fr_280px] gap-3 min-h-0 overflow-hidden">
-          {/* Left Tools Panel (Scrolls internally) */}
-          <div className="h-full min-h-0 overflow-hidden flex flex-col">
+        {/* Mobile View Toggle Tabs (Visible on < lg screens) */}
+        <div className="lg:hidden flex items-center justify-between px-3 py-1.5 bg-[#0D1017] border-b border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-1 w-full">
+            <button
+              onClick={() => setMobileView('canvas')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                mobileView === 'canvas'
+                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Monitor size={13} /> Canvas
+            </button>
+            <button
+              onClick={() => setMobileView('layers')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                mobileView === 'layers'
+                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Layers size={13} /> Layers &amp; Script
+            </button>
+            <button
+              onClick={() => setMobileView('inspector')}
+              className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                mobileView === 'inspector'
+                  ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Sliders size={13} /> Inspector
+            </button>
+          </div>
+        </div>
+
+        {/* 3-Column Studio Desktop / Responsive Stack on Mobile */}
+        <div className="flex-1 px-2 sm:px-3 py-2 flex flex-col lg:grid lg:grid-cols-[220px_1fr_280px] gap-2 sm:gap-3 min-h-0 overflow-hidden">
+          {/* Left Tools Panel */}
+          <div className={`h-full min-h-0 overflow-hidden flex-col ${
+            mobileView === 'layers' ? 'flex' : 'hidden lg:flex'
+          }`}>
             <LeftPanel />
           </div>
 
-          {/* Center Stage Row: Dual Canvases get all freed height, bottom panel deleted */}
-          <div className="h-full min-h-0 flex flex-col">
+          {/* Center Stage Row: Dual Canvases */}
+          <div className={`h-full min-h-0 flex-col ${
+            mobileView === 'canvas' ? 'flex' : 'hidden lg:flex'
+          }`}>
             <PreviewStage videoRef={videoRef} />
           </div>
 
-          {/* Right Inspector Panel (Contextual sidebar driven by selection) */}
-          <div className="h-full min-h-0 overflow-hidden flex flex-col">
+          {/* Right Inspector Panel */}
+          <div className={`h-full min-h-0 overflow-hidden flex-col ${
+            mobileView === 'inspector' ? 'flex' : 'hidden lg:flex'
+          }`}>
             <Inspector />
           </div>
         </div>
 
         {/* Unified Bottom Timeline Bar */}
-        <div className="px-3 pb-2 shrink-0">
+        <div className="px-2 sm:px-3 pb-2 shrink-0">
           <Timeline videoRef={videoRef} />
         </div>
       </div>
