@@ -123,17 +123,6 @@ export default function ReviewStation({ onStatusChange }) {
     staleTime: 10000,
   });
 
-  // Detailed query for secondary comparison clip (if selected)
-  const { data: compareClipData } = useQuery({
-    queryKey: ['clip_detail', compareClipId],
-    queryFn: async () => {
-      if (!compareClipId) return null;
-      return await getClip(compareClipId);
-    },
-    enabled: !!compareClipId,
-    staleTime: 10000,
-  });
-
   // Sync title and tags when clip detail arrives
   useEffect(() => {
     if (clipData) {
@@ -435,7 +424,6 @@ export default function ReviewStation({ onStatusChange }) {
                 {rowVirtualizer.getVirtualItems().map((virtualRow) => {
                   const clip = clips[virtualRow.index];
                   const isActive = clip.id === activeClipId;
-                  const isCompare = clip.id === compareClipId;
                   const isChecked = selectedClipIds.has(clip.id);
                   const dur = ((clip.adjusted_end || 30) - (clip.adjusted_start || 0)).toFixed(1);
 
