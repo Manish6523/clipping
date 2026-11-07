@@ -67,9 +67,14 @@ DATABASE_PATH = DATA_DIR / "autoclip.db"
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
 
-# Gemini API
+# Gemini API & Multi-Key Pool
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+_keys_env = os.getenv("GEMINI_API_KEYS", "")
+GEMINI_API_KEYS = [k.strip() for k in _keys_env.split(",") if k.strip()]
+if GEMINI_API_KEY and GEMINI_API_KEY not in GEMINI_API_KEYS:
+    GEMINI_API_KEYS.insert(0, GEMINI_API_KEY)
+
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest")
 
 # Twitch Credentials
 TWITCH_CLIENT_ID = os.getenv("TWITCH_CLIENT_ID", "")

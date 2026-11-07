@@ -22,7 +22,7 @@ except ImportError:
     gai = None
     HAS_GOOGLE_GENERATIVEAI = False
 
-from config.settings import GEMINI_API_KEY, GEMINI_MODEL, DEFAULT_MIN_VIRALITY_SCORE
+from config.settings import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_MODEL, DEFAULT_MIN_VIRALITY_SCORE
 
 logger = logging.getLogger(__name__)
 
@@ -48,10 +48,25 @@ class ViralScorer:
     """Evaluates transcripts and multimodal signals via Gemini to pinpoint viral hooks."""
 
     def __init__(self, api_key: str = GEMINI_API_KEY, model_name: str = GEMINI_MODEL):
-        self.api_key = api_key
+        self.api_keys: List[str] = list(GEMINI_API_KEYS)
+        if api_key and api_key not in self.api_keys:
+            self.api_keys.insert(0, api_key)
+        self.current_key_idx = 0
         self.model_name = model_name
         self._client = None
         self._init_client()
+
+    @property
+    def api_key(self) -> str:
+        if not self.api_keys:
+            return ""
+        return self.api_keys[self.current_key_idx % len(self.api_keys)]
+
+    def _rotate_key(self):
+        if len(self.api_keys) > 1:
+            self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
+            logger.warning("🔄 Quota reached in ViralScorer. Rotating to key #%d of %d.", self.current_key_idx + 1, len(self.api_keys))
+            self._init_client()
 
     def _init_client(self):
         if not self.api_key:
@@ -155,7 +170,17 @@ Return JSON with candidate clips meeting all criteria.
         except Exception as e:
             err_str = str(e).lower()
             if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit", "rate limit"]):
-                logger.error("🛑 Gemini AI quota/rate-limit reached: %s. Zero clips will be generated until quota resets.", e)
+                logger.warning("🛑 Gemini AI quota reached on key #%d. Attempting key rotation...", self.current_key_idx + 1)
+                if len(self.api_keys) > 1:
+                    self._rotate_key()
+                    # Retry with next key once
+                    return await self.analyze_transcript(
+                        transcript_data=transcript_data,
+                        min_score=min_score,
+                        chat_spikes=chat_spikes,
+                        audio_peaks=audio_peaks,
+                        heatmap_peaks=heatmap_peaks,
+                    )
             else:
                 logger.error("Gemini API call failed: %s. Skipping clip creation (heuristics disabled).", e)
             return []

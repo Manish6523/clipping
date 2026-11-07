@@ -12,10 +12,10 @@ import asyncio
 import hashlib
 import json
 import logging
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, List, Optional, Type
 from pydantic import BaseModel
 
-from config.settings import GEMINI_API_KEY, GEMINI_MODEL
+from config.settings import GEMINI_API_KEY, GEMINI_API_KEYS, GEMINI_MODEL
 from src.database import get_db_connection
 from src.intelligence.llm.prompts import PROMPT_VERSION
 
@@ -42,34 +42,52 @@ class GeminiClient:
     _semaphore: Optional[asyncio.Semaphore] = None
 
     def __init__(self, api_key: str = GEMINI_API_KEY, model_name: str = GEMINI_MODEL, max_concurrency: int = 3):
-        self.api_key = api_key
-        self.model_name = model_name or "gemini-2.5-flash"
+        self.api_keys: List[str] = list(GEMINI_API_KEYS)
+        if api_key and api_key not in self.api_keys:
+            self.api_keys.insert(0, api_key)
+        self.current_key_idx = 0
+        self.model_name = model_name or "gemini-flash-lite-latest"
         if GeminiClient._semaphore is None:
             GeminiClient._semaphore = asyncio.Semaphore(max_concurrency)
-        self._init_sdk()
+        self._init_current_sdk()
 
-    def _init_sdk(self):
-        if not self.api_key:
-            logger.warning("GEMINI_API_KEY is not set.")
+    @property
+    def current_api_key(self) -> str:
+        if not self.api_keys:
+            return ""
+        return self.api_keys[self.current_key_idx % len(self.api_keys)]
+
+    def _rotate_key(self):
+        """Rotate to the next key in the pool on 429 quota exhaustion."""
+        if len(self.api_keys) > 1:
+            self.current_key_idx = (self.current_key_idx + 1) % len(self.api_keys)
+            logger.warning("🔄 Quota reached. Switching to Gemini API key #%d of %d.", self.current_key_idx + 1, len(self.api_keys))
+            self._init_current_sdk()
+
+    def _init_current_sdk(self):
+        k = self.current_api_key
+        if not k:
+            logger.warning("No Gemini API keys configured.")
             self._client = None
+            self._mode = "none"
             return
 
         if HAS_GENAI and genai is not None:
             try:
-                self._client = genai.Client(api_key=self.api_key)
+                self._client = genai.Client(api_key=k)
                 self._mode = "genai"
                 return
             except Exception as e:
-                logger.warning("Could not initialize google.genai: %s", e)
+                logger.warning("Could not initialize google.genai with key: %s", e)
 
         if HAS_GOOGLE_GENERATIVEAI and gai is not None:
             try:
-                gai.configure(api_key=self.api_key)
+                gai.configure(api_key=k)
                 self._client = gai.GenerativeModel(self.model_name)
                 self._mode = "generativeai"
                 return
             except Exception as e:
-                logger.warning("Could not initialize google.generativeai: %s", e)
+                logger.warning("Could not initialize google.generativeai with key: %s", e)
 
         self._client = None
         self._mode = "none"
@@ -167,9 +185,10 @@ class GeminiClient:
                 except Exception as e:
                     err_str = str(e).lower()
                     if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit"]):
-                        logger.warning("Gemini rate limit encountered. Backing off for %.1fs (attempt %d/3)...", backoff, attempt + 1)
+                        logger.warning("Gemini rate limit encountered on key #%d. Attempting rotation or backoff...", self.current_key_idx + 1)
+                        self._rotate_key()
                         await asyncio.sleep(backoff)
-                        backoff *= 2.0
+                        backoff *= 1.5
                     else:
                         logger.error("Gemini invocation error: %s", e)
                         break
