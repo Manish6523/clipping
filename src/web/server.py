@@ -792,6 +792,9 @@ class WebUIServer:
             return web.json_response({"error": "URL required"}, status=400)
 
         time_range = data.get("time_range")
+        if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
+            time_range = f"{time_range[0]}-{time_range[1]}"
+
         if self.on_manual_clip:
             asyncio.create_task(self.on_manual_clip(url, template, time_range))
 

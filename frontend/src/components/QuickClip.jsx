@@ -15,10 +15,14 @@ export default function QuickClip({ templates = [] }) {
 
     setLoading(true);
     try {
+      let rangeVal = null;
+      if (startTime !== '' && endTime !== '') {
+        rangeVal = `${parseFloat(startTime)}-${parseFloat(endTime)}`;
+      }
       const payload = {
         url: url.trim(),
         template,
-        time_range: startTime && endTime ? [parseFloat(startTime), parseFloat(endTime)] : null,
+        time_range: rangeVal,
       };
       await clipManual(payload);
       alert('⚡ Quick clip pipeline launched in the background! Check Live Logs or Review Station.');
