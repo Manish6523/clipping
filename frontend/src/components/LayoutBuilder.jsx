@@ -434,11 +434,18 @@ export default function LayoutBuilder({
     if (!canvasElem) return;
     const rect = canvasElem.getBoundingClientRect();
 
+    if (e.target.setPointerCapture && e.pointerId) {
+      try {
+        e.target.setPointerCapture(e.pointerId);
+      } catch (err) {}
+    }
+
     setDragState({
       target, // 'src' | 'dst'
       layerId,
       actionType, // 'move' | 'resize'
       handle,
+      pointerId: e.pointerId,
       startX: e.clientX,
       startY: e.clientY,
       canvasW: rect.width,
@@ -513,12 +520,14 @@ export default function LayoutBuilder({
     };
 
     if (dragState) {
-      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointermove', handlePointerMove, { passive: false });
       window.addEventListener('pointerup', handlePointerUp);
+      window.addEventListener('pointercancel', handlePointerUp);
     }
     return () => {
       window.removeEventListener('pointermove', handlePointerMove);
       window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [dragState, updateLayer, enableSnapping]);
 
@@ -667,10 +676,10 @@ export default function LayoutBuilder({
           </div>
 
           {/* Interactive Source Canvas */}
-          <div className="w-full flex-1 flex items-center justify-center min-h-0 overflow-hidden">
+          <div className="w-full flex-1 flex items-center justify-center min-h-0 overflow-hidden touch-none">
             <div
               ref={srcCanvasRef}
-              className="w-full aspect-video max-h-full bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center select-none"
+              className="w-full aspect-video max-h-full bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center select-none touch-none"
             >
               {mode === 'clip' && sourceMediaUrl ? (
                 <video
@@ -711,7 +720,7 @@ export default function LayoutBuilder({
                     borderColor: layer.color || '#00F0FF',
                   }}
                   onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
-                  className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow ${
+                  className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                     isSelected 
                       ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.6)] z-30'
                       : 'border-white/40 hover:border-white/80 z-20'
@@ -735,15 +744,15 @@ export default function LayoutBuilder({
                           key={hnd}
                           onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'resize', hnd)}
                           style={{ borderColor: layer.color || '#00F0FF' }}
-                          className={`absolute w-3 h-3 bg-white border-2 rounded-full cursor-${hnd}-resize z-30 shadow hover:scale-125 transition-transform ${
-                            hnd === 'nw' ? '-top-1.5 -left-1.5' :
-                            hnd === 'ne' ? '-top-1.5 -right-1.5' :
-                            hnd === 'sw' ? '-bottom-1.5 -left-1.5' :
-                            hnd === 'se' ? '-bottom-1.5 -right-1.5' :
-                            hnd === 'n' ? '-top-1.5 left-1/2 -translate-x-1/2' :
-                            hnd === 's' ? '-bottom-1.5 left-1/2 -translate-x-1/2' :
-                            hnd === 'e' ? 'top-1/2 -right-1.5 -translate-y-1/2' :
-                            'top-1/2 -left-1.5 -translate-y-1/2'
+                          className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-white border-2 rounded-full cursor-${hnd}-resize z-30 shadow hover:scale-125 transition-transform touch-none ${
+                            hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
+                            hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
+                            hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
+                            hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
+                            hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
+                            hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
+                            hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
+                            'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
                           }`}
                         />
                       ))}
@@ -766,8 +775,8 @@ export default function LayoutBuilder({
           </div>
 
           {/* Interactive 9:16 Composite Viewport */}
-          <div className="w-full flex-1 flex justify-center items-center min-h-0">
-            <div className="h-full aspect-[9/16] bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center">
+          <div className="w-full flex-1 flex justify-center items-center min-h-0 touch-none">
+            <div className="h-full aspect-[9/16] bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center touch-none">
               <canvas
                 ref={dstCanvasRef}
                 width={1080}
@@ -793,7 +802,7 @@ export default function LayoutBuilder({
                       borderColor: layer.color || '#00F0FF',
                     }}
                     onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'move')}
-                    className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow ${
+                    className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                       isSelected
                         ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.5)] z-30'
                         : 'border-white/30 hover:border-white/80 z-20'
@@ -806,15 +815,15 @@ export default function LayoutBuilder({
                           <div
                             key={hnd}
                             onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'resize', hnd)}
-                            className={`absolute w-3 h-3 bg-[#8FD3FF] border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform ${
-                              hnd === 'nw' ? '-top-1.5 -left-1.5' :
-                              hnd === 'ne' ? '-top-1.5 -right-1.5' :
-                              hnd === 'sw' ? '-bottom-1.5 -left-1.5' :
-                              hnd === 'se' ? '-bottom-1.5 -right-1.5' :
-                              hnd === 'n' ? '-top-1.5 left-1/2 -translate-x-1/2' :
-                              hnd === 's' ? '-bottom-1.5 left-1/2 -translate-x-1/2' :
-                              hnd === 'e' ? 'top-1/2 -right-1.5 -translate-y-1/2' :
-                              'top-1/2 -left-1.5 -translate-y-1/2'
+                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-[#8FD3FF] border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform touch-none ${
+                              hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
+                              hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
+                              hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
+                              hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
+                              hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
+                              hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
+                              hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
+                              'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
                             }`}
                           />
                         ))}

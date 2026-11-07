@@ -356,35 +356,35 @@ export default function TemplateStudio() {
           />
         </div>
 
-        {/* Slim Bottom Settings Drawer (Minimal & Non-intrusive) */}
-        <div className="h-14 mt-2 bg-[#0E1118] border border-white/[0.08] rounded-xl px-4 flex items-center justify-between gap-4 shrink-0 shadow-lg text-xs">
+        {/* Slim Bottom Settings Drawer (Responsive Wrap & Touch Friendly) */}
+        <div className="mt-2 bg-[#0E1118] border border-white/[0.08] rounded-xl p-3 flex flex-col md:flex-row md:items-center justify-between gap-3 shrink-0 shadow-lg text-xs">
           {/* Template Details */}
-          <div className="flex items-center gap-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0]">Template:</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0] shrink-0">Template:</span>
             <input
               type="text"
               value={templateName}
               onChange={(e) => { setTemplateName(e.target.value); setIsDirty(true); }}
               placeholder="Template name"
-              className="bg-[#141722] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white font-mono w-44 focus:outline-none focus:border-[#8FD3FF]"
+              className="bg-[#141722] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-white font-mono flex-1 sm:w-44 focus:outline-none focus:border-[#8FD3FF]"
             />
             <input
               type="text"
               value={description}
               onChange={(e) => { setDescription(e.target.value); setIsDirty(true); }}
               placeholder="Description (optional)"
-              className="bg-[#141722] border border-white/10 rounded-lg px-2.5 py-1 text-xs text-slate-300 w-56 focus:outline-none focus:border-[#8FD3FF]"
+              className="bg-[#141722] border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-slate-300 flex-1 sm:w-56 focus:outline-none focus:border-[#8FD3FF]"
             />
           </div>
 
           {/* Subtitle Typography Quick Controls */}
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0]">Font:</span>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-4 border-t md:border-t-0 border-white/[0.06] pt-2 md:pt-0">
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0] shrink-0">Font:</span>
               <select
                 value={fontFamily}
                 onChange={(e) => { setFontFamily(e.target.value); setIsDirty(true); }}
-                className="bg-[#141722] border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                className="bg-[#141722] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
               >
                 <option value="Montserrat ExtraBold">Montserrat ExtraBold</option>
                 <option value="Anton">Anton</option>
@@ -394,12 +394,12 @@ export default function TemplateStudio() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0]">Animation:</span>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0] shrink-0">Animation:</span>
               <select
                 value={animationPreset}
                 onChange={(e) => { setAnimationPreset(e.target.value); setIsDirty(true); }}
-                className="bg-[#141722] border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none"
+                className="bg-[#141722] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
               >
                 <option value="pop">Pop (Punchy)</option>
                 <option value="bounce">Bounce</option>
@@ -408,17 +408,17 @@ export default function TemplateStudio() {
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0]">Captions Y:</span>
+            <div className="flex items-center gap-1.5 sm:gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0] shrink-0">Captions Y:</span>
               <input
                 type="range"
                 min="10"
                 max="90"
                 value={captionPositionY}
                 onChange={(e) => { setCaptionPositionY(Number(e.target.value)); setIsDirty(true); }}
-                className="w-24 accent-[#8FD3FF] cursor-pointer"
+                className="w-20 sm:w-24 accent-[#8FD3FF] cursor-pointer"
               />
-              <span className="font-mono text-slate-400 w-8 text-[11px]">{captionPositionY}%</span>
+              <span className="font-mono text-slate-400 w-7 text-[11px]">{captionPositionY}%</span>
             </div>
           </div>
         </div>
