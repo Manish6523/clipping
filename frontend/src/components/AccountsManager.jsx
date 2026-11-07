@@ -15,7 +15,13 @@ import {
   FileJson,
   Layers,
   Radio,
-  PlaySquare
+  PlaySquare,
+  Sliders,
+  Zap,
+  Globe,
+  Lock,
+  Eye,
+  SlidersHorizontal
 } from 'lucide-react';
 
 const YoutubeIcon = ({ size = 20, className = "" }) => (
@@ -34,6 +40,7 @@ import {
   saveYouTubeAppConfig,
   getYouTubeAuthUrl,
   getYouTubeAccounts,
+  patchYouTubeAccountConfig,
   deleteYouTubeAccount,
   importYouTubeAccount,
   getYouTubeMappings,
@@ -182,6 +189,16 @@ export default function AccountsManager() {
       showToast(`Updated mappings for ${streamerHandle}`);
     } catch (err) {
       alert('Failed to update mapping: ' + err.message);
+    }
+  };
+
+  const handleUpdateAccountSettings = async (accountKey, changes) => {
+    try {
+      await patchYouTubeAccountConfig(accountKey, changes);
+      showToast(`Updated settings for "${accountKey}"`);
+      loadAll();
+    } catch (err) {
+      alert('Failed to update account settings: ' + err.message);
     }
   };
 
@@ -346,9 +363,109 @@ export default function AccountsManager() {
                           </span>
                         )}
                       </div>
+
+                      {/* Automation & Policy Controls */}
+                      <div className="mt-3.5 pt-3 border-t border-white/[0.06] space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <Zap size={13} className={acc.auto_upload ? "text-amber-400" : "text-slate-500"} />
+                            <span className="text-[11px] font-bold text-white">Auto-Pilot Upload</span>
+                          </div>
+                          <button
+                            onClick={() => handleUpdateAccountSettings(acc.account_key, {
+                              auto_upload: !acc.auto_upload,
+                              min_score_threshold: acc.min_score_threshold || 75,
+                              drip_delay_hours: acc.drip_delay_hours || 4,
+                              privacy_status: acc.privacy_status || 'public',
+                              tag_override: acc.tag_override || '#Shorts #Viral #Gaming'
+                            })}
+                            className={`w-9 h-5 rounded-full transition-colors relative cursor-pointer ${
+                              acc.auto_upload ? 'bg-amber-500' : 'bg-slate-700'
+                            }`}
+                          >
+                            <span className={`w-3.5 h-3.5 rounded-full bg-white absolute top-0.5 transition-transform ${
+                              acc.auto_upload ? 'left-4.5' : 'left-1'
+                            }`} />
+                          </button>
+                        </div>
+
+                        {acc.auto_upload ? (
+                          <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-2.5 space-y-2 animate-in fade-in">
+                            <div className="flex items-center justify-between text-[11px]">
+                              <span className="text-slate-400">Min Virality Score:</span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-bold font-mono text-amber-400">{acc.min_score_threshold || 75}</span>
+                                <span className="text-[9px] text-slate-500">/ 100</span>
+                              </div>
+                            </div>
+                            <input
+                              type="range"
+                              min={50}
+                              max={95}
+                              step={5}
+                              value={acc.min_score_threshold || 75}
+                              onChange={(e) => handleUpdateAccountSettings(acc.account_key, {
+                                auto_upload: true,
+                                min_score_threshold: Number(e.target.value),
+                                drip_delay_hours: acc.drip_delay_hours || 4,
+                                privacy_status: acc.privacy_status || 'public',
+                                tag_override: acc.tag_override || '#Shorts #Viral #Gaming'
+                              })}
+                              className="w-full accent-amber-500 cursor-pointer h-1 bg-black/40 rounded-lg"
+                            />
+
+                            <div className="grid grid-cols-2 gap-2 pt-1 text-[10px]">
+                              <div>
+                                <label className="text-slate-400 block mb-0.5">Drip Interval:</label>
+                                <select
+                                  value={acc.drip_delay_hours || 4}
+                                  onChange={(e) => handleUpdateAccountSettings(acc.account_key, {
+                                    auto_upload: true,
+                                    min_score_threshold: acc.min_score_threshold || 75,
+                                    drip_delay_hours: Number(e.target.value),
+                                    privacy_status: acc.privacy_status || 'public',
+                                    tag_override: acc.tag_override || '#Shorts #Viral #Gaming'
+                                  })}
+                                  className="w-full bg-[#141824] border border-white/10 rounded px-1.5 py-1 text-white text-[10px] font-mono"
+                                >
+                                  <option value={1}>Every 1 hr</option>
+                                  <option value={2}>Every 2 hrs</option>
+                                  <option value={4}>Every 4 hrs</option>
+                                  <option value={6}>Every 6 hrs</option>
+                                  <option value={8}>Every 8 hrs</option>
+                                </select>
+                              </div>
+
+                              <div>
+                                <label className="text-slate-400 block mb-0.5">Privacy:</label>
+                                <select
+                                  value={acc.privacy_status || 'public'}
+                                  onChange={(e) => handleUpdateAccountSettings(acc.account_key, {
+                                    auto_upload: true,
+                                    min_score_threshold: acc.min_score_threshold || 75,
+                                    drip_delay_hours: acc.drip_delay_hours || 4,
+                                    privacy_status: e.target.value,
+                                    tag_override: acc.tag_override || '#Shorts #Viral #Gaming'
+                                  })}
+                                  className="w-full bg-[#141824] border border-white/10 rounded px-1.5 py-1 text-white text-[10px] font-mono"
+                                >
+                                  <option value="public">Public</option>
+                                  <option value="unlisted">Unlisted</option>
+                                  <option value="private">Private</option>
+                                </select>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-slate-500 bg-white/[0.02] p-2 rounded-xl flex items-center gap-1.5">
+                            <ShieldCheck size={12} className="text-[#8FD3FF]" />
+                            <span>Requires manual approval in Review Station.</span>
+                          </div>
+                        )}
+                      </div>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
+                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
                       <span>Mapped to:</span>
                       <span className="font-bold text-white">
                         {mappings.filter((m) => m.account_key === acc.account_key).length} streamers

@@ -34,6 +34,7 @@ from src.database import (
     set_streamer_yt_mappings,
     get_oauth_app_config,
     save_oauth_app_config,
+    update_youtube_account_config,
 )
 
 logger = logging.getLogger(__name__)
@@ -305,6 +306,28 @@ async def set_mappings_handler(request: web.Request) -> web.Response:
     return web.json_response({"success": True, "streamer_handle": streamer_handle, "account_keys": account_keys})
 
 
+async def update_account_config_handler(request: web.Request) -> web.Response:
+    """Update auto-upload rules and score thresholds for an account."""
+    key = request.match_info["key"]
+    data = await request.json()
+
+    auto_upload = bool(data.get("auto_upload", False))
+    min_score = int(data.get("min_score_threshold", 75))
+    drip_delay = int(data.get("drip_delay_hours", 4))
+    privacy = str(data.get("privacy_status", "public"))
+    tags = str(data.get("tag_override", "#Shorts #Viral #Gaming"))
+
+    await update_youtube_account_config(
+        account_key=key,
+        auto_upload=auto_upload,
+        min_score_threshold=min_score,
+        drip_delay_hours=drip_delay,
+        privacy_status=privacy,
+        tag_override=tags,
+    )
+    return web.json_response({"success": True, "account_key": key})
+
+
 def register_youtube_routes(app: web.Application) -> None:
     """Register all YouTube OAuth & Multi-Account routes."""
     app.router.add_get("/api/youtube/app-config", get_app_config_handler)
@@ -312,6 +335,7 @@ def register_youtube_routes(app: web.Application) -> None:
     app.router.add_get("/api/youtube/auth-url", get_auth_url_handler)
     app.router.add_get("/api/youtube/oauth2callback", oauth2_callback_handler)
     app.router.add_get("/api/youtube/accounts", list_accounts_handler)
+    app.router.add_patch("/api/youtube/accounts/{key}", update_account_config_handler)
     app.router.add_delete("/api/youtube/accounts/{key}", delete_account_handler)
     app.router.add_post("/api/youtube/accounts/import", import_account_handler)
     app.router.add_get("/api/youtube/mappings", get_mappings_handler)

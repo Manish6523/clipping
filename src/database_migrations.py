@@ -267,6 +267,41 @@ async def migration_v8(db):
     await db.commit()
 
 
+@migration(9, "Add account auto-upload rules and destination configurations")
+async def migration_v9(db):
+    cur = await db.execute("PRAGMA table_info(youtube_accounts)")
+    cols = [r["name"] if isinstance(r, dict) else r[1] for r in await cur.fetchall()]
+
+    if "auto_upload" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN auto_upload INTEGER DEFAULT 0")
+    if "min_score_threshold" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN min_score_threshold INTEGER DEFAULT 75")
+    if "drip_delay_hours" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN drip_delay_hours INTEGER DEFAULT 4")
+    if "privacy_status" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN privacy_status TEXT DEFAULT 'public'")
+    if "tag_override" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN tag_override TEXT DEFAULT '#Shorts #Viral #Gaming'")
+
+    # Table to track per-clip, per-destination upload status
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS clip_destination_uploads (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+            account_key TEXT NOT NULL,
+            status TEXT DEFAULT 'pending' CHECK(status IN ('pending', 'queued', 'uploading', 'published', 'failed')),
+            video_url TEXT,
+            video_id TEXT,
+            error_message TEXT,
+            uploaded_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(clip_id, account_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_clip_dest_uploads ON clip_destination_uploads(clip_id, account_key);
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

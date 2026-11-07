@@ -264,7 +264,34 @@ async def create_clip(
             ),
         )
         await db.commit()
-        return cursor.lastrowid or 0
+        new_clip_id = cursor.lastrowid or 0
+
+        # Auto-upload evaluation for accounts with auto_upload enabled
+        try:
+            from src.publisher.scheduler import DripScheduler
+            from config.settings import DRIP_INTERVAL_HOURS
+            async with get_db_connection() as eval_db:
+                m_cur = await eval_db.execute(
+                    """
+                    SELECT a.* FROM youtube_accounts a
+                    JOIN streamer_yt_mappings m ON a.account_key = m.account_key
+                    WHERE (m.streamer_handle = ? OR m.streamer_handle = ?)
+                      AND a.is_active = 1
+                      AND a.auto_upload = 1
+                    """,
+                    (channel_id, channel_id.lstrip("@")),
+                )
+                auto_accounts = await m_cur.fetchall()
+                for acc in auto_accounts:
+                    min_score = acc["min_score_threshold"] or 75
+                    if virality_score >= min_score:
+                        drip_hrs = acc["drip_delay_hours"] or DRIP_INTERVAL_HOURS
+                        next_slot = DripScheduler.calculate_next_slot(drip_hrs)
+                        await enqueue_clip(new_clip_id, next_slot)
+        except Exception as auto_err:
+            pass
+
+        return new_clip_id
 
 
 async def get_clip(clip_id: int) -> Optional[Dict[str, Any]]:
@@ -615,6 +642,39 @@ async def delete_youtube_account(account_key: str) -> bool:
         await db.execute("DELETE FROM youtube_accounts WHERE account_key = ?", (account_key,))
         await db.commit()
         return True
+
+
+async def update_youtube_account_config(
+    account_key: str,
+    auto_upload: bool,
+    min_score_threshold: int,
+    drip_delay_hours: int,
+    privacy_status: str,
+    tag_override: str,
+) -> None:
+    """Update automation rules and score thresholds for an account."""
+    async with get_db_connection() as db:
+        await db.execute(
+            """
+            UPDATE youtube_accounts
+            SET auto_upload = ?,
+                min_score_threshold = ?,
+                drip_delay_hours = ?,
+                privacy_status = ?,
+                tag_override = ?,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE account_key = ?
+            """,
+            (
+                1 if auto_upload else 0,
+                int(min_score_threshold),
+                int(drip_delay_hours),
+                str(privacy_status),
+                str(tag_override),
+                str(account_key),
+            ),
+        )
+        await db.commit()
 
 
 async def get_streamer_yt_mappings() -> List[Dict[str, Any]]:
