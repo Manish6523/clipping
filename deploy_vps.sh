@@ -96,3 +96,4 @@ echo ""
 echo "4. In Oracle Cloud Console, make sure to add an Ingress Rule"
 echo "   for TCP Port 8080 in your Virtual Cloud Network (VCN) Security List."
 echo "=========================================================="
+
