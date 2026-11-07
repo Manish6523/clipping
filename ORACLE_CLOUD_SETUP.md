@@ -1,6 +1,6 @@
 # AutoClip - Oracle Cloud Always-Free Operations & Production Guide
 
-This guide contains everything you need to know about your live Oracle Cloud server, including credentials, SSH access, firewall commands, and service management.
+This guide contains everything you need to know about your live Oracle Cloud server, including credentials, SSH access, firewall commands, domain setup, and service management.
 
 ---
 
@@ -15,7 +15,7 @@ This guide contains everything you need to know about your live Oracle Cloud ser
 * **Private Key Location (Your Laptop)**: `C:\Users\krish\Downloads\cloud-infra-oracle\ssh-key-2026-11-07.key`
 * **Virtual Cloud Network**: `autoclip-vcn`
 * **Public Subnet**: `public subnet-autoclip-vcn`
-* **Web UI Dashboard URL**: `http://137.23.61.124:8080`
+* **Production HTTPS Domain**: [https://clip.manish.casa](https://clip.manish.casa)
 * **GitHub Repository**: [https://github.com/Manish6523/clipping](https://github.com/Manish6523/clipping)
 * **Server Code Directory**: `/home/ubuntu/apps/clipping`
 
@@ -32,35 +32,38 @@ ssh -i "ssh-key-2026-11-07.key" ubuntu@137.23.61.124
 
 ---
 
-## 3. Firewall Rules (Dual-Layer: Cloud + OS)
+## 3. Production Architecture
 
-Oracle Cloud requires two firewall permissions to let traffic through to port 8080:
-
-### Layer A: Oracle Cloud VCN Security List (Already configured)
-* **Source CIDR**: `0.0.0.0/0`
-* **IP Protocol**: `TCP`
-* **Destination Port Range**: `8080`
-
-### Layer B: Ubuntu Internal OS Firewall (Run once on server)
-If you ever experience a connection timeout on port 8080, run:
-```bash
-sudo iptables -I INPUT 1 -p tcp --dport 8080 -j ACCEPT
-sudo iptables-save | sudo tee /etc/iptables/rules.v4
+```
+Internet (Phone / Laptop)
+           │
+           ▼
+Cloudflare Edge (SSL / Flexible HTTPS)
+           │ (Port 80)
+           ▼
+Oracle Cloud VPS (137.23.61.124)
+           │
+           ▼
+Nginx Reverse Proxy (/etc/nginx/sites-available/clip.manish.casa)
+           │ (Port 8080)
+           ▼
+AutoClip Daemon & Web UI (systemd: autoclip.service)
 ```
 
 ---
 
-## 4. Virtual Memory (Swap) Configuration
+## 4. Google OAuth App Configuration
 
-Because the micro shape has 1 GB of physical RAM, a 4 GB virtual swap file ensures that FFmpeg video encoding, faster-whisper transcription, and stream monitoring run without memory crashes:
-
-```bash
-sudo fallocate -l 4G /swapfile
-sudo chmod 600 /swapfile
-sudo mkswap /swapfile
-sudo swapon /swapfile
-echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
-```
+In **[Google Cloud Console](https://console.cloud.google.com/apis/credentials)**:
+* **Authorized JavaScript origins**:
+  ```text
+  https://clip.manish.casa
+  ```
+* **Authorized redirect URIs**:
+  ```text
+  https://clip.manish.casa/api/youtube/oauth2callback
+  http://localhost:8080/api/youtube/oauth2callback
+  ```
 
 ---
 
@@ -79,10 +82,11 @@ cd ~/apps/clipping
 | **Stop AutoClip** | `sudo systemctl stop autoclip` |
 | **Start AutoClip** | `sudo systemctl start autoclip` |
 | **Edit Environment / API Keys** | `nano config/.env` |
+| **Restart Nginx** | `sudo systemctl restart nginx` |
 
 ---
 
-## 6. How to Deploy Future Updates
+## 6. How to Deploy Future Code Updates
 
 Whenever you make changes to the code on your laptop and push to GitHub:
 
