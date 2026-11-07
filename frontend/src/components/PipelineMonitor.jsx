@@ -20,19 +20,29 @@ export default function PipelineMonitor() {
   const [loading, setLoading] = useState(true);
   const [selectedRun, setSelectedRun] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [filterActiveOnly, setFilterActiveOnly] = useState(true);
 
   useEffect(() => {
     fetchRuns();
-    const interval = setInterval(fetchRuns, 5000);
+    const interval = setInterval(fetchRuns, 4000);
     return () => clearInterval(interval);
-  }, []);
+  }, [filterActiveOnly]);
 
   const fetchRuns = async () => {
     try {
       const res = await axios.get('/api/pipeline/runs');
-      setRuns(res.data || []);
-      if (!selectedRun && res.data?.length > 0) {
-        setSelectedRun(res.data[0]);
+      const allRuns = res.data || [];
+      // If user wants to only see active in-flight pipelines, filter out finished ones
+      const displayed = filterActiveOnly 
+        ? allRuns.filter(r => r.status === 'running' || r.status === 'processing' || r.status === 'triggered') 
+        : allRuns;
+      
+      setRuns(displayed);
+      if (displayed.length > 0) {
+        // Keep selected if still in list, or select first
+        setSelectedRun(prev => (prev && displayed.some(r => r.id === prev.id) ? prev : displayed[0]));
+      } else {
+        setSelectedRun(null);
       }
     } catch (err) {
       console.error('Failed to fetch pipeline runs:', err);
@@ -212,10 +222,18 @@ export default function PipelineMonitor() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Left Column: Recent Runs */}
           <div className="lg:col-span-1 space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-              <Activity className="w-4 h-4 text-cyan-400" />
-              Recent Pipeline Runs ({runs.length})
-            </h2>
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                <Activity className="w-4 h-4 text-cyan-400" />
+                {filterActiveOnly ? 'Active Pipelines' : 'All Runs'} ({runs.length})
+              </h2>
+              <button
+                onClick={() => setFilterActiveOnly(!filterActiveOnly)}
+                className="text-[11px] text-cyan-400 hover:text-cyan-300 font-medium underline"
+              >
+                {filterActiveOnly ? 'Show Completed History' : 'Active Only'}
+              </button>
+            </div>
 
             {loading ? (
               <div className="flex justify-center p-8">
@@ -223,7 +241,7 @@ export default function PipelineMonitor() {
               </div>
             ) : runs.length === 0 ? (
               <div className="bg-slate-900/50 border border-slate-800 rounded-xl p-8 text-center text-slate-500 text-sm">
-                No pipeline runs recorded yet. Start a Quick Clip to trigger a run!
+                {filterActiveOnly ? 'No active pipelines currently running. All tasks completed!' : 'No pipeline runs recorded.'}
               </div>
             ) : (
               <div className="space-y-2 max-h-[650px] overflow-y-auto pr-1">
@@ -294,26 +312,64 @@ export default function PipelineMonitor() {
 
                 {/* Full Execution Flow Status */}
                 <div className="space-y-3">
-                  <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
-                    Execution Pipeline Checklist
-                  </h3>
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                      Execution Pipeline Checklist
+                    </h3>
+                    {selectedRun.stage && (
+                      <span className="text-xs font-mono text-cyan-400 bg-cyan-950/60 border border-cyan-800/80 px-2.5 py-0.5 rounded-full">
+                        {selectedRun.stage}
+                      </span>
+                    )}
+                  </div>
 
                   <div className="space-y-2">
                     {[
-                      { name: 'Word-Level Transcription & Sentence Mapping', done: true },
-                      { name: 'Multi-Signal Heat Curve & Overlap Windows', done: true },
-                      { name: 'Sentence Boundary Snapper Search', done: true },
-                      { name: 'Temporal (25%) & Content Deduplication', done: true },
-                      { name: 'Stage A: Gemini Flash Triage Evaluation', done: true },
-                      { name: 'Stage B: 2-Second Hook & Standalone Check', done: true },
-                      { name: 'Maximal Marginal Relevance (MMR) Diverse Selection', done: true },
-                    ].map((step, idx) => (
-                      <div key={idx} className="flex items-center gap-3 p-2.5 rounded-lg bg-slate-950/50 border border-slate-800/80">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                        <span className="text-xs text-slate-300 font-medium">{step.name}</span>
-                        <span className="ml-auto text-[10px] text-slate-500 font-mono">COMPLETE</span>
-                      </div>
-                    ))}
+                      { stepNum: 1, name: 'Word-Level Transcription & Sentence Mapping' },
+                      { stepNum: 2, name: 'Multi-Signal Heat Curve & Overlap Windows' },
+                      { stepNum: 3, name: 'Sentence Boundary Snapper Search' },
+                      { stepNum: 3, name: 'Temporal (25%) & Content Deduplication' },
+                      { stepNum: 4, name: 'Stage A: Gemini Flash Triage Evaluation' },
+                      { stepNum: 4, name: 'Stage B: 2-Second Hook & Standalone Check' },
+                      { stepNum: 5, name: 'Maximal Marginal Relevance (MMR) & Final Rendering' },
+                    ].map((step, idx) => {
+                      const curStep = selectedRun.step || (selectedRun.status === 'completed' ? 5 : 2);
+                      const isCompleted = selectedRun.status === 'completed' || curStep > step.stepNum;
+                      const isInProgress = selectedRun.status === 'running' && curStep === step.stepNum;
+
+                      return (
+                        <div 
+                          key={idx} 
+                          className={`flex items-center gap-3 p-2.5 rounded-lg border transition-all ${
+                            isInProgress 
+                              ? 'bg-cyan-950/40 border-cyan-500/80 shadow-sm shadow-cyan-500/10'
+                              : isCompleted 
+                              ? 'bg-slate-950/50 border-slate-800/80' 
+                              : 'bg-slate-950/20 border-slate-900 opacity-40'
+                          }`}
+                        >
+                          {isInProgress ? (
+                            <div className="w-4 h-4 border-2 border-cyan-400 border-t-transparent rounded-full animate-spin shrink-0" />
+                          ) : isCompleted ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (
+                            <Clock className="w-4 h-4 text-slate-600 shrink-0" />
+                          )}
+                          <span className={`text-xs font-medium ${isInProgress ? 'text-cyan-300 font-semibold' : isCompleted ? 'text-slate-300' : 'text-slate-500'}`}>
+                            {step.name}
+                          </span>
+                          <span className={`ml-auto text-[10px] font-mono px-2 py-0.5 rounded ${
+                            isInProgress 
+                              ? 'text-cyan-400 bg-cyan-950 border border-cyan-800 animate-pulse'
+                              : isCompleted 
+                              ? 'text-emerald-500 bg-emerald-950/40' 
+                              : 'text-slate-600'
+                          }`}>
+                            {isInProgress ? 'IN PROGRESS' : isCompleted ? 'COMPLETE' : 'PENDING'}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </div>

@@ -921,16 +921,23 @@ class WebUIServer:
         from src.web.logger_stream import get_pipeline_state
 
         runs = []
-        # First check in-flight pipelines from memory state
+        # First check in-flight pipelines from memory state (ONLY currently active, non-completed/non-idle)
         p_state = get_pipeline_state()
         active_list = p_state.get("active_pipelines", [])
         for act in active_list:
+            act_status = act.get("status", "running")
+            # Only include genuinely running / processing jobs
+            if act_status in ("completed", "idle"):
+                continue
+            
             runs.append({
                 "id": f"live_{act.get('channel_id', 'job')}",
                 "source_id": f"Manual / Live ({act.get('trigger_reason', 'stream')})",
                 "channel_id": act.get("channel_id", "live"),
                 "stage": act.get("step_name", "processing"),
-                "status": "running" if act.get("status") in ("processing", "triggered") else act.get("status", "running"),
+                "step": act.get("current_step", 1),
+                "total_steps": 5,
+                "status": "running" if act_status in ("processing", "triggered") else act_status,
                 "candidates_count": 1,
                 "latency_seconds": round(time.time() - act.get("updated_at", time.time()), 1),
                 "prompt_version": "v2.0_best_clips",
