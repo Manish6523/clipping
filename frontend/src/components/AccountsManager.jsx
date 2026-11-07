@@ -18,7 +18,7 @@ import {
   PlaySquare
 } from 'lucide-react';
 
-const YoutubeIconIcon = ({ size = 20, className = "" }) => (
+const YoutubeIcon = ({ size = 20, className = "" }) => (
   <svg
     width={size}
     height={size}
@@ -308,9 +308,12 @@ export default function AccountsManager() {
                             <img
                               src={acc.thumbnail_url}
                               alt={acc.channel_title}
+                              referrerPolicy="no-referrer"
+                              onError={(e) => { e.target.style.display = 'none'; }}
                               className="w-9 h-9 rounded-full border border-white/10 object-cover"
                             />
-                          ) : (
+                          ) : null}
+                          {(!acc.thumbnail_url) && (
                             <div className="w-9 h-9 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-xs">
                               YT
                             </div>
