@@ -66,6 +66,10 @@ function AppLayout() {
     };
   }, [queryClient]);
 
+  const handleDismissToast = (toastId) => {
+    setToasts((prev) => prev.filter((t) => t.toast_id !== toastId));
+  };
+
   const fetchSystemStatus = async () => {
     try {
       const [sData, pData] = await Promise.all([
@@ -146,8 +150,12 @@ function AppLayout() {
         </Suspense>
       </main>
 
-      {/* Persistent Bottom-Right Hype Moment Toasts (Stack showing all simultaneous hype moments, non-cancellable) */}
-      <HypeMomentToasts activePipelines={activePipelines} toasts={toasts} />
+      {/* Bottom-Right Hype Moment Toast Feed */}
+      <HypeMomentToasts 
+        activePipelines={activePipelines} 
+        toasts={toasts} 
+        onDismissToast={handleDismissToast} 
+      />
     </div>
   );
 }
