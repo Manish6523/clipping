@@ -92,8 +92,8 @@ class ViralScorer:
         Evaluate full transcript and metadata to discover 25-58s viral clips.
         """
         if not self._client or not self.api_key:
-            logger.warning("No Gemini client available; using heuristic viral scorer.")
-            return self._heuristic_fallback(transcript_data, min_score)
+            logger.warning("No Gemini client or API key available. Skipping clip creation (heuristics disabled).")
+            return []
 
         system_instruction = (
             "You are an elite short-form social video editor specializing in YouTube Shorts and Instagram Reels.\n"
@@ -153,8 +153,12 @@ Return JSON with candidate clips meeting all criteria.
             return filtered
 
         except Exception as e:
-            logger.error("Gemini API call failed: %s", e)
-            return self._heuristic_fallback(transcript_data, min_score)
+            err_str = str(e).lower()
+            if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit", "rate limit"]):
+                logger.error("🛑 Gemini AI quota/rate-limit reached: %s. Zero clips will be generated until quota resets.", e)
+            else:
+                logger.error("Gemini API call failed: %s. Skipping clip creation (heuristics disabled).", e)
+            return []
 
     def _heuristic_fallback(self, transcript_data: Dict[str, Any], min_score: int) -> List[ViralHookCandidate]:
         """
