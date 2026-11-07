@@ -23,6 +23,7 @@ export default function Settings() {
   const [minScore, setMinScore] = useState(70);
   const [testingKey, setTestingKey] = useState(null);
   const [testResults, setTestResults] = useState({});
+  const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -70,6 +71,7 @@ export default function Settings() {
   const handleRemoveKey = async (idx) => {
     const updated = keys.filter((_, i) => i !== idx);
     setKeys(updated);
+    setConfirmDeleteIdx(null);
     try {
       await axios.post('/api/settings', {
         gemini_api_keys: updated,
@@ -227,20 +229,41 @@ export default function Settings() {
                   </div>
 
                   <div className="flex items-center gap-2 self-end sm:self-auto">
-                    <button
-                      onClick={() => handleTestKey(kStr, idx)}
-                      disabled={testingKey === idx}
-                      className="px-2.5 py-1 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/50 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                    >
-                      <Zap className={`w-3.5 h-3.5 ${testingKey === idx ? 'animate-pulse' : ''}`} />
-                      {testingKey === idx ? 'Testing...' : 'Test'}
-                    </button>
-                    <button
-                      onClick={() => handleRemoveKey(idx)}
-                      className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {confirmDeleteIdx === idx ? (
+                      <div className="flex items-center gap-1.5 bg-red-950/60 border border-red-800/80 px-2 py-1 rounded-lg">
+                        <span className="text-[11px] text-red-300 font-medium">Delete?</span>
+                        <button
+                          onClick={() => handleRemoveKey(idx)}
+                          className="px-2 py-0.5 text-[11px] font-bold bg-red-600 hover:bg-red-500 text-white rounded transition-colors cursor-pointer"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteIdx(null)}
+                          className="px-2 py-0.5 text-[11px] text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleTestKey(kStr, idx)}
+                          disabled={testingKey === idx}
+                          className="px-2.5 py-1 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-cyan-950/50 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                        >
+                          <Zap className={`w-3.5 h-3.5 ${testingKey === idx ? 'animate-pulse' : ''}`} />
+                          {testingKey === idx ? 'Testing...' : 'Test'}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDeleteIdx(idx)}
+                          className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
+                          title="Delete Key"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               );
