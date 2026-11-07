@@ -23,7 +23,7 @@
       "type": "solid",
       "source_layer": null,
       "blur": 0,
-      "dim": 0.0,
+      "dim": 0,
       "color": "#000000"
     },
     "layers": [
@@ -34,21 +34,21 @@
         "visible": true,
         "locked": false,
         "src": {
-          "x": 0.05,
-          "y": 0.51,
+          "x": 0.057,
+          "y": 0.616,
           "w": 0.25,
-          "h": 0.49
+          "h": 0.384
         },
         "dst": {
-          "x": 0.0,
-          "y": 0.38,
-          "w": 1.0,
-          "h": 0.62
+          "x": 0,
+          "y": 0.526,
+          "w": 1,
+          "h": 0.474
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -56,11 +56,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {
@@ -80,21 +80,21 @@
         "visible": true,
         "locked": false,
         "src": {
-          "x": 0.0,
-          "y": 0.0,
-          "w": 1.0,
-          "h": 1.0
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
         },
         "dst": {
-          "x": 0.0,
-          "y": 0.0,
-          "w": 1.0,
-          "h": 0.38
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 0.528
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -102,11 +102,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {
@@ -159,11 +159,11 @@
     "outline": 4,
     "shadow": 2,
     "alignment": 2,
-    "margin_v": 461,
+    "margin_v": 998,
     "animation": "pop",
     "position": {
       "x": 0.5,
-      "y": 0.76,
+      "y": 0.48,
       "max_width": 0.85
     }
   },

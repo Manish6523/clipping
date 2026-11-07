@@ -45,6 +45,10 @@ data/*.db-wal
 data/*.db-shm
 data/*.sqlite
 data/*.sqlite3
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
 data/backups/
 tmp/
 renders/
