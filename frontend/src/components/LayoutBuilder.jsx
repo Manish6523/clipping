@@ -665,7 +665,7 @@ export default function LayoutBuilder({
           <div className="w-full flex-1 flex items-center justify-center min-h-0 overflow-hidden">
             <div
               ref={srcCanvasRef}
-              className="h-full aspect-video bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center max-w-full"
+              className="w-full aspect-video max-h-full bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center select-none"
             >
               {mode === 'clip' && sourceMediaUrl ? (
                 <video
@@ -675,14 +675,14 @@ export default function LayoutBuilder({
                   crossOrigin="anonymous"
                   playsInline
                   preload="auto"
-                  className="w-full h-full object-fill pointer-events-none"
+                  className="w-full h-full object-cover pointer-events-none"
                 />
               ) : sourceMediaUrl ? (
                 <img
                   key={sourceMediaUrl}
                   src={sourceMediaUrl}
                   alt="Source Frame"
-                  className="w-full h-full object-fill pointer-events-none"
+                  className="w-full h-full object-cover pointer-events-none"
                 />
               ) : (
                 <div className="text-slate-600 text-xs">No media loaded</div>
