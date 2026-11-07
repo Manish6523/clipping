@@ -9,6 +9,7 @@ import logging
 
 from config.settings import USE_VAAPI, VAAPI_DEVICE, RENDER_DIR
 from src.compositor.face_tracker import FaceTracker
+from src.compositor.filter_graph_builder import build_filter_graph
 from src.compositor.crop_calculator import build_crop_filter
 
 logger = logging.getLogger(__name__)
@@ -45,12 +46,27 @@ class FFmpegRenderer:
         Outputs are labelled [vout].
         """
         layout = template.get("layout", {})
-        l_type = layout.get("type", "facecam_top_gameplay_bottom")
         anti = template.get("anti_shadowban", {})
         speed = anti.get("speed_multiplier", 1.02)
         contrast = anti.get("contrast", 1.03)
         saturation = anti.get("saturation", 1.05)
 
+        # If layout has schema 2 or multi-layer definitions, use modern filter graph builder
+        if layout.get("schema") == 2 or "layers" in layout:
+            graph_res = build_filter_graph(
+                layout_data=layout,
+                src_w=1920,
+                src_h=1080,
+                input_tag="0:v",
+                ass_path=ass_path,
+                watermark_path=watermark_path if has_watermark else None,
+                speed_multiplier=speed,
+                contrast=contrast,
+                saturation=saturation,
+            )
+            return graph_res["filter_complex"]
+
+        l_type = layout.get("type", "facecam_top_gameplay_bottom")
         filters: List[str] = []
 
         if l_type == "facecam_top_gameplay_bottom":

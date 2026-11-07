@@ -14,9 +14,113 @@
     "CLIP THIS"
   ],
   "layout": {
+    "schema": 2,
     "type": "split_screen_50_50",
-    "target_width": 1080,
-    "target_height": 1920,
+    "canvas": {
+      "w": 1080,
+      "h": 1920
+    },
+    "background": {
+      "type": "solid",
+      "source_layer": null,
+      "blur": 0,
+      "dim": 0.0,
+      "color": "#000000"
+    },
+    "layers": [
+      {
+        "id": "l_top",
+        "name": "Speaker 1 (Top)",
+        "color": "#FFB020",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 0.5,
+          "h": 1.0
+        },
+        "dst": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 0.5
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0.0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0.0,
+            "dx": 0,
+            "dy": 0
+          },
+          "opacity": 1.0,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        },
+        "keyframes": {
+          "src": [],
+          "dst": []
+        },
+        "visible_range": null
+      },
+      {
+        "id": "l_bot",
+        "name": "Speaker 2 (Bottom)",
+        "color": "#00F0FF",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0.5,
+          "y": 0.0,
+          "w": 0.5,
+          "h": 1.0
+        },
+        "dst": {
+          "x": 0.0,
+          "y": 0.5,
+          "w": 1.0,
+          "h": 0.5
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0.0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0.0,
+            "dx": 0,
+            "dy": 0
+          },
+          "opacity": 1.0,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        },
+        "keyframes": {
+          "src": [],
+          "dst": []
+        },
+        "visible_range": null
+      }
+    ],
     "top_crop": {
       "name": "speaker_one",
       "source_x": 0,
@@ -75,4 +179,3 @@
     "instagram_account_key": "podcast_ig"
   }
 }
-

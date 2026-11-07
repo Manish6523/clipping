@@ -2,34 +2,27 @@ import React, { useRef, useState, useEffect } from 'react';
 import { 
   Play, 
   Pause, 
-  Maximize2, 
   RotateCcw, 
   Smartphone, 
   Monitor, 
-  Layers,
-  AlertCircle,
-  RefreshCw,
-  Scissors,
-  CheckCircle2,
-  Bug
+  Bug,
+  Sparkles
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
-import SourceRegionPicker from './SourceRegionPicker';
-import LivePreviewCanvas from './LivePreviewCanvas';
+import LayoutBuilder from '../LayoutBuilder';
+import axios from 'axios';
 
 export default function PreviewStage({ videoRef }) {
   const { 
     clipId, 
     edl, 
+    updateEDL,
     currentTime, 
     setCurrentTime, 
-    isPlaying, 
-    setIsPlaying, 
-    saveEDL 
   } = useEditorStore();
 
-  const [showDebug, setShowDebug] = useState(false);
-  const [videoError, setVideoError] = useState(null);
+  const [testRenderUrl, setTestRenderUrl] = useState(null);
+  const [testing, setTesting] = useState(false);
 
   // Jump-cut auto-skipping during preview
   useEffect(() => {
@@ -55,24 +48,43 @@ export default function PreviewStage({ videoRef }) {
     return () => v.removeEventListener('timeupdate', handleTimeUpdate);
   }, [edl, videoRef, setCurrentTime]);
 
+  // Handler to test render a real single frame via FFmpeg to verify exact match
+  const handleTestRenderFrame = async () => {
+    if (!clipId || !edl?.layout) return;
+    setTesting(true);
+    setTestRenderUrl(null);
+    try {
+      const res = await axios.post(
+        '/api/layout/preview-frame',
+        {
+          clip_id: clipId,
+          time: currentTime,
+          layout: edl.layout
+        },
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(res.data);
+      setTestRenderUrl(url);
+    } catch (e) {
+      alert('Test render frame failed: ' + (e.response?.data?.error?.message || e.message));
+    } finally {
+      setTesting(false);
+    }
+  };
+
   return (
-    <div className="flex-1 bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-2 shadow-xl relative overflow-hidden select-none min-h-0">
+    <div className="flex-1 bg-[#13151A] border border-white/[0.06] rounded-2xl p-4 flex flex-col gap-3 shadow-xl relative overflow-y-auto select-none min-h-0">
       {/* Top Header Label */}
       <div className="w-full flex items-center justify-between pb-2 border-b border-white/[0.06] shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold uppercase tracking-wider text-[#8FD3FF] flex items-center gap-1.5">
-            <Monitor size={14} /> 16:9 Source Picker &amp; 9:16 Live Canvas
+            <Monitor size={14} /> Multi-Frame Layout Studio &amp; Realtime Canvas
           </span>
-          <button
-            onClick={() => setShowDebug(!showDebug)}
-            className={`flex items-center gap-1 text-[11px] px-2 py-0.5 rounded border transition-all ${
-              showDebug 
-                ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF]' 
-                : 'bg-white/5 border-white/10 text-[#8B90A0] hover:text-white'
-            }`}
-          >
-            <Bug size={11} /> Match Check
-          </button>
+          {testing && (
+            <span className="text-[11px] text-amber-400 font-mono animate-pulse">
+              FFmpeg rendering frame...
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2 text-xs font-mono text-[#8B90A0]">
@@ -82,18 +94,45 @@ export default function PreviewStage({ videoRef }) {
         </div>
       </div>
 
-      {/* Main Dual Stage Row: Source 16:9 + Live 9:16 Preview Side-by-Side */}
-      <div className="flex-1 flex items-center justify-center gap-4 min-h-0 overflow-hidden w-full p-1">
-        {/* Left Side: 16:9 Source Video with Overlay Boxes */}
-        <div className="flex-1 h-full min-h-0 flex items-center justify-center">
-          <SourceRegionPicker videoRef={videoRef} />
-        </div>
+      {/* Embedded Shared LayoutBuilder Component */}
+      <LayoutBuilder
+        layout={edl?.layout}
+        onChange={(nextLayout) => {
+          updateEDL((prev) => ({
+            ...prev,
+            layout: nextLayout
+          }));
+        }}
+        videoRef={videoRef}
+        captionsConfig={edl?.captions}
+        mode="clip"
+        onTestRenderFrame={handleTestRenderFrame}
+      />
 
-        {/* Right Side: 9:16 Live Canvas Composite Preview */}
-        <div className="h-full min-h-0 flex items-center justify-center shrink-0">
-          <LivePreviewCanvas videoRef={videoRef} isDebug={showDebug} />
+      {/* Side-by-Side Test Render Comparison Modal */}
+      {testRenderUrl && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
+          <div className="bg-[#0D1017] border border-white/20 rounded-2xl p-5 max-w-lg w-full flex flex-col gap-3 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold uppercase text-[#8FD3FF] flex items-center gap-1.5">
+                <Sparkles size={14} /> Real FFmpeg Output Comparison
+              </span>
+              <button
+                onClick={() => setTestRenderUrl(null)}
+                className="text-slate-400 hover:text-white text-xs px-2 py-1 bg-white/5 rounded"
+              >
+                Close
+              </button>
+            </div>
+            <div className="w-full aspect-[9/16] bg-black rounded-xl overflow-hidden border border-white/10 flex items-center justify-center">
+              <img src={testRenderUrl} alt="FFmpeg Render" className="w-full h-full object-contain" />
+            </div>
+            <span className="text-[11px] text-slate-400 text-center font-mono">
+              Rendered via exact FFmpeg filter_complex graph at {currentTime.toFixed(1)}s.
+            </span>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

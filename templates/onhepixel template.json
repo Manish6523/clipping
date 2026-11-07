@@ -13,9 +13,113 @@
     "L"
   ],
   "layout": {
+    "schema": 2,
     "type": "facecam_top_gameplay_bottom",
-    "target_width": 1080,
-    "target_height": 1920,
+    "canvas": {
+      "w": 1080,
+      "h": 1920
+    },
+    "background": {
+      "type": "solid",
+      "source_layer": null,
+      "blur": 0,
+      "dim": 0.0,
+      "color": "#000000"
+    },
+    "layers": [
+      {
+        "id": "l_game",
+        "name": "Gameplay",
+        "color": "#00F0FF",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0.264,
+          "y": 0.0,
+          "w": 0.511,
+          "h": 1.0
+        },
+        "dst": {
+          "x": 0.0,
+          "y": 0.38,
+          "w": 1.0,
+          "h": 0.62
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0.0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0.0,
+            "dx": 0,
+            "dy": 0
+          },
+          "opacity": 1.0,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        },
+        "keyframes": {
+          "src": [],
+          "dst": []
+        },
+        "visible_range": null
+      },
+      {
+        "id": "l_face",
+        "name": "Facecam",
+        "color": "#FFB020",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0.0,
+          "y": 0.755,
+          "w": 0.204,
+          "h": 0.245
+        },
+        "dst": {
+          "x": 0.0,
+          "y": 0.0,
+          "w": 1.0,
+          "h": 0.38
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0.0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0.0,
+            "dx": 0,
+            "dy": 0
+          },
+          "opacity": 1.0,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        },
+        "keyframes": {
+          "src": [],
+          "dst": []
+        },
+        "visible_range": null
+      }
+    ],
     "top_crop": {
       "name": "webcam",
       "source_x": 0,

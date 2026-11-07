@@ -1,0 +1,69 @@
+{
+  "name": "Bottom Left",
+  "description": "Facecam top with gameplay bottom",
+  "min_virality_score": 65,
+  "chat_spike_multiplier": 2.5,
+  "hype_keywords": [
+    "CLIP IT",
+    "WTF",
+    "LMAO",
+    "OMG",
+    "NO WAY",
+    "W",
+    "L"
+  ],
+  "layout": {
+    "type": "facecam_top_gameplay_bottom",
+    "target_width": 1080,
+    "target_height": 1920,
+    "top_crop": {
+      "name": "webcam",
+      "source_x": 0,
+      "source_y": 626,
+      "source_w": 614,
+      "source_h": 454,
+      "normalized_x": 0,
+      "normalized_y": 0.58,
+      "normalized_w": 0.32,
+      "normalized_h": 0.42,
+      "target_w": 1080,
+      "target_h": 730
+    },
+    "bottom_crop": {
+      "name": "gameplay",
+      "source_x": 384,
+      "source_y": 0,
+      "source_w": 1152,
+      "source_h": 1080,
+      "normalized_x": 0.2,
+      "normalized_y": 0,
+      "normalized_w": 0.6,
+      "normalized_h": 1,
+      "target_w": 1080,
+      "target_h": 1190
+    }
+  },
+  "subtitles": {
+    "font_name": "Bangers",
+    "font_size": 72,
+    "primary_color": "&H00FFFFFF",
+    "highlight_color": "&H0000FFFF",
+    "outline_color": "&H00000000",
+    "back_color": "&H80000000",
+    "bold": true,
+    "italic": false,
+    "outline": 4,
+    "shadow": 2,
+    "alignment": 2,
+    "margin_v": 240,
+    "animation": "pop"
+  },
+  "color_grade": {
+    "contrast": 1.03,
+    "saturation": 1.05
+  },
+  "pacing": {
+    "speed_multiplier": 1.02,
+    "teaser_preroll": true
+  }
+}

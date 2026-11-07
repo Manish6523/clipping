@@ -225,6 +225,13 @@ async def migration_v6(db):
     """)
 
 
+@migration(7, "Support Schema v2 multi-layer layouts in presets and clips")
+async def migration_v7(db):
+    # Ensure presets data can store schema_version 2
+    await db.execute("UPDATE presets SET schema_version = 2 WHERE schema_version = 1")
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

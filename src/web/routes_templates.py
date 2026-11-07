@@ -17,6 +17,8 @@ from aiohttp import web
 
 from config.settings import TEMPLATES_DIR, RENDER_DIR
 from src.compositor.crop_calculator import build_crop_filter
+from src.compositor.filter_graph_builder import build_filter_graph
+from src.compositor.template_migration import migrate_layout_to_v2
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 
 logger = logging.getLogger(__name__)
@@ -132,9 +134,103 @@ async def render_test_sample(request: web.Request) -> web.Response:
         return make_json_error("RENDER_FAILED", str(e), status=500)
 
 
+async def render_preview_frame(request: web.Request) -> web.Response:
+    """
+    POST /api/layout/preview-frame
+    Renders a single frame through the REAL FFmpeg filter graph to verify
+    live canvas preview against true FFmpeg output.
+    Body:
+      {
+        "channel_id": "...",
+        "clip_id": 123,
+        "time": 2.5,
+        "layout": { ... schema v2 ... }
+      }
+    """
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Request body must be JSON")
+
+    channel_id = data.get("channel_id")
+    clip_id = data.get("clip_id")
+    seek_time = float(data.get("time", 0.5))
+    layout_data = data.get("layout", {})
+
+    # Locate source video file
+    source_file = None
+    if clip_id:
+        from src.database import get_clip
+        clip = await get_clip(int(clip_id))
+        if clip:
+            source_file = clip.get("source_video_path") or clip.get("rendered_video_path")
+
+    if not source_file or not Path(source_file).exists():
+        if channel_id:
+            from config.settings import BUFFER_DIR
+            import glob
+            c_buf = Path(BUFFER_DIR) / channel_id
+            chunks = sorted(glob.glob(str(c_buf / "chunk_*.ts")), key=os.path.getmtime)
+            if chunks:
+                source_file = chunks[-1]
+            else:
+                hl = sorted(glob.glob(str(c_buf / "highlight_*.mp4")), key=os.path.getmtime)
+                if hl:
+                    source_file = hl[-1]
+
+    if not source_file or not Path(source_file).exists():
+        # Fallback to any render mp4
+        existing_mp4s = list(Path(RENDER_DIR).glob("*.mp4"))
+        if existing_mp4s:
+            source_file = str(existing_mp4s[0])
+
+    if not source_file or not Path(source_file).exists():
+        return make_json_error("NO_SOURCE", "No source media found to render preview frame", status=404)
+
+    graph_res = build_filter_graph(
+        layout_data=layout_data,
+        src_w=1920,
+        src_h=1080,
+        input_tag="0:v",
+        speed_multiplier=1.0,
+        contrast=1.0,
+        saturation=1.0,
+    )
+    filter_complex = graph_res["filter_complex"]
+
+    out_jpg = Path(RENDER_DIR) / f"preview_frame_{int(asyncio.get_event_loop().time() * 1000)}.jpg"
+    cmd = [
+        "ffmpeg", "-y",
+        "-ss", str(seek_time),
+        "-i", str(source_file),
+        "-filter_complex", filter_complex,
+        "-map", "[vout]",
+        "-vframes", "1",
+        "-q:v", "3",
+        str(out_jpg)
+    ]
+
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+        )
+        _, stderr = await asyncio.wait_for(proc.communicate(), timeout=10.0)
+        if proc.returncode != 0:
+            logger.error("FFmpeg frame render failed: %s", stderr.decode("utf-8", errors="ignore"))
+            return make_json_error("RENDER_ERROR", "FFmpeg failed to render preview frame", status=500)
+
+        if out_jpg.exists():
+            return web.FileResponse(out_jpg)
+        return make_json_error("FILE_MISSING", "Rendered frame not produced", status=500)
+    except Exception as e:
+        logger.error("Preview frame exception: %s", e)
+        return make_json_error("ERROR", str(e), status=500)
+
+
 def register_template_routes(app: web.Application):
     app.router.add_get("/api/templates", get_templates)
     app.router.add_post("/api/templates", save_template)
     app.router.add_delete("/api/templates/{name}", delete_template)
     app.router.add_post("/api/templates/test-sample", render_test_sample)
+    app.router.add_post("/api/layout/preview-frame", render_preview_frame)
 
