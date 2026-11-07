@@ -17,8 +17,13 @@ export const useEditorStore = create((set, get) => ({
   duration: 30,
   isPlaying: false,
   previewMode: '9:16', // '9:16' or '16:9'
-  activeTab: 'layers', // layers, transcript, presets, audio, publish
+  activeTab: 'layers', // layout, captions, transcript, length, audio, presets, publish
   selectedTool: 'select',
+
+  // Bottom Sheet State for Phone / Tablet
+  // snapPoint: 'closed' | 'peek' (28%) | 'half' (50%) | 'full' (90%)
+  sheetSnap: 'closed',
+  activePanel: null, // 'layout' | 'captions' | 'transcript' | 'length' | 'audio' | 'presets' | 'publish' | 'clip'
 
   // Contextual Selection state: { type: 'none' | 'layer' | 'caption' | 'word' | 'segment' | 'overlay', id: string|null, data: any }
   selection: { type: 'none', id: null },
@@ -121,8 +126,15 @@ export const useEditorStore = create((set, get) => ({
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPreviewMode: (mode) => set({ previewMode: mode }),
   setActiveTab: (tab) => set({ activeTab: tab }),
+  setSheetSnap: (snap) => set({ sheetSnap: snap }),
+  setActivePanel: (panel) => set((state) => ({ 
+    activePanel: panel, 
+    sheetSnap: panel ? (state.sheetSnap === 'closed' ? 'half' : state.sheetSnap) : 'closed' 
+  })),
+  openPanel: (panel, snap = 'half') => set({ activePanel: panel, sheetSnap: snap }),
+  closeSheet: () => set({ sheetSnap: 'closed', activePanel: null }),
 
-  // Set contextual selection for right sidebar
+  // Set contextual selection for right sidebar / sheet
   setSelection: (sel) => {
     if (!sel || !sel.type) {
       set({ selection: { type: 'none', id: null } });
