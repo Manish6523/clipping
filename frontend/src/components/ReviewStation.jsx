@@ -370,16 +370,17 @@ export default function ReviewStation({ onStatusChange }) {
         <div className="col-span-12 lg:col-span-4 xl:col-span-4 flex flex-col items-center">
           <div className="w-full max-w-[340px] aspect-[9/16] bg-black rounded-2xl overflow-hidden border-2 border-white/[0.12] relative shadow-2xl flex items-center justify-center">
             {videoSrc ? (
-              <video
-                key={videoSrc}
-                ref={videoRef}
-                src={videoSrc}
-                poster={posterUrl || undefined}
-                controls
-                loop
-                preload="metadata"
-                className="w-full h-full object-contain"
-              />
+              <div key={videoSrc} className="w-full h-full">
+                <video
+                  ref={videoRef}
+                  src={videoSrc}
+                  poster={posterUrl || undefined}
+                  controls
+                  loop
+                  preload="metadata"
+                  className="w-full h-full object-contain"
+                />
+              </div>
             ) : (
               <div className="text-[#8B90A0] text-xs font-medium flex flex-col items-center gap-2">
                 <Scissors className="animate-pulse text-[#8FD3FF]" size={28} />

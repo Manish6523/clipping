@@ -7,7 +7,8 @@ import {
   Trash2, 
   ZoomIn, 
   ZoomOut, 
-  HelpCircle
+  HelpCircle,
+  MoveHorizontal
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 
@@ -16,6 +17,7 @@ export default function Timeline({ videoRef }) {
     clipId, 
     clip,
     edl, 
+    sourceInfo,
     currentTime, 
     setCurrentTime, 
     isPlaying, 
@@ -23,6 +25,8 @@ export default function Timeline({ videoRef }) {
     splitSegmentAtPlayhead, 
     deleteSegment, 
     toggleWordDeleted,
+    changeClipBounds,
+    setSelection,
     undo,
     redo
   } = useEditorStore();
@@ -31,12 +35,15 @@ export default function Timeline({ videoRef }) {
   const [waveformPeaks, setWaveformPeaks] = useState([]);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const [draggingEdge, setDraggingEdge] = useState(null); // 'in' | 'out'
+  const [isScrubbing, setIsScrubbing] = useState(false);
 
   const containerRef = useRef(null);
   const waveformCanvasRef = useRef(null);
 
-  const duration = edl?.source?.end ? (edl.source.end - edl.source.start) : 30;
-  const startOffset = edl?.source?.start || 0;
+  const duration = edl?.source?.end ? (edl.source.end - edl.source.start) : (clip?.adjusted_end - clip?.adjusted_start) || 30;
+  const startOffset = edl?.source?.start ?? clip?.adjusted_start ?? 0;
+  const maxAvailableEnd = sourceInfo?.available_end || Math.max(60, startOffset + duration + 30);
 
   // Load real waveform peaks
   useEffect(() => {
@@ -51,7 +58,7 @@ export default function Timeline({ videoRef }) {
     const canvas = waveformCanvasRef.current;
     if (!canvas || !waveformPeaks.length) return;
     const ctx = canvas.getContext('2d');
-    const width = duration * pixelsPerSecond;
+    const width = Math.max(600, duration * pixelsPerSecond);
     const height = canvas.height;
 
     ctx.clearRect(0, 0, width, height);
@@ -70,12 +77,27 @@ export default function Timeline({ videoRef }) {
     });
   }, [waveformPeaks, duration, pixelsPerSecond]);
 
+  // Auto-scroll timeline to keep playhead in view during playback or frame-stepping
+  useEffect(() => {
+    if (!containerRef.current || isScrubbing || draggingEdge) return;
+    const scrollContainer = containerRef.current;
+    const playheadPx = (currentTime - startOffset) * pixelsPerSecond;
+    const viewLeft = scrollContainer.scrollLeft;
+    const viewRight = viewLeft + scrollContainer.clientWidth;
+
+    if (playheadPx < viewLeft + 60) {
+      scrollContainer.scrollLeft = Math.max(0, playheadPx - 80);
+    } else if (playheadPx > viewRight - 80) {
+      scrollContainer.scrollLeft = playheadPx - scrollContainer.clientWidth + 100;
+    }
+  }, [currentTime, startOffset, pixelsPerSecond, isScrubbing, draggingEdge]);
+
   // Scrubbing & click-to-seek
-  const handleSeekFromEvent = useCallback((e) => {
+  const performSeek = useCallback((clientX) => {
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const scrollLeft = containerRef.current.scrollLeft;
-    const clickX = e.clientX - rect.left + scrollLeft;
+    const clickX = clientX - rect.left + scrollLeft;
     const newRelTime = Math.max(0, Math.min(duration, clickX / pixelsPerSecond));
     const targetTime = startOffset + newRelTime;
 
@@ -84,6 +106,82 @@ export default function Timeline({ videoRef }) {
       videoRef.current.currentTime = targetTime;
     }
   }, [duration, pixelsPerSecond, startOffset, setCurrentTime, videoRef]);
+
+  const handlePointerDownTimeline = (e) => {
+    if (draggingEdge) return;
+    setIsScrubbing(true);
+    performSeek(e.clientX);
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (e) => {
+      if (isScrubbing) {
+        performSeek(e.clientX);
+      }
+    };
+    const handlePointerUp = () => {
+      if (isScrubbing) setIsScrubbing(false);
+    };
+
+    if (isScrubbing) {
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [isScrubbing, performSeek]);
+
+  // Drag edge handles to extend or shorten clip length
+  const handleStartEdgeDrag = (e, edge) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggingEdge({
+      edge,
+      startX: e.clientX,
+      origStart: startOffset,
+      origEnd: startOffset + duration,
+      currStart: startOffset,
+      currEnd: startOffset + duration,
+    });
+  };
+
+  useEffect(() => {
+    const handleEdgeMove = (e) => {
+      if (!draggingEdge) return;
+      const deltaX = e.clientX - draggingEdge.startX;
+      const deltaSec = deltaX / pixelsPerSecond;
+
+      if (draggingEdge.edge === 'in') {
+        const candidate = Math.max(0, Math.min(draggingEdge.origEnd - 3.0, draggingEdge.origStart + deltaSec));
+        setDraggingEdge((prev) => ({ ...prev, currStart: candidate }));
+      } else if (draggingEdge.edge === 'out') {
+        const candidate = Math.max(draggingEdge.origStart + 3.0, Math.min(maxAvailableEnd, draggingEdge.origEnd + deltaSec));
+        setDraggingEdge((prev) => ({ ...prev, currEnd: candidate }));
+      }
+    };
+
+    const handleEdgeUp = () => {
+      if (draggingEdge) {
+        const finalStart = Math.round(draggingEdge.currStart * 10) / 10;
+        const finalEnd = Math.round(draggingEdge.currEnd * 10) / 10;
+        setDraggingEdge(null);
+        if (finalStart !== startOffset || finalEnd !== (startOffset + duration)) {
+          changeClipBounds(finalStart, finalEnd);
+        }
+      }
+    };
+
+    if (draggingEdge) {
+      window.addEventListener('pointermove', handleEdgeMove);
+      window.addEventListener('pointerup', handleEdgeUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handleEdgeMove);
+      window.removeEventListener('pointerup', handleEdgeUp);
+    };
+  }, [draggingEdge, pixelsPerSecond, maxAvailableEnd, changeClipBounds, startOffset, duration]);
 
   const togglePlay = () => {
     const v = videoRef.current;
@@ -104,40 +202,38 @@ export default function Timeline({ videoRef }) {
 
   const timelineWidth = Math.max(600, duration * pixelsPerSecond);
   const playheadX = Math.max(0, Math.min(timelineWidth, (currentTime - startOffset) * pixelsPerSecond));
-
-  // Determine thumbnail poster image to tile across video track
-  const thumbUrl = clip?.thumbnail_url || (clip?.rendered_video_path ? `/renders/clip_${clipId}_v1_thumb.jpg` : null);
+  const thumbUrl = clip?.thumbnail_url || (clip?.thumbnail_path ? `/api/clips/${clipId}/thumbnail` : null);
 
   return (
     <div className="w-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-2xl select-none overflow-hidden">
       {/* Header Toolbar Row */}
-      <div className="h-10 px-4 bg-[#0A0B0E] border-b border-white/[0.04] flex items-center justify-between text-xs text-[#8B90A0]">
+      <div className="h-9 px-3 bg-[#0A0B0E] border-b border-white/[0.04] flex items-center justify-between text-xs text-[#8B90A0]">
         {/* Left Playback & Split Tools */}
         <div className="flex items-center gap-2">
           <button
             onClick={togglePlay}
-            className="w-7 h-7 rounded-lg bg-[#8FD3FF] hover:bg-[#A9B8FF] text-[#0A0B0E] flex items-center justify-center transition-all shadow-md shadow-[#8FD3FF]/20"
+            className="w-6 h-6 rounded-lg bg-[#8FD3FF] hover:bg-[#A9B8FF] text-[#0A0B0E] flex items-center justify-center transition-all shadow-md shadow-[#8FD3FF]/20"
             title="Play / Pause (Space)"
           >
-            {isPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
+            {isPlaying ? <Pause size={12} /> : <Play size={12} className="ml-0.5" />}
           </button>
 
           <button
             onClick={splitSegmentAtPlayhead}
-            className="px-2.5 py-1 rounded-lg bg-[#1A1D24] hover:bg-white/10 text-white font-bold text-xs flex items-center gap-1.5 transition-all border border-white/5"
+            className="px-2 py-0.5 rounded-lg bg-[#1A1D24] hover:bg-white/10 text-white font-bold text-[11px] flex items-center gap-1 transition-all border border-white/5"
             title="Split Clip at Playhead (C)"
           >
-            <Scissors size={13} className="text-[#8FD3FF]" />
+            <Scissors size={12} className="text-[#8FD3FF]" />
             <span>Split</span>
           </button>
 
           {/* Speed Presets */}
-          <div className="flex items-center gap-1 ml-2 bg-[#1A1D24] p-0.5 rounded-lg border border-white/5">
+          <div className="flex items-center gap-0.5 ml-2 bg-[#1A1D24] p-0.5 rounded-lg border border-white/5">
             {[1, 1.5, 2].map((s) => (
               <button
                 key={s}
                 onClick={() => handleSpeedChange(s)}
-                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
                   playbackRate === s ? 'bg-[#8FD3FF] text-[#0A0B0E]' : 'text-[#8B90A0] hover:text-white'
                 }`}
               >
@@ -148,21 +244,26 @@ export default function Timeline({ videoRef }) {
         </div>
 
         {/* Time Counters & Zoom Controls */}
-        <div className="flex items-center gap-3 font-mono">
+        <div className="flex items-center gap-2.5 font-mono text-xs">
           <span className="text-white font-bold">
-            {(currentTime - startOffset).toFixed(1)}s
+            {(currentTime - startOffset).toFixed(2)}s
           </span>
           <span>/</span>
-          <span>{duration.toFixed(1)}s</span>
+          <span>{duration.toFixed(2)}s</span>
+          {sourceInfo && (
+            <span className="text-[10px] text-slate-500 font-sans">
+              (max {sourceInfo.available_end.toFixed(1)}s available)
+            </span>
+          )}
 
-          <div className="h-4 w-px bg-white/10 mx-1" />
+          <div className="h-3.5 w-px bg-white/10 mx-1" />
 
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => setPixelsPerSecond((p) => Math.max(25, p - 15))}
               className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white"
             >
-              <ZoomOut size={13} />
+              <ZoomOut size={12} />
             </button>
             <input
               type="range"
@@ -170,20 +271,20 @@ export default function Timeline({ videoRef }) {
               max="200"
               value={pixelsPerSecond}
               onChange={(e) => setPixelsPerSecond(Number(e.target.value))}
-              className="w-16 h-1 accent-[#8FD3FF] cursor-pointer"
+              className="w-14 h-1 accent-[#8FD3FF] cursor-pointer"
             />
             <button
               onClick={() => setPixelsPerSecond((p) => Math.min(200, p + 15))}
               className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white"
             >
-              <ZoomIn size={13} />
+              <ZoomIn size={12} />
             </button>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
-              className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white ml-2"
+              className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white ml-1"
               title="Keyboard Shortcuts"
             >
-              <HelpCircle size={14} />
+              <HelpCircle size={13} />
             </button>
           </div>
         </div>
@@ -192,10 +293,11 @@ export default function Timeline({ videoRef }) {
       {/* Main Track Viewport */}
       <div
         ref={containerRef}
-        onClick={handleSeekFromEvent}
-        className="w-full h-[155px] overflow-x-auto overflow-y-hidden relative bg-[#0D0F14] cursor-crosshair select-none"
+        tabIndex={-1}
+        onPointerDown={handlePointerDownTimeline}
+        className="w-full h-[145px] overflow-x-auto overflow-y-hidden relative bg-[#0D0F14] cursor-crosshair select-none focus:outline-none"
       >
-        <div style={{ width: `${timelineWidth}px` }} className="h-full relative">
+        <div style={{ width: `${timelineWidth}px` }} className="h-full relative pointer-events-auto">
           {/* Ticks and Ruler */}
           <div className="h-5 border-b border-white/[0.06] bg-[#0A0B0E] relative pointer-events-none">
             {Array.from({ length: Math.ceil(duration) + 1 }).map((_, sec) => (
@@ -209,8 +311,17 @@ export default function Timeline({ videoRef }) {
             ))}
           </div>
 
+          {/* Left In-Point Resize Extension Handle */}
+          <div
+            onPointerDown={(e) => handleStartEdgeDrag(e, 'in')}
+            className="absolute left-0 top-5 bottom-0 w-3 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize z-30 flex items-center justify-center rounded-l shadow-md"
+            title="Drag outward to extend clip start, inward to shorten"
+          >
+            <div className="w-0.5 h-6 bg-white rounded-full" />
+          </div>
+
           {/* Video Segment Strip Track with Real Filmstrip Thumbnails */}
-          <div className="h-11 my-1 mx-1 rounded-lg bg-[#1A1D24] border border-white/[0.08] relative overflow-hidden flex items-center">
+          <div className="h-10 my-1 mx-3 rounded-lg bg-[#1A1D24] border border-white/[0.08] relative overflow-hidden flex items-center pointer-events-auto">
             {edl?.segments?.map((seg) => {
               const segStart = (seg.src_in - startOffset) * pixelsPerSecond;
               const segW = (seg.src_out - seg.src_in) * pixelsPerSecond;
@@ -219,14 +330,17 @@ export default function Timeline({ videoRef }) {
               return (
                 <div
                   key={seg.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelection({ type: 'segment', id: seg.id });
+                  }}
                   style={{
                     position: 'absolute',
                     left: `${segStart}px`,
                     width: `${segW}px`,
                   }}
-                  className="h-full border border-indigo-500/40 rounded overflow-hidden relative flex items-center justify-between text-[10px] font-mono text-white group"
+                  className="h-full border border-indigo-500/40 rounded overflow-hidden relative flex items-center justify-between text-[10px] font-mono text-white group cursor-pointer"
                 >
-                  {/* Filmstrip Tiling */}
                   <div className="absolute inset-0 flex pointer-events-none opacity-40">
                     {Array.from({ length: thumbCount }).map((_, i) => (
                       <div
@@ -255,24 +369,32 @@ export default function Timeline({ videoRef }) {
             })}
           </div>
 
+          {/* Right Out-Point Resize Extension Handle */}
+          <div
+            onPointerDown={(e) => handleStartEdgeDrag(e, 'out')}
+            className="absolute right-0 top-5 bottom-0 w-3 bg-indigo-500 hover:bg-indigo-400 cursor-ew-resize z-30 flex items-center justify-center rounded-r shadow-md"
+            title="Drag outward to extend clip end, inward to shorten"
+          >
+            <div className="w-0.5 h-6 bg-white rounded-full" />
+          </div>
+
           {/* Audio Waveform Canvas Track */}
-          <div className="h-8 mx-1 rounded bg-[#13151A] overflow-hidden relative">
+          <div className="h-7 mx-3 rounded bg-[#13151A] overflow-hidden relative pointer-events-none">
             <canvas
               ref={waveformCanvasRef}
               width={timelineWidth}
-              height={32}
-              className="w-full h-full pointer-events-none"
+              height={28}
+              className="w-full h-full"
             />
           </div>
 
           {/* Word Tokens / Jump Cut Track with Overflow Text Suppression */}
-          <div className="h-6 mx-1 my-1 relative">
+          <div className="h-6 mx-3 my-1 relative pointer-events-auto">
             {edl?.words?.map((w, idx) => {
               const wStart = (w.start - startOffset) * pixelsPerSecond;
               const wWidth = Math.max(10, (w.end - w.start) * pixelsPerSecond);
               const isCurrent = currentTime >= w.start && currentTime <= w.end;
               const textContent = w.word || w.text || '';
-              // Suppress garbled text if width < 30px
               const canFitText = wWidth >= 28;
 
               return (
@@ -280,6 +402,7 @@ export default function Timeline({ videoRef }) {
                   key={idx}
                   onClick={(e) => {
                     e.stopPropagation();
+                    setSelection({ type: 'word', id: idx, data: w });
                     if (videoRef.current) {
                       videoRef.current.currentTime = w.start;
                       setCurrentTime(w.start);
@@ -329,9 +452,14 @@ export default function Timeline({ videoRef }) {
       {showShortcuts && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-[#13151A] border border-white/10 rounded-2xl p-5 max-w-sm w-full text-xs text-[#E8EAF0] shadow-2xl">
-            <h4 className="font-bold text-sm mb-3 text-[#8FD3FF]">Timeline Keyboard Shortcuts</h4>
+            <h4 className="font-bold text-sm mb-3 text-[#8FD3FF]">Keyboard Shortcuts Guide</h4>
             <div className="space-y-1.5 font-mono">
               <div className="flex justify-between"><span>Space</span><span className="text-slate-400">Play / Pause</span></div>
+              <div className="flex justify-between"><span>← / →</span><span className="text-slate-400">Step 1 Frame (1/30s)</span></div>
+              <div className="flex justify-between"><span>Shift + ← / →</span><span className="text-slate-400">Step 1 Second</span></div>
+              <div className="flex justify-between"><span>Ctrl + ← / →</span><span className="text-slate-400">Prev / Next Word</span></div>
+              <div className="flex justify-between"><span>Home / End</span><span className="text-slate-400">Start / End of Clip</span></div>
+              <div className="flex justify-between"><span>I / O</span><span className="text-slate-400">Set In / Out Point</span></div>
               <div className="flex justify-between"><span>C</span><span className="text-slate-400">Split at Playhead</span></div>
               <div className="flex justify-between"><span>Right Click Word</span><span className="text-slate-400">Jump Cut Delete</span></div>
               <div className="flex justify-between"><span>Ctrl+Z</span><span className="text-slate-400">Undo</span></div>

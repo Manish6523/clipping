@@ -1,12 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import { useParams } from 'react-router-dom';
 import { 
-  Home, 
   FolderKanban, 
   Palette, 
-  Star, 
-  Settings, 
-  HelpCircle 
+  Settings 
 } from 'lucide-react';
 import { useEditorStore } from '../store/editorStore';
 import TopBar from '../components/editor/TopBar';
@@ -17,7 +14,22 @@ import Timeline from '../components/editor/Timeline';
 
 export default function ClipEditorPage() {
   const { clipId } = useParams();
-  const { initClip, loading, saveEDL, undo, redo, splitSegmentAtPlayhead } = useEditorStore();
+  const { 
+    initClip, 
+    loading, 
+    edl,
+    clip,
+    duration,
+    currentTime,
+    setCurrentTime,
+    saveEDL, 
+    undo, 
+    redo, 
+    splitSegmentAtPlayhead,
+    changeClipBounds,
+    selection,
+    clearSelection
+  } = useEditorStore();
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -26,33 +38,143 @@ export default function ClipEditorPage() {
     }
   }, [clipId, initClip]);
 
-  // Global Keyboard Shortcuts
+  // Central useShortcuts handler (frame-by-frame, 1s step, word boundaries, escape, space)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      // Ignore if inside text input, textarea, select or contenteditable
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable) {
+        return;
+      }
 
-      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+      const v = videoRef.current;
+      const startOffset = edl?.source?.start || clip?.adjusted_start || 0;
+      const endOffset = edl?.source?.end || clip?.adjusted_end || (startOffset + duration);
+
+      // Escape clears selection
+      if (e.key === 'Escape') {
+        clearSelection();
+        return;
+      }
+
+      // Undo / Redo
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
-      } else if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        return;
+      }
+
+      // Save EDL
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
         e.preventDefault();
         saveEDL();
-      } else if (e.key === 'c' || e.key === 'C') {
-        splitSegmentAtPlayhead();
-      } else if (e.key === ' ') {
+        return;
+      }
+
+      // Space Play / Pause
+      if (e.key === ' ') {
         e.preventDefault();
-        const v = videoRef.current;
         if (v) {
           if (v.paused) v.play();
           else v.pause();
         }
+        return;
+      }
+
+      // Split at Playhead
+      if (e.key === 'c' || e.key === 'C') {
+        e.preventDefault();
+        splitSegmentAtPlayhead();
+        return;
+      }
+
+      // Set In Point (I)
+      if (e.key === 'i' || e.key === 'I') {
+        e.preventDefault();
+        if (currentTime < endOffset - 3.0) {
+          changeClipBounds(Math.round(currentTime * 10) / 10, endOffset);
+        }
+        return;
+      }
+
+      // Set Out Point (O)
+      if (e.key === 'o' || e.key === 'O') {
+        e.preventDefault();
+        if (currentTime > startOffset + 3.0) {
+          changeClipBounds(startOffset, Math.round(currentTime * 10) / 10);
+        }
+        return;
+      }
+
+      // Home: Jump to clip start
+      if (e.key === 'Home') {
+        e.preventDefault();
+        if (v) v.currentTime = startOffset;
+        setCurrentTime(startOffset);
+        return;
+      }
+
+      // End: Jump to clip end
+      if (e.key === 'End') {
+        e.preventDefault();
+        if (v) v.currentTime = endOffset;
+        setCurrentTime(endOffset);
+        return;
+      }
+
+      // Arrow keys (Frame-stepping & word boundary navigation)
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault(); // Stop timeline or window scroll
+        const isRight = e.key === 'ArrowRight';
+        const cur = v ? v.currentTime : currentTime;
+
+        if (e.ctrlKey || e.metaKey) {
+          // Jump to prev/next word boundary
+          const words = (edl?.words || []).filter((w) => !w.deleted);
+          if (isRight) {
+            const nextWord = words.find((w) => w.start > cur + 0.05);
+            if (nextWord) {
+              if (v) v.currentTime = nextWord.start;
+              setCurrentTime(nextWord.start);
+            }
+          } else {
+            const prevWord = [...words].reverse().find((w) => w.start < cur - 0.05);
+            if (prevWord) {
+              if (v) v.currentTime = prevWord.start;
+              setCurrentTime(prevWord.start);
+            }
+          }
+        } else if (e.shiftKey) {
+          // Step 1.0 second
+          const target = Math.max(startOffset, Math.min(endOffset, cur + (isRight ? 1.0 : -1.0)));
+          if (v) v.currentTime = target;
+          setCurrentTime(target);
+        } else {
+          // Step 1 frame (1/30s = ~0.0333s)
+          const frameTime = 1 / 30;
+          const target = Math.max(startOffset, Math.min(endOffset, cur + (isRight ? frameTime : -frameTime)));
+          if (v) v.currentTime = target;
+          setCurrentTime(target);
+        }
+        return;
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [undo, redo, saveEDL, splitSegmentAtPlayhead]);
+  }, [
+    undo,
+    redo,
+    saveEDL,
+    splitSegmentAtPlayhead,
+    changeClipBounds,
+    currentTime,
+    duration,
+    edl,
+    clip,
+    clearSelection,
+    setCurrentTime
+  ]);
 
   if (loading) {
     return (
@@ -95,19 +217,19 @@ export default function ClipEditorPage() {
         {/* Slim Top Bar */}
         <TopBar />
 
-        {/* Floating 3-Panel Main Row */}
-        <div className="flex-1 px-3 py-2 grid grid-cols-[230px_1fr_240px] gap-3 min-h-0 overflow-hidden">
+        {/* 3-Column Studio: Left Tools (~220px) | Center Dual Canvases (Expanded) | Right Inspector (~280px) */}
+        <div className="flex-1 px-3 py-2 grid grid-cols-[220px_1fr_280px] gap-3 min-h-0 overflow-hidden">
           {/* Left Tools Panel (Scrolls internally) */}
           <div className="h-full min-h-0 overflow-hidden flex flex-col">
             <LeftPanel />
           </div>
 
-          {/* Center Stage Row: 16:9 Source Picker & 9:16 Live Canvas */}
+          {/* Center Stage Row: Dual Canvases get all freed height, bottom panel deleted */}
           <div className="h-full min-h-0 flex flex-col">
             <PreviewStage videoRef={videoRef} />
           </div>
 
-          {/* Right Inspector Panel (Scrolls internally, never clipped) */}
+          {/* Right Inspector Panel (Contextual sidebar driven by selection) */}
           <div className="h-full min-h-0 overflow-hidden flex flex-col">
             <Inspector />
           </div>

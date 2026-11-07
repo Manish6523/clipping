@@ -32,7 +32,7 @@ export default function HypeMomentToasts({ toasts, onDismiss }) {
                   <div className="font-extrabold text-white text-xs flex items-center gap-1.5">
                     <span>@{channel}</span>
                     <span className="px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 font-mono text-[10px] font-bold border border-amber-500/30">
-                      🔥 {score}/100
+                      Score: {score}/100
                     </span>
                   </div>
                   <div className="text-[10px] text-slate-400 font-mono mt-0.5">
@@ -56,7 +56,7 @@ export default function HypeMomentToasts({ toasts, onDismiss }) {
 
             <div className="flex items-center justify-between pt-1 border-t border-white/5 mt-1">
               <span className="text-[10px] text-emerald-400 font-semibold">
-                ● Ready to Review
+                Ready to Review
               </span>
 
               <div className="flex items-center gap-1.5">

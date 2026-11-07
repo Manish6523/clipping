@@ -2,8 +2,8 @@
 
 Generates Advanced SubStation Alpha (.ass) subtitle files featuring:
 - Accurate pixel \\pos(x, y) with anchor \\an5 (center-center)
-- Dynamic word-by-word pop-in scale animation
-- Karaoke-style active word highlighting
+- Dynamic word-by-word pop-in / bounce / fade animations
+- Active word highlighting & per-word style overrides
 - Wrapping respecting max_width and words_per_line
 - PlayResX = 1080, PlayResY = 1920 single source of truth
 """
@@ -69,22 +69,24 @@ def generate_ass_subtitles(
     """
     Generate kinetic word-level .ass subtitle file with exact geometry alignment.
     """
-    sub_cfg = template_config.get("subtitles", {})
+    sub_cfg = template_config.get("subtitles") or template_config.get("captions") or {}
     font_name = sub_cfg.get("font_name") or sub_cfg.get("font", "Montserrat ExtraBold")
-    font_size = int(sub_cfg.get("font_size") or sub_cfg.get("size", 72))
+    font_size = int(sub_cfg.get("font_size") or sub_cfg.get("size", 60))
 
     primary_raw = sub_cfg.get("primary_color") or sub_cfg.get("color", "#FFFFFF")
     highlight_raw = sub_cfg.get("highlight_color") or sub_cfg.get("highlight", "#FACC15")
+    outline_raw = sub_cfg.get("outline_color", "#000000")
+    shadow_raw = sub_cfg.get("shadow_color", "#000000")
 
     primary_color = hex_to_ass_color(primary_raw, "&H00FFFFFF")
-    highlight_color = hex_to_ass_color(highlight_raw, "&H0015CCFA") # BBGGRR for gold/yellow
+    highlight_color = hex_to_ass_color(highlight_raw, "&H0015CCFA")
+    outline_color = hex_to_ass_color(outline_raw, "&H00000000")
+    back_color = hex_to_ass_color(shadow_raw, "&H80000000")
 
-    outline_color = "&H00000000"
-    back_color = "&H80000000"
-    bold = -1
-    italic = 0
-    outline = 4.0
-    shadow = 2.0
+    bold = -1 if sub_cfg.get("font_weight", "900") in ["bold", "700", "800", "900", "ExtraBold", "Black"] else 0
+    italic = -1 if sub_cfg.get("italic") else 0
+    outline_width = float(sub_cfg.get("outline_width", 5.0))
+    shadow_depth = float(sub_cfg.get("shadow_blur", 2.0))
 
     # Geometry calculation from position
     pos_data = sub_cfg.get("position", {})
@@ -97,7 +99,21 @@ def generate_ass_subtitles(
     target_y = geom["y"]
 
     max_words_per_screen = max(1, int(sub_cfg.get("words_per_line", sub_cfg.get("max_words_per_screen", 3))))
-    animation_tag = sub_cfg.get("animation_tag", "{\\t(0,70,\\fscx115\\fscy115)}")
+    
+    # Animation tags
+    anim_mode = sub_cfg.get("animation", "pop")
+    if anim_mode == "pop":
+        animation_tag = "{\\t(0,100,\\fscx118\\fscy118)\\t(100,200,\\fscx100\\fscy100)}"
+    elif anim_mode == "bounce":
+        animation_tag = "{\\t(0,120,\\fscx122\\fscy122)\\t(120,240,\\fscx100\\fscy100)}"
+    elif anim_mode == "fade":
+        animation_tag = "{\\fad(80,0)}"
+    elif anim_mode == "none":
+        animation_tag = ""
+    else:
+        animation_tag = sub_cfg.get("animation_tag", "{\\t(0,70,\\fscx115\\fscy115)}")
+
+    is_uppercase = sub_cfg.get("uppercase", True)
 
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
@@ -120,10 +136,13 @@ def generate_ass_subtitles(
         if max_duration and w_start >= max_duration:
             break
 
+        rendered_text = text.upper() if is_uppercase else text
         valid_words.append({
-            "word": text.upper(),
+            "word": rendered_text,
             "start": w_start,
             "end": w_end if not max_duration else min(w_end, max_duration),
+            "highlight": item.get("highlight", False),
+            "color": item.get("color"),
         })
 
     # Group words into chunks of max_words_per_screen
@@ -147,7 +166,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: KineticCaption,{font_name},{font_size},{primary_color},&H000000FF,{outline_color},{back_color},{bold},{italic},0,0,100,100,0,0,1,{outline},{shadow},5,{geom['margin_l']},{geom['margin_r']},0,1
+Style: KineticCaption,{font_name},{font_size},{primary_color},&H000000FF,{outline_color},{back_color},{bold},{italic},0,0,100,100,0,0,1,{outline_width},{shadow_depth},5,{geom['margin_l']},{geom['margin_r']},0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -174,18 +193,20 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start_str = seconds_to_ass_time(w_start)
             end_str = seconds_to_ass_time(w_end)
 
-            # Compose text: non-active words normal, active word scaled & colored
             words_rendered = []
             for j, w in enumerate(chunk):
+                custom_word_color = hex_to_ass_color(w.get("color")) if w.get("color") else None
                 if i == j:
-                    # Active word: pop-in animation + highlight color
+                    # Active word: animation + highlight color
+                    hl_col = custom_word_color or highlight_color
                     words_rendered.append(
-                        f"{animation_tag}{{\\c{highlight_color}\\b1}}{w['word']}{{\\r}}"
+                        f"{animation_tag}{{\\c{hl_col}\\b1}}{w['word']}{{\\r}}"
                     )
                 else:
-                    # Inactive word: standard primary color
+                    # Inactive word
+                    base_col = custom_word_color or primary_color
                     words_rendered.append(
-                        f"{{\\c{primary_color}}}{w['word']}{{\\r}}"
+                        f"{{\\c{base_col}}}{w['word']}{{\\r}}"
                     )
 
             line_text = " ".join(words_rendered)

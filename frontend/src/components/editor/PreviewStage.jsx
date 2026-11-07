@@ -5,7 +5,6 @@ import {
   RotateCcw, 
   Smartphone, 
   Monitor, 
-  Bug,
   Sparkles
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
@@ -18,7 +17,10 @@ export default function PreviewStage({ videoRef }) {
     edl, 
     updateEDL,
     currentTime, 
-    setCurrentTime, 
+    setCurrentTime,
+    selection,
+    setSelection,
+    updateCaptionPos,
   } = useEditorStore();
 
   const [testRenderUrl, setTestRenderUrl] = useState(null);
@@ -73,9 +75,9 @@ export default function PreviewStage({ videoRef }) {
   };
 
   return (
-    <div className="flex-1 bg-[#13151A] border border-white/[0.06] rounded-2xl p-4 flex flex-col gap-3 shadow-xl relative overflow-y-auto select-none min-h-0">
+    <div className="flex-1 bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-2 shadow-xl relative overflow-hidden select-none min-h-0">
       {/* Top Header Label */}
-      <div className="w-full flex items-center justify-between pb-2 border-b border-white/[0.06] shrink-0">
+      <div className="w-full flex items-center justify-between pb-1.5 border-b border-white/[0.06] shrink-0">
         <div className="flex items-center gap-3">
           <span className="text-xs font-bold uppercase tracking-wider text-[#8FD3FF] flex items-center gap-1.5">
             <Monitor size={14} /> Multi-Frame Layout Studio &amp; Realtime Canvas
@@ -89,7 +91,7 @@ export default function PreviewStage({ videoRef }) {
 
         <div className="flex items-center gap-2 text-xs font-mono text-[#8B90A0]">
           <span className="px-2 py-0.5 rounded-lg bg-[#1A1D24] border border-white/[0.06]">
-            {currentTime.toFixed(1)}s
+            {currentTime.toFixed(2)}s
           </span>
         </div>
       </div>
@@ -105,9 +107,22 @@ export default function PreviewStage({ videoRef }) {
         }}
         sourceMediaUrl={clipId ? `/api/clips/${clipId}/source` : null}
         videoRef={videoRef}
-        captionsConfig={edl?.captions}
+        captionsConfig={{
+          ...(edl?.captions || {}),
+          onChangePos: updateCaptionPos,
+        }}
+        words={edl?.words || []}
+        currentTime={currentTime}
         mode="clip"
+        selectedLayerId={selection?.type === 'layer' ? selection.id : null}
+        onSelectLayer={(layerId) => {
+          setSelection(layerId ? { type: 'layer', id: layerId } : { type: 'none', id: null });
+        }}
+        onSelectCaption={() => {
+          setSelection({ type: 'caption', id: 'main' });
+        }}
         onTestRenderFrame={handleTestRenderFrame}
+        showBottomPanel={false}
       />
 
       {/* Side-by-Side Test Render Comparison Modal */}

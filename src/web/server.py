@@ -329,6 +329,7 @@ class WebUIServer:
             elif tpl_subtitles.get("margin_v"):
                 caption_pos_y = round((1920 - tpl_subtitles["margin_v"]) / 1920, 4)
 
+            # Modern Schema v2 Layout with Layers
             edl = {
                 "version": 1,
                 "clip_id": clip_id,
@@ -346,12 +347,61 @@ class WebUIServer:
                 ],
                 "words": words,
                 "layout": {
-                    "type": tpl_layout_type,
-                    "preset": tpl_name,
-                    "regions": {
-                        "person": person_region,
-                        "content": content_region,
-                    }
+                    "schema": 2,
+                    "canvas": {"w": 1080, "h": 1920},
+                    "background": {"type": "solid", "color": "#000000", "blur": 0, "dim": 0.0},
+                    "layers": [
+                        {
+                            "id": "l_game",
+                            "name": "Gameplay",
+                            "color": "#00F0FF",
+                            "visible": True,
+                            "locked": False,
+                            "src": {
+                                "x": content_region.get("x", 0.20),
+                                "y": content_region.get("y", 0.0),
+                                "w": content_region.get("w", 0.60),
+                                "h": content_region.get("h", 1.0),
+                            },
+                            "dst": {"x": 0.0, "y": 0.38, "w": 1.0, "h": 0.62},
+                            "fit": "cover",
+                            "aspect_lock": True,
+                            "style": {
+                                "radius": 0,
+                                "shape": "rect",
+                                "border": {"w": 0, "color": "#FFFFFF"},
+                                "shadow": {"blur": 0, "opacity": 0},
+                                "opacity": 1.0,
+                                "mirror": False,
+                            },
+                            "tracking": {"mode": "off", "smooth": 0.8},
+                        },
+                        {
+                            "id": "l_facecam",
+                            "name": "Facecam",
+                            "color": "#FFB020",
+                            "visible": True,
+                            "locked": False,
+                            "src": {
+                                "x": person_region.get("x", 0.0),
+                                "y": person_region.get("y", 0.58),
+                                "w": person_region.get("w", 0.32),
+                                "h": person_region.get("h", 0.42),
+                            },
+                            "dst": {"x": 0.0, "y": 0.0, "w": 1.0, "h": 0.38},
+                            "fit": "cover",
+                            "aspect_lock": True,
+                            "style": {
+                                "radius": 0,
+                                "shape": "rect",
+                                "border": {"w": 0, "color": "#FFFFFF"},
+                                "shadow": {"blur": 0, "opacity": 0},
+                                "opacity": 1.0,
+                                "mirror": False,
+                            },
+                            "tracking": {"mode": "off", "smooth": 0.8},
+                        },
+                    ],
                 },
                 "captions": {
                     "font": tpl_subtitles.get("font_name", "Montserrat ExtraBold"),

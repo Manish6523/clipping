@@ -126,9 +126,9 @@ async def remove_channel(channel_id_or_handle: str) -> bool:
 
 
 async def get_active_channels() -> List[Dict[str, Any]]:
-    """Retrieve all active channels configured for monitoring."""
+    """Retrieve all active channels configured for monitoring (must be active and enabled)."""
     async with get_db_connection() as db:
-        cursor = await db.execute("SELECT * FROM channels WHERE is_active = 1")
+        cursor = await db.execute("SELECT * FROM channels WHERE is_active = 1 AND (enabled IS NULL OR enabled = 1)")
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 

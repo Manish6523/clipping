@@ -5,8 +5,10 @@ export const useEditorStore = create((set, get) => ({
   clipId: null,
   clip: null,
   edl: null,
+  sourceInfo: null,
   loading: true,
   saving: false,
+  extending: false,
   lastSaved: null,
   hasUnsavedChanges: false,
 
@@ -15,8 +17,11 @@ export const useEditorStore = create((set, get) => ({
   duration: 30,
   isPlaying: false,
   previewMode: '9:16', // '9:16' or '16:9'
-  activeTab: 'source', // source, transcript, layout, captions, audio, publish
-  selectedTool: 'select', // select, text, layers, bookmark
+  activeTab: 'layers', // layers, transcript, presets, audio, publish
+  selectedTool: 'select',
+
+  // Contextual Selection state: { type: 'none' | 'layer' | 'caption' | 'word' | 'segment' | 'overlay', id: string|null, data: any }
+  selection: { type: 'none', id: null },
 
   // Undo / Redo Stacks (Max 100)
   history: [],
@@ -26,32 +31,85 @@ export const useEditorStore = create((set, get) => ({
   initClip: async (clipId) => {
     set({ loading: true, clipId });
     try {
-      const [clipRes, edlRes] = await Promise.all([
+      const [clipRes, edlRes, srcRes] = await Promise.all([
         axios.get(`/api/clips/${clipId}`),
-        axios.get(`/api/clips/${clipId}/edit`)
+        axios.get(`/api/clips/${clipId}/edit`),
+        axios.get(`/api/clips/${clipId}/source-info`).catch(() => ({ data: null })),
       ]);
 
       const clip = clipRes.data;
       const edl = edlRes.data;
+      const sourceInfo = srcRes.data;
 
-      // Ensure captions has position defaults
+      // Ensure captions has modern configuration defaults
       if (!edl.captions) edl.captions = {};
       if (!edl.captions.position) {
         edl.captions.position = { x: 0.5, y: 0.76, max_width: 0.85 };
       }
       if (!edl.captions.words_per_line) edl.captions.words_per_line = 3;
+      if (!edl.captions.font) edl.captions.font = 'Montserrat ExtraBold';
+      if (!edl.captions.color) edl.captions.color = '#FFFFFF';
+      if (!edl.captions.highlight) edl.captions.highlight = '#FACC15';
+      if (!edl.captions.animation) edl.captions.animation = 'pop';
+
+      // Migrate legacy Schema v1 layout (regions: { person, content }) to Schema v2 (layers: [...])
+      if (edl.layout && !edl.layout.layers) {
+        const regions = edl.layout.regions || {};
+        const p = regions.person || { x: 0.05, y: 0.05, w: 0.33, h: 0.44 };
+        const c = regions.content || { x: 0.16, y: 0.0, w: 0.67, h: 1.0 };
+        edl.layout = {
+          schema: 2,
+          canvas: { w: 1080, h: 1920 },
+          background: { type: 'solid', color: '#000000', blur: 0, dim: 0.0 },
+          layers: [
+            {
+              id: 'l_game',
+              name: 'Gameplay',
+              color: '#00F0FF',
+              visible: true,
+              locked: false,
+              src: { x: c.x ?? 0.20, y: c.y ?? 0.0, w: c.w ?? 0.60, h: c.h ?? 1.0 },
+              dst: { x: 0.0, y: 0.38, w: 1.0, h: 0.62 },
+              fit: 'cover',
+              aspect_lock: true,
+              style: { radius: 0, shape: 'rect', border: { w: 0, color: '#FFFFFF' }, shadow: { blur: 0, opacity: 0 }, opacity: 1.0, mirror: false },
+              tracking: { mode: 'off', smooth: 0.8 },
+            },
+            {
+              id: 'l_facecam',
+              name: 'Facecam',
+              color: '#FFB020',
+              visible: true,
+              locked: false,
+              src: { x: p.x ?? 0.0, y: p.y ?? 0.58, w: p.w ?? 0.32, h: p.h ?? 0.42 },
+              dst: { x: 0.0, y: 0.0, w: 1.0, h: 0.38 },
+              fit: 'cover',
+              aspect_lock: true,
+              style: { radius: 0, shape: 'rect', border: { w: 0, color: '#FFFFFF' }, shadow: { blur: 0, opacity: 0 }, opacity: 1.0, mirror: false },
+              tracking: { mode: 'off', smooth: 0.8 },
+            },
+          ],
+        };
+      }
+
+      // Pull transcript words from clip if missing in edl
+      if ((!edl.words || !edl.words.length) && clip.transcript_words) {
+        edl.words = clip.transcript_words;
+      }
 
       const duration = (clip.adjusted_end - clip.adjusted_start) || 30;
 
       set({
         clip,
         edl,
+        sourceInfo,
         loading: false,
         currentTime: clip.adjusted_start || 0,
         duration,
         history: [JSON.stringify(edl)],
         historyIndex: 0,
         hasUnsavedChanges: false,
+        selection: { type: 'none', id: null },
       });
     } catch (err) {
       console.error('Failed to init clip editor:', err);
@@ -64,12 +122,22 @@ export const useEditorStore = create((set, get) => ({
   setPreviewMode: (mode) => set({ previewMode: mode }),
   setActiveTab: (tab) => set({ activeTab: tab }),
 
+  // Set contextual selection for right sidebar
+  setSelection: (sel) => {
+    if (!sel || !sel.type) {
+      set({ selection: { type: 'none', id: null } });
+    } else {
+      set({ selection: sel });
+    }
+  },
+
+  clearSelection: () => set({ selection: { type: 'none', id: null } }),
+
   updateEDL: (updater) => {
     const { edl, history, historyIndex } = get();
     const newEDL = typeof updater === 'function' ? updater({ ...edl }) : { ...edl, ...updater };
     const serialized = JSON.stringify(newEDL);
 
-    // Slice history at historyIndex and append
     const newHistory = history.slice(0, historyIndex + 1);
     if (newHistory.length >= 100) newHistory.shift();
     newHistory.push(serialized);
@@ -124,6 +192,58 @@ export const useEditorStore = create((set, get) => ({
     }
   },
 
+  // Transcribe clip on demand
+  transcribeClip: async () => {
+    const { clipId } = get();
+    if (!clipId) return;
+    try {
+      const res = await axios.post(`/api/clips/${clipId}/transcribe`);
+      if (res.data?.words) {
+        get().updateEDL((prev) => ({
+          ...prev,
+          words: res.data.words,
+        }));
+      }
+    } catch (e) {
+      alert('Transcription failed: ' + (e.response?.data?.error?.message || e.message));
+    }
+  },
+
+  // Change clip length / boundaries (extend or shorten)
+  changeClipBounds: async (newStart, newEnd) => {
+    const { clipId, extending, updateEDL } = get();
+    if (!clipId || extending) return;
+
+    set({ extending: true });
+    try {
+      const res = await axios.post(`/api/clips/${clipId}/extend-source`, {
+        start: newStart,
+        end: newEnd,
+      });
+
+      if (res.data?.success) {
+        const { clip, words, duration } = res.data;
+        updateEDL((prev) => ({
+          ...prev,
+          source: { ...prev.source, start: newStart, end: newEnd },
+          words: words || prev.words,
+          segments: [
+            { id: `seg_${Date.now()}`, src_in: newStart, src_out: newEnd }
+          ]
+        }));
+
+        set({
+          clip,
+          duration,
+          extending: false,
+        });
+      }
+    } catch (e) {
+      alert('Failed adjusting clip length: ' + (e.response?.data?.error?.message || e.message));
+      set({ extending: false });
+    }
+  },
+
   // Split Segment at Current Playhead
   splitSegmentAtPlayhead: () => {
     const { edl, currentTime, updateEDL } = get();
@@ -159,13 +279,14 @@ export const useEditorStore = create((set, get) => ({
     }));
   },
 
-  // Toggle word deletion for Descript-style jump cuts
+  // Toggle word deletion for jump cuts
   toggleWordDeleted: (wordId) => {
     const { edl, updateEDL } = get();
     if (!edl || !edl.words) return;
 
-    const updatedWords = edl.words.map((w) => {
-      if (w.id === wordId || w.start === wordId) {
+    const updatedWords = edl.words.map((w, idx) => {
+      const match = (w.id && w.id === wordId) || (w.start === wordId) || (idx === wordId);
+      if (match) {
         return { ...w, deleted: !w.deleted };
       }
       return w;
@@ -182,8 +303,9 @@ export const useEditorStore = create((set, get) => ({
     const { edl, updateEDL } = get();
     if (!edl || !edl.words) return;
 
-    const updatedWords = edl.words.map((w) => {
-      if (w.id === wordId || w.start === wordId) {
+    const updatedWords = edl.words.map((w, idx) => {
+      const match = (w.id && w.id === wordId) || (w.start === wordId) || (idx === wordId);
+      if (match) {
         return { ...w, word: newText, text: newText };
       }
       return w;
@@ -192,26 +314,6 @@ export const useEditorStore = create((set, get) => ({
     updateEDL((prev) => ({
       ...prev,
       words: updatedWords,
-    }));
-  },
-
-  // Update Region crop percentages
-  updateRegion: (regionKey, box) => {
-    const { edl, updateEDL } = get();
-    if (!edl || !edl.layout || !edl.layout.regions) return;
-
-    updateEDL((prev) => ({
-      ...prev,
-      layout: {
-        ...prev.layout,
-        regions: {
-          ...prev.layout.regions,
-          [regionKey]: {
-            ...prev.layout.regions[regionKey],
-            ...box,
-          },
-        },
-      },
     }));
   },
 
@@ -231,6 +333,19 @@ export const useEditorStore = create((set, get) => ({
     }));
   },
 
+  // Update Caption General Settings
+  updateCaptionStyle: (styleUpdate) => {
+    const { edl, updateEDL } = get();
+    if (!edl) return;
+    updateEDL((prev) => ({
+      ...prev,
+      captions: {
+        ...prev.captions,
+        ...styleUpdate,
+      },
+    }));
+  },
+
   // Apply Preset Data
   applyPresetToEDL: (presetData) => {
     const { updateEDL } = get();
@@ -243,4 +358,3 @@ export const useEditorStore = create((set, get) => ({
     });
   },
 }));
-

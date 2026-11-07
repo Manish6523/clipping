@@ -78,6 +78,8 @@ export function calculateLayerGeometry(
 
   if (fit === 'stretch') {
     res.scale_size = { w: dstW, h: dstH };
+    res.scaled_size = { w: dstW, h: dstH };
+    res.src_rect = { x: cropX, y: cropY, w: cropW, h: cropH };
   } else if (fit === 'contain') {
     let scaleW, scaleH;
     if (cropAspect > dstAspect) {
@@ -91,7 +93,9 @@ export function calculateLayerGeometry(
     const offY = toEven((dstH - scaleH) / 2);
 
     res.scale_size = { w: scaleW, h: scaleH };
+    res.scaled_size = { w: scaleW, h: scaleH };
     res.letterbox_offset = { dx: offX, dy: offY };
+    res.src_rect = { x: cropX, y: cropY, w: cropW, h: cropH };
   } else {
     // cover (default)
     let scaleW, scaleH;
@@ -106,7 +110,9 @@ export function calculateLayerGeometry(
     const innerY = toEven((scaleH - dstH) / 2);
 
     res.scale_size = { w: scaleW, h: scaleH };
+    res.scaled_size = { w: scaleW, h: scaleH };
     res.inner_crop = { x: innerX, y: innerY, w: dstW, h: dstH };
+    res.src_rect = { x: cropX, y: cropY, w: cropW, h: cropH };
   }
 
   return res;

@@ -246,11 +246,12 @@ export default function ChannelManager() {
                     <td className="py-3.5 px-4">
                       {!isEnabled ? (
                         <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-[11px] inline-flex items-center gap-1">
-                          ⏸️ PAUSED
+                          <span>PAUSED</span>
                         </span>
                       ) : isLive ? (
                         <span className="px-2 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/30 text-rose-400 font-bold text-[11px] inline-flex items-center gap-1">
-                          ● LIVE MONITORING
+                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping inline-block" />
+                          <span>LIVE MONITORING</span>
                         </span>
                       ) : (
                         <span className="text-slate-500 font-medium">Idle / Offline</span>

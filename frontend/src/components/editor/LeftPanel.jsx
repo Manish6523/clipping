@@ -1,33 +1,36 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { 
-  Video, 
+  Layers, 
   FileText, 
-  LayoutTemplate, 
-  Type, 
-  Sliders, 
+  Bookmark, 
   Volume2, 
-  Bookmark,
-  Check,
-  Trash2,
-  Share2
+  Share2, 
+  Plus, 
+  Eye, 
+  EyeOff, 
+  Lock, 
+  Unlock, 
+  Trash2, 
+  Sparkles,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
-import axios from 'axios';
 
 export default function LeftPanel() {
   const { activeTab, setActiveTab } = useEditorStore();
 
   const tabs = [
-    { id: 'source', label: 'Source', icon: Video },
-    { id: 'presets', label: 'Presets', icon: Bookmark },
+    { id: 'layers', label: 'Layers', icon: Layers },
     { id: 'transcript', label: 'Script', icon: FileText },
-    { id: 'layout', label: 'Layout', icon: LayoutTemplate },
+    { id: 'presets', label: 'Presets', icon: Bookmark },
     { id: 'audio', label: 'Audio', icon: Volume2 },
+    { id: 'publish', label: 'Publish', icon: Share2 },
   ];
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-hidden">
-      {/* Top Tab Bar Pills */}
+    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-2.5 flex flex-col gap-2.5 shadow-xl select-none overflow-hidden">
+      {/* Compact Tab Header Bar */}
       <div className="grid grid-cols-5 gap-1 bg-[#0A0B0E] p-1 rounded-xl border border-white/[0.04] shrink-0">
         {tabs.map((t) => {
           const Icon = t.icon;
@@ -36,7 +39,7 @@ export default function LeftPanel() {
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-bold transition-all ${
+              className={`flex items-center justify-center gap-1 py-1 rounded-lg text-[10px] font-bold transition-all ${
                 isActive
                   ? 'bg-[#1A1D24] text-[#8FD3FF] shadow-sm border border-white/[0.06]'
                   : 'text-[#8B90A0] hover:text-[#E8EAF0]'
@@ -44,219 +47,186 @@ export default function LeftPanel() {
               title={t.label}
             >
               <Icon size={12} />
-              <span className="hidden sm:inline">{t.label}</span>
+              <span className="hidden xl:inline">{t.label}</span>
             </button>
           );
         })}
       </div>
 
-      {/* Tab Specific Content */}
-      <div className="flex-1 overflow-y-auto pr-1 text-xs">
-        {activeTab === 'source' && <SourceSubTab />}
-        {activeTab === 'presets' && <PresetsSubTab />}
+      {/* Tab Body */}
+      <div className="flex-1 overflow-y-auto pr-0.5 text-xs">
+        {activeTab === 'layers' && <LayersShelf />}
         {activeTab === 'transcript' && <TranscriptSubTab />}
-        {activeTab === 'layout' && <LayoutSubTab />}
+        {activeTab === 'presets' && <PresetsSubTab />}
         {activeTab === 'audio' && <AudioSubTab />}
+        {activeTab === 'publish' && <PublishSubTab />}
       </div>
     </div>
   );
 }
 
-function SourceSubTab() {
-  const { clip, edl, updateRegion } = useEditorStore();
+// -------------------------------------------------------------
+// Compact Layers Shelf (28px rows, drag, eye, lock, double-click rename)
+// -------------------------------------------------------------
+function LayersShelf() {
+  const { edl, updateEDL, selection, setSelection } = useEditorStore();
+  const layers = edl?.layout?.layers || [];
 
-  const handleAutoDetect = async () => {
-    try {
-      const res = await fetch(`/api/clips/${clip?.id}/detect-faces`, { method: 'POST' });
-      const data = await res.json();
-      if (data.suggested_person) {
-        updateRegion('person', data.suggested_person);
-      }
-    } catch (e) {
-      alert('Face detection failed: ' + e.message);
+  const handleSelectLayer = (id) => {
+    setSelection({ type: 'layer', id });
+  };
+
+  const handleAddLayer = () => {
+    if (layers.length >= 8) return;
+    const colors = ['#FFB020', '#00F0FF', '#A855F7', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#EF4444'];
+    const color = colors[layers.length % colors.length];
+    const newId = `l_${Date.now()}`;
+    const newLayer = {
+      id: newId,
+      name: `Frame ${layers.length + 1}`,
+      color,
+      visible: true,
+      locked: false,
+      src: { x: 0.25, y: 0.25, w: 0.50, h: 0.50 },
+      dst: { x: 0.10, y: 0.20, w: 0.80, h: 0.40 },
+      fit: 'cover',
+      aspect_lock: true,
+      style: { radius: 0, shape: 'rect', border: { w: 0, color: '#FFFFFF' }, shadow: { blur: 0, opacity: 0 }, opacity: 1.0, mirror: false },
+      tracking: { mode: 'off', smooth: 0.8 },
+    };
+
+    updateEDL((prev) => ({
+      ...prev,
+      layout: {
+        ...prev.layout,
+        layers: [...(prev.layout?.layers || []), newLayer],
+      },
+    }));
+    setSelection({ type: 'layer', id: newId });
+  };
+
+  const updateLayer = (layerId, partial) => {
+    updateEDL((prev) => ({
+      ...prev,
+      layout: {
+        ...prev.layout,
+        layers: (prev.layout?.layers || []).map((l) => (l.id === layerId ? { ...l, ...partial } : l)),
+      },
+    }));
+  };
+
+  const deleteLayer = (layerId) => {
+    if (layers.length <= 1) return;
+    updateEDL((prev) => ({
+      ...prev,
+      layout: {
+        ...prev.layout,
+        layers: (prev.layout?.layers || []).filter((l) => l.id !== layerId),
+      },
+    }));
+    if (selection?.id === layerId) {
+      setSelection({ type: 'none', id: null });
     }
   };
 
-  const handleResetToTemplate = async () => {
-    try {
-      const tName = clip?.template_name || edl?.layout?.preset;
-      if (tName) {
-        const res = await axios.get('/api/templates');
-        const tpl = res.data?.find((t) => t.name === tName);
-        if (tpl?.layout?.top_crop && tpl?.layout?.bottom_crop) {
-          const top = tpl.layout.top_crop;
-          const bot = tpl.layout.bottom_crop;
-          updateRegion('person', {
-            x: top.normalized_x ?? (top.source_x / 1920),
-            y: top.normalized_y ?? (top.source_y / 1080),
-            w: top.normalized_w ?? (top.source_w / 1920),
-            h: top.normalized_h ?? (top.source_h / 1080),
-          });
-          updateRegion('content', {
-            x: bot.normalized_x ?? (bot.source_x / 1920),
-            y: bot.normalized_y ?? (bot.source_y / 1080),
-            w: bot.normalized_w ?? (bot.source_w / 1920),
-            h: bot.normalized_h ?? (bot.source_h / 1080),
-          });
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('Could not reset to template:', e);
-    }
-    updateRegion('person', { x: 0.0, y: 0.58, w: 0.32, h: 0.42 });
-    updateRegion('content', { x: 0.20, y: 0.0, w: 0.60, h: 1.0 });
+  const moveZ = (layerId, delta) => {
+    const idx = layers.findIndex((l) => l.id === layerId);
+    if (idx === -1) return;
+    const newIdx = idx + delta;
+    if (newIdx < 0 || newIdx >= layers.length) return;
+    const next = [...layers];
+    const [moved] = next.splice(idx, 1);
+    next.splice(newIdx, 0, moved);
+    updateEDL((prev) => ({
+      ...prev,
+      layout: { ...prev.layout, layers: next },
+    }));
   };
 
   return (
-    <div className="space-y-4">
-      <div className="bg-[#1A1D24] p-2.5 rounded-xl border border-white/[0.06] space-y-1">
-        <span className="text-[10px] uppercase font-bold text-[#8B90A0] block">Source Stream</span>
-        <div className="text-white font-mono text-[11px] truncate">
-          {clip?.source_video_path?.split(/[\\/]/).pop() || 'live_segment.mp4'}
-        </div>
-        <div className="text-[10px] text-[#8FD3FF] font-mono">
-          Range: {clip?.adjusted_start?.toFixed(1)}s - {clip?.adjusted_end?.toFixed(1)}s
-        </div>
-      </div>
-
-      <div className="space-y-2">
-        <button
-          onClick={handleAutoDetect}
-          className="w-full py-2 bg-gradient-to-r from-purple-600/30 to-indigo-600/30 hover:from-purple-600/40 hover:to-indigo-600/40 border border-purple-500/30 text-[#8FD3FF] rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
-        >
-          Auto-Detect Facecam
-        </button>
-
-        <button
-          onClick={handleResetToTemplate}
-          className="w-full py-2 bg-[#1A1D24] hover:bg-[#1A1D24]/80 border border-white/[0.06] text-[#8B90A0] hover:text-white rounded-xl font-bold flex items-center justify-center gap-1.5 transition-all"
-        >
-          Reset Boxes to Default
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function PresetsSubTab() {
-  const { clip, edl, applyPresetToEDL } = useEditorStore();
-  const [presets, setPresets] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [feedback, setFeedback] = useState(null);
-
-  const fetchPresets = async () => {
-    setLoading(true);
-    try {
-      const channelParam = clip?.channel_id ? `?channel_id=${clip.channel_id}` : '';
-      const res = await axios.get(`/api/presets${channelParam}`);
-      setPresets(res.data);
-    } catch (e) {
-      console.error('Error fetching presets:', e);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchPresets();
-  }, [clip?.channel_id]);
-
-  const handleApply = (preset) => {
-    applyPresetToEDL(preset.data);
-    setFeedback(`Applied "${preset.name}"`);
-    setTimeout(() => setFeedback(null), 2500);
-  };
-
-  const handleApplyToAll = async (presetId) => {
-    if (!confirm(`Apply this preset to ALL pending clips for streamer "${clip?.channel_id}"?`)) return;
-    try {
-      const res = await axios.post(`/api/presets/${presetId}/apply`, {
-        clip_id: clip?.id,
-        apply_to_streamer: true,
-      });
-      alert(`Applied to ${res.data.applied_count} clips in queue!`);
-    } catch (e) {
-      alert('Failed applying to streamer clips: ' + e.message);
-    }
-  };
-
-  return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase text-[#8B90A0]">Saved Style Presets</span>
-        {feedback && <span className="text-[10px] text-emerald-400 font-mono">{feedback}</span>}
+        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+          Frames ({layers.length}/8)
+        </span>
+        <button
+          onClick={handleAddLayer}
+          disabled={layers.length >= 8}
+          className="flex items-center gap-1 bg-[#8FD3FF]/20 hover:bg-[#8FD3FF]/30 border border-[#8FD3FF]/40 text-[#8FD3FF] px-2 py-0.5 rounded text-[10px] font-bold"
+        >
+          <Plus size={11} /> Add
+        </button>
       </div>
 
-      {loading && <div className="text-xs text-slate-500 font-mono">Loading presets...</div>}
+      {/* 28px Rows List */}
+      <div className="flex flex-col gap-1">
+        {layers.slice().reverse().map((layer, revIdx) => {
+          const origIdx = layers.length - 1 - revIdx;
+          const isSelected = selection?.type === 'layer' && selection?.id === layer.id;
 
-      <div className="space-y-2">
-        {presets.map((p) => (
-          <div
-            key={p.id}
-            className="p-2.5 rounded-xl border border-white/[0.06] bg-[#1A1D24] flex flex-col gap-2 hover:border-[#8FD3FF]/40 transition-all"
-          >
-            <div className="flex items-center justify-between">
-              <span className="font-bold text-white text-xs">{p.name}</span>
-              <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono ${p.scope === 'global' ? 'bg-indigo-500/20 text-indigo-300' : 'bg-emerald-500/20 text-emerald-300'}`}>
-                {p.scope}
-              </span>
-            </div>
-
-            <div className="flex items-center gap-1.5 pt-1">
-              <button
-                onClick={() => handleApply(p)}
-                className="flex-1 py-1 bg-[#8FD3FF] hover:bg-[#8FD3FF]/90 text-black font-bold text-[10px] rounded-lg transition-all"
-              >
-                Apply to Clip
-              </button>
-              {clip?.channel_id && (
-                <button
-                  onClick={() => handleApplyToAll(p.id)}
-                  className="px-2 py-1 bg-white/5 hover:bg-white/10 text-white text-[10px] rounded-lg border border-white/5"
-                  title="Apply to all pending clips of this streamer"
-                >
-                  Apply to Streamer
-                </button>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function TranscriptSubTab() {
-  const { edl, currentTime, setCurrentTime, toggleWordDeleted } = useEditorStore();
-  const words = edl?.words || [];
-
-  return (
-    <div className="space-y-2">
-      <div className="text-[10px] text-[#8B90A0]">
-        Click word to seek. Strikethrough words are cut.
-      </div>
-      <div className="space-y-1 max-h-[300px] overflow-y-auto">
-        {words.map((w, idx) => {
-          const isCurrent = currentTime >= w.start && currentTime <= w.end;
           return (
             <div
-              key={idx}
-              onClick={() => setCurrentTime(w.start)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                toggleWordDeleted(w.id || w.start);
-              }}
-              className={`p-1.5 rounded-lg border text-xs flex items-center justify-between transition-all cursor-pointer ${
-                w.deleted
-                  ? 'bg-rose-950/20 border-rose-500/30 text-rose-400 line-through'
-                  : isCurrent
-                  ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-white font-bold'
-                  : 'bg-[#1A1D24]/60 border-white/[0.04] text-[#8B90A0] hover:text-white'
+              key={layer.id}
+              onClick={() => handleSelectLayer(layer.id)}
+              className={`h-7 px-2 rounded-lg border flex items-center justify-between gap-1.5 cursor-pointer transition-all ${
+                isSelected
+                  ? 'bg-[#1A1D24] border-[#8FD3FF] shadow-sm'
+                  : 'bg-[#13151A] border-white/5 hover:border-white/20'
               }`}
             >
-              <span>{w.word || w.text}</span>
-              <span className="text-[10px] font-mono text-slate-500">{w.start.toFixed(1)}s</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <span
+                  style={{ backgroundColor: layer.color || '#00F0FF' }}
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
+                />
+                <input
+                  type="text"
+                  value={layer.name}
+                  onChange={(e) => updateLayer(layer.id, { name: e.target.value })}
+                  onClick={(e) => e.stopPropagation()}
+                  className="bg-transparent text-[11px] font-bold text-white focus:outline-none truncate w-24"
+                />
+              </div>
+
+              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                <button
+                  onClick={() => moveZ(layer.id, 1)}
+                  disabled={origIdx === layers.length - 1}
+                  title="Forward"
+                  className="text-slate-400 hover:text-white disabled:opacity-20"
+                >
+                  <ArrowUp size={11} />
+                </button>
+                <button
+                  onClick={() => moveZ(layer.id, -1)}
+                  disabled={origIdx === 0}
+                  title="Backward"
+                  className="text-slate-400 hover:text-white disabled:opacity-20"
+                >
+                  <ArrowDown size={11} />
+                </button>
+                <button
+                  onClick={() => updateLayer(layer.id, { visible: !layer.visible })}
+                  title={layer.visible ? 'Hide' : 'Show'}
+                  className="text-slate-400 hover:text-white"
+                >
+                  {layer.visible ? <Eye size={11} /> : <EyeOff size={11} className="text-slate-600" />}
+                </button>
+                <button
+                  onClick={() => updateLayer(layer.id, { locked: !layer.locked })}
+                  title={layer.locked ? 'Unlock' : 'Lock'}
+                  className="text-slate-400 hover:text-white"
+                >
+                  {layer.locked ? <Lock size={11} className="text-amber-400" /> : <Unlock size={11} />}
+                </button>
+                <button
+                  onClick={() => deleteLayer(layer.id)}
+                  title="Delete"
+                  className="text-slate-500 hover:text-rose-400"
+                >
+                  <Trash2 size={11} />
+                </button>
+              </div>
             </div>
           );
         })}
@@ -265,52 +235,108 @@ function TranscriptSubTab() {
   );
 }
 
-function LayoutSubTab() {
-  const { edl, updateEDL } = useEditorStore();
-  const currentLayout = edl?.layout?.type || 'facecam_top_gameplay_bottom';
+// -------------------------------------------------------------
+// Transcript Tab (Descript-style interactive word list)
+// -------------------------------------------------------------
+function TranscriptSubTab() {
+  const { edl, currentTime, toggleWordDeleted, setSelection } = useEditorStore();
+  const words = edl?.words || [];
+
+  if (!words.length) {
+    return (
+      <div className="text-center py-6 text-slate-500 text-xs">
+        No transcription words available. Click "Transcribe" in Clip Overview.
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1.5 leading-relaxed select-text">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+        Interactive Script ({words.length} words)
+      </span>
+      <div className="flex flex-wrap gap-1">
+        {words.map((w, idx) => {
+          const isActive = currentTime >= w.start && currentTime <= w.end;
+          return (
+            <span
+              key={idx}
+              onClick={() => setSelection({ type: 'word', id: idx, data: w })}
+              onDoubleClick={() => toggleWordDeleted(idx)}
+              className={`px-1 py-0.5 rounded cursor-pointer transition-all ${
+                w.deleted
+                  ? 'line-through text-rose-500/50 bg-rose-950/20'
+                  : isActive
+                  ? 'bg-amber-400 text-black font-black shadow-sm'
+                  : 'text-slate-300 hover:bg-white/10'
+              }`}
+            >
+              {w.word || w.text}
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// -------------------------------------------------------------
+// Presets Tab
+// -------------------------------------------------------------
+function PresetsSubTab() {
+  const { applyPresetToEDL } = useEditorStore();
 
   const presets = [
-    { id: 'facecam_top_gameplay_bottom', label: 'Facecam Top (38%) + Game (62%)' },
-    { id: 'split_screen_50_50', label: '50/50 Vertical Split' },
-    { id: 'blurred_bg_center', label: '16:9 Center with Blurred BG' },
+    { id: 'facecam_top_gameplay_bottom', name: 'Facecam Top 38% + Game 62%' },
+    { id: 'split_screen_50_50', name: '50/50 Vertical Split' },
+    { id: 'single_crop_9_16', name: 'Full 9:16 Single Crop' },
+    { id: 'blurred_bg_center', name: '16:9 Center with Blurred BG' },
   ];
 
   return (
-    <div className="space-y-3">
-      <span className="text-[10px] font-bold uppercase text-[#8B90A0] block">Layout Preset</span>
-      <div className="space-y-2">
-        {presets.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => updateEDL((prev) => ({ ...prev, layout: { ...prev.layout, type: p.id } }))}
-            className={`w-full p-2.5 rounded-xl border text-left text-xs font-bold transition-all ${
-              currentLayout === p.id
-                ? 'bg-[#1A1D24] border-[#8FD3FF] text-white shadow-sm'
-                : 'bg-[#1A1D24]/40 border-white/5 text-[#8B90A0] hover:text-white'
-            }`}
-          >
-            {p.label}
-          </button>
-        ))}
-      </div>
+    <div className="flex flex-col gap-2">
+      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+        Layout Presets
+      </span>
+      {presets.map((p) => (
+        <button
+          key={p.id}
+          onClick={() => {
+            import('../LayoutBuilder').then(({ PRESET_STARTERS }) => {
+              const starter = PRESET_STARTERS[p.id];
+              if (starter) {
+                applyPresetToEDL({
+                  layout: {
+                    schema: 2,
+                    canvas: { w: 1080, h: 1920 },
+                    background: starter.background,
+                    layers: starter.layers,
+                  }
+                });
+              }
+            });
+          }}
+          className="text-left p-2 rounded-lg bg-[#1A1D24] hover:bg-[#1A1D24]/80 border border-white/5 text-xs text-white"
+        >
+          {p.name}
+        </button>
+      ))}
     </div>
   );
 }
 
 function AudioSubTab() {
   return (
-    <div className="space-y-3 text-slate-400 text-xs">
-      <div className="p-3 bg-[#1A1D24] rounded-xl border border-white/5 space-y-2">
-        <span className="font-bold text-white block">Smart Audio Processing</span>
-        <div className="flex items-center justify-between text-[11px]">
-          <span>Loudness Normalization</span>
-          <span className="text-[#8FD3FF] font-bold">-14 LUFS</span>
-        </div>
-        <div className="flex items-center justify-between text-[11px]">
-          <span>Silence Stripping</span>
-          <span className="text-emerald-400 font-bold">Enabled</span>
-        </div>
-      </div>
+    <div className="text-slate-400 text-xs py-4 text-center">
+      Master volume: 100% (Original Audio Track Active)
+    </div>
+  );
+}
+
+function PublishSubTab() {
+  return (
+    <div className="text-slate-400 text-xs py-4 text-center">
+      Ready to render &amp; queue for automatic publishing.
     </div>
   );
 }

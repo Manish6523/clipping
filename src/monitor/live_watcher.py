@@ -57,13 +57,20 @@ class LiveStreamWatcher:
         self.last_trigger_time = 0.0
         self.cooldown_seconds = 90.0
 
+    def _get_live_url(self) -> str:
+        """Resolve correct live stream URL for platform (handles YouTube handles with @)."""
+        if self.platform == "twitch":
+            return f"https://www.twitch.tv/{self.channel_id}"
+        cid = self.channel_id.strip()
+        if not cid.startswith("@") and not cid.startswith("UC") and not cid.startswith("http"):
+            cid = f"@{cid}"
+        if cid.startswith("http"):
+            return cid
+        return f"https://www.youtube.com/{cid}/live"
+
     async def is_channel_live(self) -> bool:
         """Probe whether the channel is currently broadcasting live."""
-        if self.platform == "twitch":
-            url = f"https://www.twitch.tv/{self.channel_id}"
-        else:
-            url = f"https://www.youtube.com/{self.channel_id}/live"
-
+        url = self._get_live_url()
         cmd = [sys.executable, "-m", "streamlink", "--json", url]
         try:
             loop = asyncio.get_running_loop()
@@ -78,10 +85,7 @@ class LiveStreamWatcher:
 
     async def start_ingestion_pipeline(self) -> None:
         """Start Streamlink piped into FFmpeg 4-minute ring buffer segmenter using OS pipes."""
-        if self.platform == "twitch":
-            stream_url = f"https://www.twitch.tv/{self.channel_id}"
-        else:
-            stream_url = f"https://www.youtube.com/{self.channel_id}/live"
+        stream_url = self._get_live_url()
 
         chunk_pattern = str(self.buffer_path / "chunk_%03d.ts")
 
