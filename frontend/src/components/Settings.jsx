@@ -11,7 +11,11 @@ import {
   RotateCw, 
   ShieldCheck,
   Zap,
-  Info
+  Info,
+  Copy,
+  Download,
+  Upload,
+  Check
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -26,6 +30,9 @@ export default function Settings() {
   const [confirmDeleteIdx, setConfirmDeleteIdx] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [copiedPool, setCopiedPool] = useState(false);
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkInput, setBulkInput] = useState('');
 
   useEffect(() => {
     fetchSettings();
@@ -124,6 +131,76 @@ export default function Settings() {
     }
   };
 
+  const handleCopyAllKeys = () => {
+    const jsonStr = JSON.stringify(keys, null, 2);
+    navigator.clipboard.writeText(jsonStr);
+    setCopiedPool(true);
+    setTimeout(() => setCopiedPool(false), 2500);
+  };
+
+  const handleImportBulkKeys = async () => {
+    if (!bulkInput.trim()) return;
+    let parsedList = [];
+    try {
+      // 1. Try parsing JSON format
+      const parsed = JSON.parse(bulkInput.trim());
+      if (Array.isArray(parsed)) {
+        parsedList = parsed.map((item, idx) => {
+          if (typeof item === 'object' && item.key) {
+            return { key: item.key.trim(), label: item.label || `Account ${idx + 1}` };
+          }
+          return { key: String(item).trim(), label: `Account ${idx + 1}` };
+        });
+      }
+    } catch (e) {
+      // 2. Fallback to line-by-line or comma-separated
+      const lines = bulkInput.split(/[\n,]+/);
+      lines.forEach((line, idx) => {
+        const trimmed = line.trim();
+        if (trimmed) {
+          if (trimmed.includes(':') || trimmed.includes('=')) {
+            const [lbl, k] = trimmed.split(/[:=]/);
+            parsedList.push({ key: k.trim(), label: lbl.trim() });
+          } else {
+            parsedList.push({ key: trimmed, label: `Account ${idx + 1}` });
+          }
+        }
+      });
+    }
+
+    if (parsedList.length === 0) {
+      alert('Could not find any valid keys to import.');
+      return;
+    }
+
+    // Merge without duplicates by key
+    const existingKeyStrings = new Set(keys.map((k) => (typeof k === 'object' ? k.key : k)));
+    const merged = [...keys];
+    parsedList.forEach((item) => {
+      if (!existingKeyStrings.has(item.key)) {
+        merged.push(item);
+        existingKeyStrings.add(item.key);
+      }
+    });
+
+    setKeys(merged);
+    setBulkInput('');
+    setBulkModalOpen(false);
+
+    // Auto-save merged pool to DB immediately
+    try {
+      await axios.post('/api/settings', {
+        gemini_api_keys: merged,
+        gemini_model: model,
+        min_virality_score: minScore,
+      });
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2500);
+    } catch (err) {
+      console.error('Failed to auto-save imported keys:', err);
+    }
+  };
+
   return (
     <div className="p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -157,9 +234,27 @@ export default function Settings() {
             <Key className="w-5 h-5 text-cyan-400" />
             <h2 className="text-lg font-semibold text-white">Google Gemini API Key Pool</h2>
           </div>
-          <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 font-mono">
-            {keys.length} Active {keys.length === 1 ? 'Key' : 'Keys'}
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleCopyAllKeys}
+              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
+              title="Copy entire key pool to clipboard to transfer to VPS"
+            >
+              {copiedPool ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-cyan-400" />}
+              {copiedPool ? 'Copied Pool JSON!' : 'Copy All Keys'}
+            </button>
+            <button
+              onClick={() => setBulkModalOpen(true)}
+              className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
+              title="Paste pool from clipboard or another AutoClip instance"
+            >
+              <Upload className="w-3.5 h-3.5 text-purple-400" />
+              Paste / Import Keys
+            </button>
+            <span className="text-xs px-2.5 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400 font-mono">
+              {keys.length} Active {keys.length === 1 ? 'Key' : 'Keys'}
+            </span>
+          </div>
         </div>
 
         <p className="text-xs text-slate-400">
@@ -333,6 +428,53 @@ export default function Settings() {
           />
         </div>
       </div>
+
+      {/* Bulk Import / Paste Keys Modal */}
+      {bulkModalOpen && (
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-white flex items-center gap-2">
+                <Upload className="w-5 h-5 text-purple-400" />
+                Import / Paste API Keys Pool
+              </h3>
+              <button
+                onClick={() => setBulkModalOpen(false)}
+                className="text-slate-400 hover:text-white text-sm cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300">
+              Paste the exported JSON from your other AutoClip instance, or paste keys line-by-line / comma-separated.
+            </p>
+
+            <textarea
+              rows={6}
+              value={bulkInput}
+              onChange={(e) => setBulkInput(e.target.value)}
+              placeholder={'[\n  { "key": "AQ.Ab8...", "label": "Account 1" },\n  { "key": "AIzaSy...", "label": "Account 2" }\n]'}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 font-mono"
+            />
+
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setBulkModalOpen(false)}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleImportBulkKeys}
+                className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-semibold transition-colors cursor-pointer shadow-lg shadow-purple-600/20"
+              >
+                Import & Auto-Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
