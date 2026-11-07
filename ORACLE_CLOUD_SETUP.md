@@ -1,6 +1,6 @@
-# AutoClip - Oracle Cloud Always-Free Setup & Operations Guide
+# AutoClip - Oracle Cloud Always-Free Operations & Production Guide
 
-This guide documents what we configured, how your server is set up, and the exact steps to reconnect or run AutoClip in the future.
+This guide contains everything you need to know about your live Oracle Cloud server, including credentials, SSH access, firewall commands, and service management.
 
 ---
 
@@ -15,30 +15,44 @@ This guide documents what we configured, how your server is set up, and the exac
 * **Private Key Location (Your Laptop)**: `C:\Users\krish\Downloads\cloud-infra-oracle\ssh-key-2026-11-07.key`
 * **Virtual Cloud Network**: `autoclip-vcn`
 * **Public Subnet**: `public subnet-autoclip-vcn`
-* **Firewall Ingress Rule**: TCP Port `8080` open to `0.0.0.0/0` (for Web Dashboard)
+* **Web UI Dashboard URL**: `http://137.23.61.124:8080`
+* **GitHub Repository**: [https://github.com/Manish6523/clipping](https://github.com/Manish6523/clipping)
+* **Server Code Directory**: `/home/ubuntu/apps/clipping`
 
 ---
 
-## 2. How to SSH Into Your Server Next Time
+## 2. How to SSH Into Your Server
 
-Whenever you want to log in to your server from your Windows laptop, open **Command Prompt (`cmd`)** or **PowerShell** and run:
+Whenever you want to log in to your server from your Windows laptop, open **Command Prompt (`cmd`)** or **PowerShell**:
 
 ```cmd
 cd C:\Users\krish\Downloads\cloud-infra-oracle
 ssh -i "ssh-key-2026-11-07.key" ubuntu@137.23.61.124
 ```
 
-> **Note on Permissions**:
-> Windows SSH key permissions have already been secured using `icacls`, so you can directly run the command above without repeating the permission steps.
+---
+
+## 3. Firewall Rules (Dual-Layer: Cloud + OS)
+
+Oracle Cloud requires two firewall permissions to let traffic through to port 8080:
+
+### Layer A: Oracle Cloud VCN Security List (Already configured)
+* **Source CIDR**: `0.0.0.0/0`
+* **IP Protocol**: `TCP`
+* **Destination Port Range**: `8080`
+
+### Layer B: Ubuntu Internal OS Firewall (Run once on server)
+If you ever experience a connection timeout on port 8080, run:
+```bash
+sudo iptables -I INPUT 1 -p tcp --dport 8080 -j ACCEPT
+sudo iptables-save | sudo tee /etc/iptables/rules.v4
+```
 
 ---
 
-## 3. Recommended Initial Setup on the Server (First Login)
+## 4. Virtual Memory (Swap) Configuration
 
-Run these commands inside your server terminal (`ubuntu@instance-20261107-2002:~$`):
-
-### Step 3.1: Add 4 GB Virtual Swap Memory
-Because the AMD micro instance has 1 GB of physical RAM, creating a 4 GB swap space prevents `faster-whisper` and `FFmpeg` from running out of memory:
+Because the micro shape has 1 GB of physical RAM, a 4 GB virtual swap file ensures that FFmpeg video encoding, faster-whisper transcription, and stream monitoring run without memory crashes:
 
 ```bash
 sudo fallocate -l 4G /swapfile
@@ -48,44 +62,44 @@ sudo swapon /swapfile
 echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
-### Step 3.2: Clone AutoClip Code & Run 1-Click Deployment
-```bash
-# 1. Clone your repository (or copy your code files over)
-git clone <YOUR_GIT_REPO_URL> clipping
-cd clipping
-
-# 2. Make our automated setup script executable and run it
-chmod +x deploy_vps.sh
-./deploy_vps.sh
-```
-
-The script will:
-- Install Python 3.12, `ffmpeg`, Node.js 20, and C/C++ compilation tools.
-- Create the Python `venv` and install `requirements.txt`.
-- Build the optimized production React frontend.
-- Open port 8080 in the Ubuntu Linux firewall (`iptables`).
-- Create and register `autoclip.service` as a 24/7 background system daemon.
-
 ---
 
-## 4. Daily Management Commands
+## 5. Daily Management Commands
+
+All operations on the server should be run inside the project folder:
+```bash
+cd ~/apps/clipping
+```
 
 | Action | Command (on server) |
 |---|---|
-| **Start AutoClip** | `sudo systemctl start autoclip` |
-| **Stop AutoClip** | `sudo systemctl stop autoclip` |
+| **View Live Realtime Logs** | `journalctl -u autoclip -f` |
+| **Check Service Status** | `sudo systemctl status autoclip` |
 | **Restart AutoClip** | `sudo systemctl restart autoclip` |
-| **Check Live Status** | `sudo systemctl status autoclip` |
-| **View Live Logs in Realtime** | `journalctl -u autoclip -f` |
+| **Stop AutoClip** | `sudo systemctl stop autoclip` |
+| **Start AutoClip** | `sudo systemctl start autoclip` |
 | **Edit Environment / API Keys** | `nano config/.env` |
 
 ---
 
-## 5. Accessing Your Dashboard
+## 6. How to Deploy Future Updates
 
-Once the service is started, you can access AutoClip from **any device** (phone, tablet, office PC, etc.):
+Whenever you make changes to the code on your laptop and push to GitHub:
 
+```powershell
+# On your laptop:
+git add .
+git commit -m "feat: new updates"
+git push origin main
 ```
-http://137.23.61.124:8080
+
+Then update your server with:
+
+```bash
+# On your Oracle Cloud server:
+cd ~/apps/clipping
+git pull origin main
+cd frontend && npm run build && cd ..
+sudo systemctl restart autoclip
 ```
-*(Your laptop does NOT need to remain turned on).*
+AutoClip will immediately reload the latest changes without downtime!
