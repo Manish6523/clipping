@@ -424,6 +424,10 @@ class AutoClipEngine:
             if not candidates:
                 logger.info("No candidates above threshold for VOD %s.", vod_id)
                 update_pipeline_progress("idle", step_name="VOD processed - No clips above threshold.")
+                # Update pipeline_runs to completed if this was a recorded run
+                async with get_db_connection() as db:
+                    await db.execute("UPDATE pipeline_runs SET stage = 'completed', status = 'completed', candidates_count = 0 WHERE id = ?", (f"run_{vod_id}",))
+                    await db.commit()
                 return
 
             best_candidate = candidates[0]
