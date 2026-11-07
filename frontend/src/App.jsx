@@ -92,52 +92,12 @@ function AppLayout() {
 
   return (
     <div className="min-h-screen bg-[#080B11] text-slate-100 flex flex-col font-sans">
-      <Navbar pendingCount={status.pending_clips_count || 0} />
-
-      {/* Real-Time Live Pipeline Progress Banner */}
-      {pipelineAlert && (pipelineAlert.status === 'triggered' || pipelineAlert.status === 'processing') && (
-        <div className="max-w-7xl mx-auto w-full px-4 mt-4">
-          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl shadow-amber-500/5 animate-pulse">
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">🔥</span>
-              <div>
-                <div className="font-extrabold text-sm text-amber-300">
-                  HYPE MOMENT DETECTED ON #{pipelineAlert.channel_id?.toUpperCase()}
-                </div>
-                <div className="text-xs text-slate-400">
-                  {pipelineAlert.step_name}
-                </div>
-              </div>
-            </div>
-
-            {/* Visual 5-Step Stepper */}
-            <div className="flex items-center gap-4 text-xs font-bold">
-              {[
-                { step: 1, label: 'Buffer Sliced' },
-                { step: 2, label: 'Transcribing' },
-                { step: 3, label: 'Gemini Scoring' },
-                { step: 4, label: '9:16 Render' },
-                { step: 5, label: 'Ready' },
-              ].map((s) => (
-                <div key={s.step} className="flex items-center gap-1.5">
-                  <span className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] ${
-                    s.step < pipelineAlert.current_step
-                      ? 'bg-emerald-500 text-black'
-                      : s.step === pipelineAlert.current_step
-                      ? 'bg-amber-500 text-black ring-4 ring-amber-500/30'
-                      : 'bg-white/10 text-slate-500'
-                  }`}>
-                    {s.step}
-                  </span>
-                  <span className={s.step === pipelineAlert.current_step ? 'text-amber-300' : 'text-slate-500'}>
-                    {s.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      <Navbar 
+        pendingCount={status.pending_clips_count || 0} 
+        activePipelines={activePipelines} 
+        toasts={toasts} 
+        onDismissToast={handleDismissToast} 
+      />
 
       {/* Nested Route Views */}
       <main className="flex-1">
@@ -149,13 +109,6 @@ function AppLayout() {
           <Outlet context={{ onStatusChange: fetchSystemStatus }} />
         </Suspense>
       </main>
-
-      {/* Bottom-Right Hype Moment Toast Feed */}
-      <HypeMomentToasts 
-        activePipelines={activePipelines} 
-        toasts={toasts} 
-        onDismissToast={handleDismissToast} 
-      />
     </div>
   );
 }
