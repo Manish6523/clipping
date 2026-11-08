@@ -23,7 +23,7 @@
       "type": "solid",
       "source_layer": null,
       "blur": 0,
-      "dim": 0.0,
+      "dim": 0,
       "color": "#000000"
     },
     "layers": [
@@ -35,20 +35,20 @@
         "locked": false,
         "src": {
           "x": 0.264,
-          "y": 0.0,
+          "y": 0,
           "w": 0.511,
-          "h": 1.0
+          "h": 1
         },
         "dst": {
-          "x": 0.0,
+          "x": 0,
           "y": 0.38,
-          "w": 1.0,
+          "w": 1,
           "h": 0.62
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -56,11 +56,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {
@@ -80,21 +80,21 @@
         "visible": true,
         "locked": false,
         "src": {
-          "x": 0.0,
-          "y": 0.755,
-          "w": 0.204,
-          "h": 0.245
+          "x": 0,
+          "y": 0.684,
+          "w": 0.263,
+          "h": 0.316
         },
         "dst": {
-          "x": 0.0,
-          "y": 0.0,
-          "w": 1.0,
+          "x": 0,
+          "y": 0,
+          "w": 1,
           "h": 0.38
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -102,11 +102,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {

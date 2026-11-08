@@ -1,0 +1,163 @@
+{
+  "name": "nicjeh30-template",
+  "description": "Facecam top with gameplay bottom",
+  "min_virality_score": 65,
+  "chat_spike_multiplier": 2.5,
+  "hype_keywords": [
+    "CLIP IT",
+    "WTF",
+    "LMAO",
+    "OMG",
+    "NO WAY",
+    "W",
+    "L"
+  ],
+  "layout": {
+    "schema": 2,
+    "type": "facecam_top_gameplay_bottom",
+    "canvas": {
+      "w": 1080,
+      "h": 1920
+    },
+    "background": {
+      "type": "solid",
+      "color": "#000000",
+      "blur": 0,
+      "dim": 0
+    },
+    "layers": [
+      {
+        "id": "l_1794077726763_main video",
+        "name": "Main Video",
+        "color": "#10B981",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0.22,
+          "y": 0,
+          "w": 0.56,
+          "h": 1
+        },
+        "dst": {
+          "x": 0,
+          "y": 0,
+          "w": 1,
+          "h": 1
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0
+          },
+          "opacity": 1,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        }
+      },
+      {
+        "id": "l_1794077731618_527",
+        "name": "Frame 2",
+        "color": "#00F0FF",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0,
+          "y": 0.204,
+          "w": 0.235,
+          "h": 0.434
+        },
+        "dst": {
+          "x": 0.322,
+          "y": 0.106,
+          "w": 0.356,
+          "h": 0.205
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0
+          },
+          "opacity": 1,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        }
+      }
+    ],
+    "top_crop": {
+      "name": "webcam",
+      "source_x": 0,
+      "source_y": 311,
+      "source_w": 482,
+      "source_h": 326,
+      "normalized_x": 0,
+      "normalized_y": 0.288,
+      "normalized_w": 0.251,
+      "normalized_h": 0.302,
+      "target_w": 1080,
+      "target_h": 730
+    },
+    "bottom_crop": {
+      "name": "gameplay",
+      "source_x": 384,
+      "source_y": 0,
+      "source_w": 1152,
+      "source_h": 1080,
+      "normalized_x": 0.2,
+      "normalized_y": 0,
+      "normalized_w": 0.6,
+      "normalized_h": 1,
+      "target_w": 1080,
+      "target_h": 1190
+    }
+  },
+  "subtitles": {
+    "font_name": "Bangers",
+    "font_size": 72,
+    "primary_color": "&H00FFFFFF",
+    "highlight_color": "&H0000FFFF",
+    "outline_color": "&H00000000",
+    "back_color": "&H80000000",
+    "bold": true,
+    "italic": false,
+    "outline": 4,
+    "shadow": 2,
+    "alignment": 2,
+    "margin_v": 1248,
+    "animation": "pop",
+    "position": {
+      "x": 0.5,
+      "y": 0.35,
+      "max_width": 0.85
+    }
+  },
+  "color_grade": {
+    "contrast": 1.03,
+    "saturation": 1.05
+  },
+  "pacing": {
+    "speed_multiplier": 1.02,
+    "teaser_preroll": true
+  }
+}

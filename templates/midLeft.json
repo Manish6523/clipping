@@ -23,7 +23,7 @@
       "type": "solid",
       "source_layer": null,
       "blur": 0,
-      "dim": 0.0,
+      "dim": 0,
       "color": "#000000"
     },
     "layers": [
@@ -35,20 +35,20 @@
         "locked": false,
         "src": {
           "x": 0.2,
-          "y": 0.0,
+          "y": 0,
           "w": 0.6,
-          "h": 1.0
+          "h": 1
         },
         "dst": {
-          "x": 0.0,
+          "x": 0,
           "y": 0.38,
-          "w": 1.0,
+          "w": 1,
           "h": 0.62
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -56,11 +56,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {
@@ -80,21 +80,21 @@
         "visible": true,
         "locked": false,
         "src": {
-          "x": 0.0,
+          "x": 0,
           "y": 0.288,
-          "w": 0.251,
-          "h": 0.302
+          "w": 0.207,
+          "h": 0.212
         },
         "dst": {
-          "x": 0.0,
-          "y": 0.0,
-          "w": 1.0,
+          "x": 0,
+          "y": 0,
+          "w": 1,
           "h": 0.38
         },
         "fit": "cover",
         "aspect_lock": true,
         "style": {
-          "radius": 0.0,
+          "radius": 0,
           "shape": "rect",
           "border": {
             "w": 0,
@@ -102,11 +102,11 @@
           },
           "shadow": {
             "blur": 0,
-            "opacity": 0.0,
+            "opacity": 0,
             "dx": 0,
             "dy": 0
           },
-          "opacity": 1.0,
+          "opacity": 1,
           "mirror": false
         },
         "tracking": {
@@ -118,6 +118,45 @@
           "dst": []
         },
         "visible_range": null
+      },
+      {
+        "id": "l_1794077446597_692",
+        "name": "Frame 3",
+        "color": "#A855F7",
+        "visible": true,
+        "locked": false,
+        "src": {
+          "x": 0,
+          "y": 0.497,
+          "w": 0.103,
+          "h": 0.053
+        },
+        "dst": {
+          "x": 0.595,
+          "y": 0.322,
+          "w": 0.405,
+          "h": 0.058
+        },
+        "fit": "cover",
+        "aspect_lock": true,
+        "style": {
+          "radius": 0,
+          "shape": "rect",
+          "border": {
+            "w": 0,
+            "color": "#FFFFFF"
+          },
+          "shadow": {
+            "blur": 0,
+            "opacity": 0
+          },
+          "opacity": 1,
+          "mirror": false
+        },
+        "tracking": {
+          "mode": "off",
+          "smooth": 0.8
+        }
       }
     ],
     "top_crop": {

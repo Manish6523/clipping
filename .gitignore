@@ -50,6 +50,7 @@ data/*.sqlite3
 *.sqlite
 data/backups/
 tmp/
+temp/
 renders/
 *.mp4
 *.ts
@@ -59,6 +60,8 @@ renders/
 *.mov
 *.wav
 *.mp3
+*.m4a
+*.ass
 *.part
 *.ytdl
 latest_frame.jpg
