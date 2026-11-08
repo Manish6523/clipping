@@ -121,6 +121,39 @@ class GeminiClient:
         except Exception as e:
             logger.warning("LLM cache store failed: %s", e)
 
+    async def _sync_keys_from_db(self):
+        """Dynamically load non-exhausted Gemini keys and model setting from system_settings."""
+        try:
+            from src.database import get_all_system_settings
+            db_settings = await get_all_system_settings()
+
+            db_model = db_settings.get("gemini_model", {}).get("value")
+            if db_model and db_model.strip():
+                self.model_name = db_model.strip()
+
+            keys_val = db_settings.get("gemini_api_keys", {}).get("value")
+            if keys_val:
+                loaded = []
+                try:
+                    parsed = json.loads(keys_val)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            if isinstance(item, dict):
+                                k_str = item.get("key", "").strip()
+                                if k_str and item.get("status") != "Quota Exhausted":
+                                    loaded.append(k_str)
+                            elif isinstance(item, str) and item.strip():
+                                loaded.append(item.strip())
+                except Exception:
+                    for k in keys_val.split(","):
+                        if k.strip():
+                            loaded.append(k.strip())
+                if loaded:
+                    self.api_keys = loaded
+                    self._init_current_sdk()
+        except Exception:
+            pass
+
     async def generate_structured(
         self,
         system_instruction: str,
@@ -129,6 +162,7 @@ class GeminiClient:
         use_cache: bool = True,
     ) -> Optional[BaseModel]:
         """Runs prompt with structured schema, cache checks, and rate-limit retries."""
+        await self._sync_keys_from_db()
         cache_key = self._compute_cache_key(system_instruction, user_prompt)
         if use_cache:
             cached_text = await self._check_cache(cache_key)
