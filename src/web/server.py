@@ -165,8 +165,15 @@ class WebUIServer:
         self.app.router.add_post("/api/channels/{id}/learning/reset", self.handle_reset_channel_learning)
         self.app.router.add_post("/api/channels/{id}/learning/pause", self.handle_pause_channel_learning)
 
+        # Serve root static assets (favicon.ico, logo.png, etc.)
+        dist_root = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist"
+        if (dist_root / "favicon.ico").exists():
+            self.app.router.add_get("/favicon.ico", lambda r: web.FileResponse(dist_root / "favicon.ico"))
+        if (dist_root / "logo.png").exists():
+            self.app.router.add_get("/logo.png", lambda r: web.FileResponse(dist_root / "logo.png"))
+
         # SPA catch-all for react-router routes like /clips/{id}/editor and /channels/{id}/settings
-        self.app.router.add_get("/{tail:(?!api|renders|output|assets|ws).*$}", self.handle_spa_fallback)
+        self.app.router.add_get("/{tail:(?!api|renders|output|assets|ws|favicon\\.ico|logo\\.png).*$}", self.handle_spa_fallback)
 
     async def handle_auth_verify(self, request: web.Request) -> web.Response:
         """Verify 6-digit PIN and issue session token."""
