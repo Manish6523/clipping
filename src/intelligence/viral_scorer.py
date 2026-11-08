@@ -179,22 +179,27 @@ Return JSON with candidate clips meeting all criteria.
 """
 
         try:
-            if self._mode == "genai":
-                response = self._client.models.generate_content(
-                    model=self.model_name,
-                    contents=f"{system_instruction}\n\n{prompt}",
-                    config={
-                        "response_mime_type": "application/json",
-                        "response_schema": ViralAnalysisResponse,
-                    },
-                )
-                raw_json = response.text
-            else:
-                response = self._client.generate_content(
-                    f"{system_instruction}\n\n{prompt}",
-                    generation_config={"response_mime_type": "application/json"},
-                )
-                raw_json = response.text
+            loop = asyncio.get_running_loop()
+
+            def _call_gemini():
+                if self._mode == "genai":
+                    resp = self._client.models.generate_content(
+                        model=self.model_name,
+                        contents=f"{system_instruction}\n\n{prompt}",
+                        config={
+                            "response_mime_type": "application/json",
+                            "response_schema": ViralAnalysisResponse,
+                        },
+                    )
+                    return resp.text
+                else:
+                    resp = self._client.generate_content(
+                        f"{system_instruction}\n\n{prompt}",
+                        generation_config={"response_mime_type": "application/json"},
+                    )
+                    return resp.text
+
+            raw_json = await loop.run_in_executor(None, _call_gemini)
 
             data = json.loads(raw_json)
             candidates_raw = data.get("candidates", []) if isinstance(data, dict) else data

@@ -94,6 +94,7 @@ class AutoClipEngine:
         )
         self.active_live_watchers: Dict[str, LiveStreamWatcher] = {}
         self.running = False
+        self._clip_semaphore = asyncio.Semaphore(1)
 
     async def initialize(self) -> None:
         """Initialize database and verify configuration."""
@@ -263,17 +264,23 @@ class AutoClipEngine:
         """Handler triggered when LiveStreamWatcher detects a chat velocity or audio peak spike."""
         channel_id = metadata.get("channel_id", "unknown")
         reason = metadata.get("trigger_reason", "hype")
-        logger.info("Processing live highlight for creator '%s': %s", channel_id, video_path)
 
-        update_pipeline_progress(
-            "processing",
-            channel_id=channel_id,
-            step=2,
-            step_name=f"Transcribing 75s audio with faster-whisper ({reason})...",
-            trigger_reason=reason,
-        )
+        # Serialized pipeline lock: Prevent multiple live channels from transcribing/rendering simultaneously
+        if self._clip_semaphore.locked():
+            logger.info("⏳ Processing pipeline is busy. Queueing live moment for %s...", channel_id)
 
-        try:
+        async with self._clip_semaphore:
+            logger.info("Processing live highlight for creator '%s': %s", channel_id, video_path)
+
+            update_pipeline_progress(
+                "processing",
+                channel_id=channel_id,
+                step=2,
+                step_name=f"Transcribing 75s audio with faster-whisper ({reason})...",
+                trigger_reason=reason,
+            )
+
+            try:
             transcription = await self.transcriber.transcribe(video_path)
 
             template_name = metadata.get("template_name")
