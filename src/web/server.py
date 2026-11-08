@@ -1088,7 +1088,10 @@ class WebUIServer:
 
     async def start(self) -> None:
         """Start aiohttp web server runner."""
-        runner = web.AppRunner(self.app)
+        # Silence aiohttp's recurring GET access logs to avoid terminal lag & journal disk bloating
+        logging.getLogger("aiohttp.access").setLevel(logging.WARNING)
+        
+        runner = web.AppRunner(self.app, access_log=None)
         await runner.setup()
         site = web.TCPSite(runner, self.host, self.port)
         await site.start()
