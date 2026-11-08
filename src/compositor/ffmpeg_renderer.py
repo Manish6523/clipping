@@ -301,14 +301,14 @@ class FFmpegRenderer:
         flash_filter = f"{filter_complex};[vout]fade=t=out:st=1.3:d=0.2:color=white[v_flashed]"
 
         cmd_teaser = [
-            "ffmpeg", "-y",
+            "ffmpeg", "-y", "-threads", "2",
             "-ss", f"{teaser_timestamp:.3f}",
             "-t", "1.500",
             "-i", str(source_path),
             "-filter_complex", flash_filter,
             "-map", "[v_flashed]",
             "-map", "0:a:0?",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "22",
+            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25",
             "-c:a", "aac", "-b:a", "192k",
             str(teaser_tmp),
         ]

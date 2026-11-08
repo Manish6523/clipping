@@ -69,7 +69,29 @@ class LiveStreamWatcher:
         return f"https://www.youtube.com/{cid}/live"
 
     async def is_channel_live(self) -> bool:
-        """Probe whether the channel is currently broadcasting live."""
+        """Probe whether the channel is currently broadcasting live using lightweight HTTP/GQL queries."""
+        if self.platform == "twitch":
+            try:
+                # Fast Twitch GraphQL check (0.05s, 0% CPU, no subprocess)
+                async with aiohttp.ClientSession() as session:
+                    headers = {
+                        "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
+                        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    }
+                    payload = {
+                        "query": f'query {{ user(login: "{self.channel_id.lower()}") {{ stream {{ id type }} }} }}'
+                    }
+                    async with session.post("https://gql.twitch.tv/gql", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            user_data = data.get("data", {}).get("user")
+                            if user_data:
+                                stream = user_data.get("stream")
+                                return stream is not None and stream.get("type") == "live"
+            except Exception as e:
+                logger.debug("Fast Twitch live check failed for %s (%s), falling back...", self.channel_id, e)
+
+        # Fallback probe using streamlink --json
         url = self._get_live_url()
         cmd = [sys.executable, "-m", "streamlink", "--json", url]
         try:
@@ -150,7 +172,9 @@ class LiveStreamWatcher:
                 elif not is_live and self._stream_proc is not None:
                     await self.stop_pipeline()
 
-                await asyncio.sleep(15)
+                # Poll every 20s if live, or 45s if offline to save resources
+                sleep_sec = 20 if is_live else 45
+                await asyncio.sleep(sleep_sec)
         finally:
             chat_task.cancel()
             audio_task.cancel()
@@ -297,7 +321,8 @@ class LiveStreamWatcher:
     async def _analyze_chunk_audio_db(self, chunk_path: str) -> Optional[float]:
         """Run FFmpeg astats filter to extract max peak audio level in dB."""
         cmd = [
-            "ffmpeg", "-i", chunk_path,
+            "ffmpeg", "-y", "-threads", "1",
+            "-i", chunk_path,
             "-af", "astats=metadata=1:reset=1",
             "-vn", "-f", "null", "-",
         ]

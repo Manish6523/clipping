@@ -106,6 +106,8 @@ class VODWatcher:
             "-f", "ba",
             "-x",
             "--audio-format", "wav",
+            "--download-sections", "*0-600",
+            "--max-filesize", "50M",
             "--output", out_template,
             video_url,
         ]

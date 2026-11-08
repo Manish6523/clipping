@@ -60,7 +60,7 @@ function AppLayout() {
       }
     });
 
-    const statusInterval = setInterval(fetchSystemStatus, 4000);
+    const statusInterval = setInterval(fetchSystemStatus, 12000);
 
     return () => {
       unsubscribe();
