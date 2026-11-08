@@ -44,6 +44,7 @@ from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
 from src.monitor.live_watcher import LiveStreamWatcher
 from src.monitor.vod_watcher import VODWatcher
+from src.monitor.storage_gc import run_storage_gc_loop
 from src.publisher.scheduler import DripScheduler
 from src.web.server import WebUIServer
 from src.web.logger_stream import update_pipeline_progress, WebLogHandler
@@ -585,6 +586,10 @@ class AutoClipEngine:
         # Start Scheduler loop
         scheduler_task = asyncio.create_task(self.scheduler.run())
 
+        # Start Storage Garbage Collector loop (auto-cleans temp files and caps buffer at 1.5GB)
+        gc_dirs = [Path("temp"), Path(RENDER_DIR), Path("tmp")]
+        gc_task = asyncio.create_task(run_storage_gc_loop(gc_dirs, interval_seconds=120))
+
         # Start Channel Monitor synchronizer loop
         async def _channel_sync_loop():
             while self.running:
@@ -625,6 +630,7 @@ class AutoClipEngine:
             finally:
                 self.running = False
                 scheduler_task.cancel()
+                gc_task.cancel()
                 sync_task.cancel()
                 vod_task.cancel()
         else:

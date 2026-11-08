@@ -125,21 +125,25 @@ class VODWatcher:
         end_time: float,
         output_file: Path,
     ) -> bool:
-        """Download exact slice using yt-dlp --download-sections with keyframe snapping."""
+        """Download exact slice using yt-dlp --download-sections with stream copy."""
         section_arg = f"*{start_time:.2f}-{end_time:.2f}"
+        # Prefer direct MP4/M4A streams that allow instantaneous slice extraction without re-encoding
         cmd = [
             sys.executable, "-m", "yt_dlp",
-            "-f", "bestvideo[height<=1080]+bestaudio/best[height<=1080]/best",
+            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
             "--download-sections", section_arg,
-            "--force-keyframes-at-cuts",
+            "--no-warnings",
             "--output", str(output_file),
             video_url,
         ]
 
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        await proc.communicate()
+        try:
+            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+            await proc.communicate()
+        except Exception as e:
+            logger.error("download_video_section subprocess error: %s", e)
 
-        return output_file.exists()
+        return output_file.exists() and output_file.stat().st_size > 0
 
     async def process_vod(
         self,
