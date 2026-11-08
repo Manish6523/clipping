@@ -248,12 +248,14 @@ class LiveStreamWatcher:
                     keyword_hit = True
                     break
 
-        velocity_spike = current_5s_mps >= (self.chat_baseline_mps * self.spike_multiplier) and recent_5s > 6
+        velocity_spike = current_5s_mps >= (self.chat_baseline_mps * self.spike_multiplier) and recent_5s >= 10
 
-        # A single keyword should only trigger if there is at least some chat velocity (recent_5s >= 2)
-        should_trigger = velocity_spike or (keyword_hit and recent_5s >= 2)
+        # Require meaningful chat velocity for keyword triggers to avoid low-activity false triggers
+        should_trigger = velocity_spike or (keyword_hit and recent_5s >= 6)
 
-        if should_trigger and (now - self.last_trigger_time > self.cooldown_seconds):
+        # Enforce minimum cooldown of 90s between live triggers to let previous pipeline finish
+        cooldown = max(90.0, getattr(self, "cooldown_seconds", 60.0))
+        if should_trigger and (now - self.last_trigger_time > cooldown):
             logger.info(
                 "Hype Triggered on %s! (Velocity: %.2f MPS vs baseline %.2f MPS | Keyword: %s)",
                 self.channel_id, current_5s_mps, self.chat_baseline_mps, keyword_hit
