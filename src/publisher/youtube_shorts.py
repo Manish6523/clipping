@@ -39,7 +39,10 @@ class YouTubeShortsPublisher:
             token_uri=token_data.get("token_uri", "https://oauth2.googleapis.com/token"),
             client_id=token_data.get("client_id"),
             client_secret=token_data.get("client_secret"),
-            scopes=["https://www.googleapis.com/auth/youtube.upload"],
+            scopes=[
+                "https://www.googleapis.com/auth/youtube.upload",
+                "https://www.googleapis.com/auth/youtube.readonly",
+            ],
         )
 
         return build("youtube", "v3", credentials=creds)
