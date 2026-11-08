@@ -897,23 +897,38 @@ class WebUIServer:
         if not key:
             return web.json_response({"valid": False, "error": "API key required"}, status=400)
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
-        payload = json.dumps({"contents": [{"parts": [{"text": "Reply with 'OK'"}]}]}).encode("utf-8")
-        req = urllib.request.Request(url, headers={"Content-Type": "application/json"}, data=payload)
+        # Fallback to gemini-flash-lite-latest if old 2.5 endpoint returns 404
+        candidate_models = [model]
+        if model != "gemini-flash-lite-latest":
+            candidate_models.append("gemini-flash-lite-latest")
+        if "gemini-flash-latest" not in candidate_models:
+            candidate_models.append("gemini-flash-latest")
 
-        try:
-            loop = asyncio.get_running_loop()
-            res = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=8.0))
-            resp_data = json.loads(res.read().decode())
-            text = resp_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-            return web.json_response({"valid": True, "message": "Key is active and responding!", "preview": text.strip()})
-        except Exception as e:
-            err_msg = str(e)
-            if "429" in err_msg or "ResourceExhausted" in err_msg:
-                err_msg = "Rate limit / Quota exceeded (429)"
-            elif "400" in err_msg or "API key not valid" in err_msg:
-                err_msg = "Invalid API Key"
-            return web.json_response({"valid": False, "error": err_msg})
+        last_error = "Unknown error"
+        for mod in candidate_models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{mod}:generateContent?key={key}"
+            payload = json.dumps({"contents": [{"parts": [{"text": "Reply with 'OK'"}]}]}).encode("utf-8")
+            req = urllib.request.Request(url, headers={"Content-Type": "application/json"}, data=payload)
+
+            try:
+                loop = asyncio.get_running_loop()
+                res = await loop.run_in_executor(None, lambda: urllib.request.urlopen(req, timeout=8.0))
+                resp_data = json.loads(res.read().decode())
+                text = resp_data.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                return web.json_response({"valid": True, "message": f"Active & Responding ({mod})", "preview": text.strip()})
+            except Exception as e:
+                err_msg = str(e)
+                if "429" in err_msg or "ResourceExhausted" in err_msg:
+                    return web.json_response({"valid": False, "error": "Rate limit / Quota exceeded (429)"})
+                elif "400" in err_msg or "API key not valid" in err_msg:
+                    return web.json_response({"valid": False, "error": "Invalid API Key"})
+                elif "404" in err_msg:
+                    last_error = f"Model {mod} not supported for this key"
+                    continue
+                else:
+                    last_error = err_msg
+
+        return web.json_response({"valid": False, "error": last_error})
 
     async def handle_get_pipeline_runs(self, request: web.Request) -> web.Response:
         """Get recent pipeline execution runs with candidate counts, stages, and latency, including in-flight pipelines."""
