@@ -281,139 +281,139 @@ class AutoClipEngine:
             )
 
             try:
-            transcription = await self.transcriber.transcribe(video_path)
+                transcription = await self.transcriber.transcribe(video_path)
 
-            template_name = metadata.get("template_name")
-            if not template_name:
-                # Query channel's assigned template from DB
-                from src.database import get_db_connection
-                async with get_db_connection() as db:
-                    cur = await db.execute("SELECT template_name FROM channels WHERE channel_id_or_handle = ?", (channel_id,))
-                    row = await cur.fetchone()
-                    if row and row[0]:
-                        template_name = row[0]
-            if not template_name:
-                template_name = "Bottom Left"
+                template_name = metadata.get("template_name")
+                if not template_name:
+                    # Query channel's assigned template from DB
+                    from src.database import get_db_connection
+                    async with get_db_connection() as db:
+                        cur = await db.execute("SELECT template_name FROM channels WHERE channel_id_or_handle = ?", (channel_id,))
+                        row = await cur.fetchone()
+                        if row and row[0]:
+                            template_name = row[0]
+                if not template_name:
+                    template_name = "Bottom Left"
 
-            template = load_template(template_name)
-            min_score = template.get("min_virality_score", 70)
+                template = load_template(template_name)
+                min_score = template.get("min_virality_score", 70)
 
-            update_pipeline_progress(
-                "processing",
-                channel_id=channel_id,
-                step=3,
-                step_name="Evaluating viral hooks with Gemini AI...",
-            )
+                update_pipeline_progress(
+                    "processing",
+                    channel_id=channel_id,
+                    step=3,
+                    step_name="Evaluating viral hooks with Gemini AI...",
+                )
 
-            candidates = await self.scorer.analyze_transcript(
-                transcript_data=transcription,
-                min_score=min_score,
-            )
+                candidates = await self.scorer.analyze_transcript(
+                    transcript_data=transcription,
+                    min_score=min_score,
+                )
 
-            if not candidates:
-                logger.info("No candidates passed min_virality_score threshold (%d). Discarding.", min_score)
-                update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"No clips above score {min_score}. Returning to live watch.")
-                # Auto-reset banner after 10s
-                async def _clear_banner():
-                    await asyncio.sleep(10)
+                if not candidates:
+                    logger.info("No candidates passed min_virality_score threshold (%d). Discarding.", min_score)
+                    update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"No clips above score {min_score}. Returning to live watch.")
+                    # Auto-reset banner after 10s
+                    async def _clear_banner():
+                        await asyncio.sleep(10)
+                        update_pipeline_progress("idle", step_name="Idle - Awaiting Stream Moments")
+                    asyncio.create_task(_clear_banner())
+                    return
+
+                best_candidate = candidates[0]
+                logger.info("Selected viral candidate: '%s' (Score: %d/100)", best_candidate.suggested_title, best_candidate.virality_score)
+
+                clip_start = best_candidate.start_time
+                clip_end = best_candidate.end_time
+                clip_dur = clip_end - clip_start
+
+                timestamp_id = int(metadata.get("timestamp", 0))
+                ass_path = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}.ass")
+                ass_json_cache = Path(ass_path).with_suffix(".json")
+
+                with open(ass_json_cache, "w", encoding="utf-8") as f:
+                    json.dump(transcription.get("words", []), f)
+
+                generate_ass_subtitles(
+                    word_timestamps=transcription.get("words", []),
+                    output_path=ass_path,
+                    template_config=template,
+                    time_offset=clip_start,
+                    max_duration=clip_dur,
+                )
+
+                update_pipeline_progress(
+                    "processing",
+                    channel_id=channel_id,
+                    step=4,
+                    step_name=f"Rendering 9:16 layout ({template_name}) & burning kinetic captions...",
+                )
+
+                rendered_mp4 = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
+                await self.renderer.render_clip(
+                    source_path=video_path,
+                    start_time=clip_start,
+                    end_time=clip_end,
+                    output_path=rendered_mp4,
+                    template=template,
+                    ass_path=ass_path,
+                    teaser_timestamp=best_candidate.teaser_hook_timestamp,
+                    include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
+                )
+
+                clip_id = await create_clip(
+                    source_type="live",
+                    source_id=str(timestamp_id),
+                    channel_id=channel_id,
+                    template_name=template_name,
+                    raw_start=clip_start,
+                    raw_end=clip_end,
+                    virality_score=best_candidate.virality_score,
+                    title=best_candidate.suggested_title,
+                    teaser_hook_timestamp=best_candidate.teaser_hook_timestamp,
+                    description=best_candidate.hook_summary,
+                    hashtags=" ".join(best_candidate.hashtags),
+                    source_video_path=video_path,
+                    rendered_video_path=rendered_mp4,
+                    subtitle_path=ass_path,
+                )
+
+                update_pipeline_progress(
+                    "completed",
+                    channel_id=channel_id,
+                    step=5,
+                    step_name=f"Viral Clip #{clip_id} Ready! Sent to Telegram.",
+                    clip_id=clip_id,
+                )
+
+                # Broadcast clip_created event to real-time Web UI
+                from src.web.ws_manager import ws_manager
+                await ws_manager.broadcast("clip_created", {
+                    "id": clip_id,
+                    "clip_id": clip_id,
+                    "channel_id": channel_id,
+                    "title": best_candidate.suggested_title,
+                    "virality_score": best_candidate.virality_score,
+                    "template_name": template_name,
+                    "rendered_video_path": rendered_mp4,
+                    "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+                })
+
+                clip_record = await get_clip(clip_id)
+                if clip_record and self.bot:
+                    try:
+                        await self.bot.send_clip_card(clip_record)
+                    except Exception as bot_err:
+                        logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
+
+                async def _reset():
+                    await asyncio.sleep(20)
                     update_pipeline_progress("idle", step_name="Idle - Awaiting Stream Moments")
-                asyncio.create_task(_clear_banner())
-                return
+                asyncio.create_task(_reset())
 
-            best_candidate = candidates[0]
-            logger.info("Selected viral candidate: '%s' (Score: %d/100)", best_candidate.suggested_title, best_candidate.virality_score)
-
-            clip_start = best_candidate.start_time
-            clip_end = best_candidate.end_time
-            clip_dur = clip_end - clip_start
-
-            timestamp_id = int(metadata.get("timestamp", 0))
-            ass_path = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}.ass")
-            ass_json_cache = Path(ass_path).with_suffix(".json")
-
-            with open(ass_json_cache, "w", encoding="utf-8") as f:
-                json.dump(transcription.get("words", []), f)
-
-            generate_ass_subtitles(
-                word_timestamps=transcription.get("words", []),
-                output_path=ass_path,
-                template_config=template,
-                time_offset=clip_start,
-                max_duration=clip_dur,
-            )
-
-            update_pipeline_progress(
-                "processing",
-                channel_id=channel_id,
-                step=4,
-                step_name=f"Rendering 9:16 layout ({template_name}) & burning kinetic captions...",
-            )
-
-            rendered_mp4 = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
-            await self.renderer.render_clip(
-                source_path=video_path,
-                start_time=clip_start,
-                end_time=clip_end,
-                output_path=rendered_mp4,
-                template=template,
-                ass_path=ass_path,
-                teaser_timestamp=best_candidate.teaser_hook_timestamp,
-                include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
-            )
-
-            clip_id = await create_clip(
-                source_type="live",
-                source_id=str(timestamp_id),
-                channel_id=channel_id,
-                template_name=template_name,
-                raw_start=clip_start,
-                raw_end=clip_end,
-                virality_score=best_candidate.virality_score,
-                title=best_candidate.suggested_title,
-                teaser_hook_timestamp=best_candidate.teaser_hook_timestamp,
-                description=best_candidate.hook_summary,
-                hashtags=" ".join(best_candidate.hashtags),
-                source_video_path=video_path,
-                rendered_video_path=rendered_mp4,
-                subtitle_path=ass_path,
-            )
-
-            update_pipeline_progress(
-                "completed",
-                channel_id=channel_id,
-                step=5,
-                step_name=f"Viral Clip #{clip_id} Ready! Sent to Telegram.",
-                clip_id=clip_id,
-            )
-
-            # Broadcast clip_created event to real-time Web UI
-            from src.web.ws_manager import ws_manager
-            await ws_manager.broadcast("clip_created", {
-                "id": clip_id,
-                "clip_id": clip_id,
-                "channel_id": channel_id,
-                "title": best_candidate.suggested_title,
-                "virality_score": best_candidate.virality_score,
-                "template_name": template_name,
-                "rendered_video_path": rendered_mp4,
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
-
-            clip_record = await get_clip(clip_id)
-            if clip_record and self.bot:
-                try:
-                    await self.bot.send_clip_card(clip_record)
-                except Exception as bot_err:
-                    logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
-
-            async def _reset():
-                await asyncio.sleep(20)
-                update_pipeline_progress("idle", step_name="Idle - Awaiting Stream Moments")
-            asyncio.create_task(_reset())
-
-        except Exception as e:
-            logger.error("Error processing live highlight: %s", e, exc_info=True)
-            update_pipeline_progress("error", channel_id=channel_id, error=str(e))
+            except Exception as e:
+                logger.error("Error processing live highlight: %s", e, exc_info=True)
+                update_pipeline_progress("error", channel_id=channel_id, error=str(e))
 
     async def _on_vod_event(self, audio_or_url: str, metadata: Dict[str, Any]) -> None:
         """Handler triggered when VODWatcher discovers and extracts candidate VOD."""
