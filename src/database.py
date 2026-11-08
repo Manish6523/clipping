@@ -64,15 +64,15 @@ class SqliteThreadWrapper:
 
 
 def get_db_connection():
-    """Get async SQLite connection (aiosqlite if installed, else sqlite3 thread wrapper)."""
+    """Get async SQLite connection with increased busy timeout (30s) to prevent lock contention."""
     if HAS_AIOSQLITE:
         class AioSqliteContext:
             async def __aenter__(self):
-                self.conn = await aiosqlite.connect(DATABASE_PATH, timeout=5.0)
+                self.conn = await aiosqlite.connect(DATABASE_PATH, timeout=30.0)
                 self.conn.row_factory = aiosqlite.Row
                 await self.conn.execute("PRAGMA journal_mode = WAL;")
                 await self.conn.execute("PRAGMA synchronous = NORMAL;")
-                await self.conn.execute("PRAGMA busy_timeout = 5000;")
+                await self.conn.execute("PRAGMA busy_timeout = 30000;")
                 await self.conn.execute("PRAGMA foreign_keys = ON;")
                 return self.conn
 
