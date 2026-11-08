@@ -95,6 +95,41 @@ class ViralScorer:
         self._client = None
         self._mode = "none"
 
+    async def _sync_settings_from_db(self):
+        """Dynamically synchronize keys, model, and quota status directly from system_settings."""
+        try:
+            from src.database import get_all_system_settings
+            db_settings = await get_all_system_settings()
+
+            # Dynamic model selection
+            db_model = db_settings.get("gemini_model", {}).get("value")
+            if db_model and db_model.strip():
+                self.model_name = db_model.strip()
+
+            # Dynamic API key pool
+            keys_val = db_settings.get("gemini_api_keys", {}).get("value")
+            if keys_val:
+                loaded_keys = []
+                try:
+                    parsed = json.loads(keys_val)
+                    if isinstance(parsed, list):
+                        for item in parsed:
+                            # Skip keys marked as Quota Exhausted if others exist
+                            if isinstance(item, dict):
+                                k_str = item.get("key", "").strip()
+                                if k_str and item.get("status") != "Quota Exhausted":
+                                    loaded_keys.append(k_str)
+                            elif isinstance(item, str) and item.strip():
+                                loaded_keys.append(item.strip())
+                except Exception:
+                    for k in keys_val.split(","):
+                        if k.strip():
+                            loaded_keys.append(k.strip())
+                if loaded_keys:
+                    self.api_keys = loaded_keys
+        except Exception as e:
+            logger.debug("Failed to sync settings from db: %s", e)
+
     async def analyze_transcript(
         self,
         transcript_data: Dict[str, Any],
@@ -106,6 +141,9 @@ class ViralScorer:
         """
         Evaluate full transcript and metadata to discover 25-58s viral clips.
         """
+        await self._sync_settings_from_db()
+        self._init_client()
+
         if not self._client or not self.api_key:
             logger.warning("No Gemini client or API key available. Skipping clip creation (heuristics disabled).")
             return []
