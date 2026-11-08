@@ -183,7 +183,7 @@ class FFmpegRenderer:
         a_filter_str = ",".join(audio_filters)
 
         # Base FFmpeg command
-        cmd = ["ffmpeg", "-y"]
+        cmd = ["ffmpeg", "-y", "-threads", "2"]
 
         # Hardware acceleration flags if enabled
         if self.use_vaapi:
@@ -208,8 +208,8 @@ class FFmpegRenderer:
         if self.use_vaapi:
             cmd.extend(["-c:v", "h264_vaapi", "-qp", "24"])
         else:
-            # -crf 24 keeps pristine 1080x1920 quality while keeping files under 15-20MB for fast Telegram delivery
-            cmd.extend(["-c:v", "libx264", "-preset", "fast", "-crf", "24", "-maxrate", "4M", "-bufsize", "8M"])
+            # -preset veryfast with -threads 2 prevents maxing out 100% CPU on 2-vCPU instances
+            cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25", "-maxrate", "4M", "-bufsize", "8M"])
 
         cmd.extend([
             "-c:a", "aac",

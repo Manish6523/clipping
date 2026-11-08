@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class Transcriber:
     """Extracts high-precision word timestamps using faster-whisper."""
 
-    def __init__(self, model_size: str = "base", device: str = "auto", compute_type: str = "auto"):
+    def __init__(self, model_size: str = "tiny", device: str = "auto", compute_type: str = "auto"):
         self.model_size = model_size
         self.device = device
         self.compute_type = compute_type

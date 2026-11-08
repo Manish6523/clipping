@@ -82,7 +82,7 @@ class AutoClipEngine:
             admin_id=ADMIN_CHAT_ID,
             on_manual_clip=self._on_manual_clip,
         )
-        self.transcriber = Transcriber(model_size="base")
+        self.transcriber = Transcriber(model_size="tiny")
         self.scorer = ViralScorer()
         self.renderer = FFmpegRenderer()
         self.scheduler = DripScheduler(on_post_published=self._on_drip_post_published)
