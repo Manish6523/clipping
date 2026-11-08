@@ -12,6 +12,7 @@ import {
   ArrowDown, 
   Maximize2, 
   RotateCcw, 
+  RotateCw,
   ShieldAlert, 
   Check, 
   Sparkles,
@@ -205,10 +206,62 @@ export default function LayoutBuilder({
 
   const layers = useMemo(() => currentLayout.layers || [], [currentLayout]);
 
+  // Undo / Redo Stacks (up to 40 states)
+  const [history, setHistory] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  const pushHistory = useCallback((prevLayout) => {
+    setHistory((h) => [...h.slice(-39), JSON.parse(JSON.stringify(prevLayout))]);
+    setRedoStack([]);
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (history.length === 0) return;
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, h.length - 1));
+    setRedoStack((r) => [...r, JSON.parse(JSON.stringify(currentLayout))]);
+    onChange?.(prev);
+  }, [history, currentLayout, onChange]);
+
+  const handleRedo = useCallback(() => {
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((r) => r.slice(0, r.length - 1));
+    setHistory((h) => [...h, JSON.parse(JSON.stringify(currentLayout))]);
+    onChange?.(next);
+  }, [redoStack, currentLayout, onChange]);
+
+  // Keyboard shortcut listener for Ctrl+Z and Ctrl+Shift+Z / Ctrl+Y
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Don't intercept if user is typing in an input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName)) return;
+
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key.toLowerCase() === 'z') {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && ((e.shiftKey && e.key.toLowerCase() === 'z') || e.key.toLowerCase() === 'y')) {
+        e.preventDefault();
+        handleRedo();
+      } else if ((e.key === 'Delete' || e.key === 'Backspace') && selectedLayerId) {
+        // Prevent deleting if typing in text fields
+        if (layers.length > 1) {
+          e.preventDefault();
+          handleDeleteLayer(selectedLayerId);
+        }
+      } else if (e.key === 'Escape') {
+        setSelectedLayerId(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo, selectedLayerId, layers]);
+
   const updateLayout = useCallback((updater) => {
+    pushHistory(currentLayout);
     const nextLayout = typeof updater === 'function' ? updater(currentLayout) : { ...currentLayout, ...updater };
     onChange?.(nextLayout);
-  }, [currentLayout, onChange]);
+  }, [currentLayout, onChange, pushHistory]);
 
   const updateLayer = useCallback((layerId, partial) => {
     updateLayout((prev) => ({
@@ -625,6 +678,42 @@ export default function LayoutBuilder({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Undo / Redo buttons */}
+          <div className="flex items-center gap-1 bg-[#13151A] p-0.5 rounded-lg border border-white/10">
+            <button
+              onClick={handleUndo}
+              disabled={history.length === 0}
+              title="Undo (Ctrl+Z)"
+              className={`p-1.5 rounded text-xs transition-all ${
+                history.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+            >
+              <RotateCcw size={13} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              title="Redo (Ctrl+Shift+Z)"
+              className={`p-1.5 rounded text-xs transition-all ${
+                redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+              }`}
+            >
+              <RotateCw size={13} />
+            </button>
+          </div>
+
+          {/* Delete Selected Layer Button */}
+          {selectedLayerId && (
+            <button
+              onClick={() => handleDeleteLayer(selectedLayerId)}
+              disabled={layers.length <= 1}
+              title="Delete Selected Frame (Del / Backspace)"
+              className="flex items-center gap-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
+            >
+              <Trash2 size={13} /> Delete Frame
+            </button>
+          )}
+
           <button
             onClick={() => handleAddLayer()}
             disabled={layers.length >= 8}
@@ -679,6 +768,7 @@ export default function LayoutBuilder({
           <div className="w-full flex-1 flex items-center justify-center min-h-0 overflow-hidden touch-none">
             <div
               ref={srcCanvasRef}
+              onClick={() => setSelectedLayerId(null)}
               className="w-full aspect-video max-h-full bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-inner flex items-center justify-center select-none touch-none"
             >
               {mode === 'clip' && sourceMediaUrl ? (
@@ -707,7 +797,30 @@ export default function LayoutBuilder({
               if (!layer.visible) return null;
               const isSelected = selectedLayerId === layer.id;
               const srcRect = layer.src || { x: 0, y: 0, w: 1, h: 1 };
+              const dstRect = layer.dst || { x: 0, y: 0, w: 1, h: 1 };
               const { x, y, w, h } = srcRect;
+
+              // Calculate cut-off shading for cover fit
+              const cropAspect = ((w || 1) * 1920) / ((h || 1) * 1080);
+              const dstAspect = ((dstRect.w || 1) * 1080) / ((dstRect.h || 1) * 1920);
+              const fit = (layer.fit || 'cover').toLowerCase();
+              
+              let cutLeftPct = 0;
+              let cutRightPct = 0;
+              let cutTopPct = 0;
+              let cutBottomPct = 0;
+
+              if (fit === 'cover') {
+                if (cropAspect > dstAspect) {
+                  const cutFraction = Math.max(0, (1 - dstAspect / cropAspect) / 2);
+                  cutLeftPct = cutFraction * 100;
+                  cutRightPct = cutFraction * 100;
+                } else if (cropAspect < dstAspect) {
+                  const cutFraction = Math.max(0, (1 - cropAspect / dstAspect) / 2);
+                  cutTopPct = cutFraction * 100;
+                  cutBottomPct = cutFraction * 100;
+                }
+              }
 
               return (
                 <div
@@ -719,21 +832,72 @@ export default function LayoutBuilder({
                     height: `${(h ?? 1) * 100}%`,
                     borderColor: layer.color || '#00F0FF',
                   }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedLayerId(layer.id);
+                  }}
                   onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
                   className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                     isSelected 
-                      ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.6)] z-30'
+                      ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
                       : 'border-white/40 hover:border-white/80 z-20'
                   }`}
                 >
+                  {/* Shaded indicator showing what portions get trimmed by destination aspect ratio */}
+                  {fit === 'cover' && (cutLeftPct > 0 || cutTopPct > 0) && (
+                    <>
+                      {cutLeftPct > 0 && (
+                        <>
+                          <div 
+                            style={{ width: `${cutLeftPct}%` }}
+                            className="absolute left-0 top-0 bottom-0 bg-black/60 border-r border-dashed border-red-400/70 pointer-events-none"
+                            title="Trimmed from 9:16 output"
+                          />
+                          <div 
+                            style={{ width: `${cutRightPct}%` }}
+                            className="absolute right-0 top-0 bottom-0 bg-black/60 border-l border-dashed border-red-400/70 pointer-events-none"
+                            title="Trimmed from 9:16 output"
+                          />
+                        </>
+                      )}
+                      {cutTopPct > 0 && (
+                        <>
+                          <div 
+                            style={{ height: `${cutTopPct}%` }}
+                            className="absolute top-0 left-0 right-0 bg-black/60 border-b border-dashed border-red-400/70 pointer-events-none"
+                            title="Trimmed from 9:16 output"
+                          />
+                          <div 
+                            style={{ height: `${cutBottomPct}%` }}
+                            className="absolute bottom-0 left-0 right-0 bg-black/60 border-t border-dashed border-red-400/70 pointer-events-none"
+                            title="Trimmed from 9:16 output"
+                          />
+                        </>
+                      )}
+                    </>
+                  )}
+
                   <div
                     style={{ backgroundColor: layer.color || '#00F0FF' }}
-                    className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase text-black flex items-center gap-1 shadow pointer-events-none select-none"
+                    className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase text-black flex items-center gap-1 shadow select-none z-30"
                   >
                     <span>{layer.name}</span>
                     <span className="text-[9px] font-mono bg-black/70 px-1 rounded text-white border border-white/10">
                       {Math.round(w * 100)}% x {Math.round(h * 100)}%
                     </span>
+                    {/* Delete button right inside header pill when selected */}
+                    {isSelected && layers.length > 1 && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteLayer(layer.id);
+                        }}
+                        title="Delete box"
+                        className="ml-1 p-0.5 rounded bg-black/40 hover:bg-rose-600 text-white transition-colors cursor-pointer pointer-events-auto"
+                      >
+                        <Trash2 size={10} />
+                      </button>
+                    )}
                   </div>
 
                   {/* 8-Point Resize Handles (Active only on selected layer) */}
@@ -776,7 +940,10 @@ export default function LayoutBuilder({
 
           {/* Interactive 9:16 Composite Viewport */}
           <div className="w-full flex-1 flex justify-center items-center min-h-0 touch-none">
-            <div className="h-full aspect-[9/16] bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center touch-none">
+            <div 
+              onClick={() => setSelectedLayerId(null)}
+              className="h-full aspect-[9/16] bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center touch-none"
+            >
               <canvas
                 ref={dstCanvasRef}
                 width={1080}
@@ -801,13 +968,26 @@ export default function LayoutBuilder({
                       height: `${(h ?? 1) * 100}%`,
                       borderColor: layer.color || '#00F0FF',
                     }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedLayerId(layer.id);
+                    }}
                     onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'move')}
                     className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                       isSelected
-                        ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.5)] z-30'
+                        ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
                         : 'border-white/30 hover:border-white/80 z-20'
                     }`}
                   >
+                    {/* Selected layer tag indicator in output viewport */}
+                    {isSelected && (
+                      <div 
+                        style={{ backgroundColor: layer.color || '#00F0FF' }}
+                        className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black flex items-center gap-1 shadow select-none pointer-events-none"
+                      >
+                        {layer.name} ({Math.round(w * 100)}% x {Math.round(h * 100)}%)
+                      </div>
+                    )}
                     {/* Destination 8-Point Resize Handles */}
                     {isSelected && !layer.locked && (
                       <>
