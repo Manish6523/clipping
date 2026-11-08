@@ -124,7 +124,7 @@ class DripScheduler:
             last_error=f"YT: {yt_res.get('error')} | IG: {ig_res.get('error')}" if (not yt_res.get("success") or not ig_res.get("success")) else None,
         )
 
-        overall_status = "published" if (yt_res.get("success") or ig_res.get("success")) else "failed"
+        overall_status = "published" if (yt_res.get("success") or ig_res.get("success")) else "rejected"
         await update_clip_status(clip_id, overall_status)
 
         # Notify via callback if registered
