@@ -31,6 +31,7 @@ from config.settings import (
 )
 from src.database import (
     init_db,
+    get_db_connection,
     get_active_channels,
     create_clip,
     get_clip,
