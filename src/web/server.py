@@ -32,6 +32,8 @@ from src.database import (
     get_clip_edl,
     save_clip_edl,
     delete_clip_completely,
+    verify_auth_pin,
+    validate_auth_session,
 )
 from src.bot.trimmer import ClipTrimmer, load_template
 from src.publisher.youtube_shorts import YouTubeShortsPublisher
@@ -61,14 +63,56 @@ class WebUIServer:
         self.port = port
         self.on_manual_clip = on_manual_clip
         self.trimmer = ClipTrimmer()
-        # Enable timing middleware
-        self.app = web.Application(middlewares=[request_timing_middleware])
+        # Enable timing & auth middleware
+        self.app = web.Application(middlewares=[request_timing_middleware, self.auth_middleware])
         self._setup_routes()
+
+    @web.middleware
+    async def auth_middleware(self, request: web.Request, handler):
+        """Protect API endpoints, media files, and websockets via session token."""
+        path = request.path
+
+        # Unrestricted public paths: SPA pages, assets, favicon, login API, health check
+        if (
+            path == "/"
+            or path.startswith("/assets")
+            or path.startswith("/favicon")
+            or path == "/logo.png"
+            or path == "/api/status"
+            or path == "/api/auth/verify"
+            or not (path.startswith("/api/") or path.startswith("/ws") or path.startswith("/renders/") or path.startswith("/output/"))
+        ):
+            return await handler(request)
+
+        # Check Authorization header (Bearer <token>), cookie, or query param
+        auth_header = request.headers.get("Authorization", "")
+        token = ""
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+        elif "token" in request.query:
+            token = request.query.get("token", "")
+        elif "autoclip_session" in request.cookies:
+            token = request.cookies.get("autoclip_session", "")
+
+        is_valid = await validate_auth_session(token)
+        if not is_valid:
+            if path.startswith("/ws"):
+                ws = web.WebSocketResponse()
+                await ws.prepare(request)
+                await ws.close(code=4001, message=b"Unauthorized")
+                return ws
+            return web.json_response(
+                {"error": {"code": "UNAUTHORIZED", "message": "Authentication required. Generate a PIN via Telegram."}},
+                status=401
+            )
+
+        return await handler(request)
 
     def _setup_routes(self) -> None:
         """Register web routes."""
         self.app.router.add_get("/", self.handle_index)
         self.app.router.add_get("/api/status", self.handle_status)
+        self.app.router.add_post("/api/auth/verify", self.handle_auth_verify)
         self.app.router.add_get("/ws", ws_manager.handle_ws)
 
         # Register modular sub-routers
@@ -123,6 +167,45 @@ class WebUIServer:
 
         # SPA catch-all for react-router routes like /clips/{id}/editor and /channels/{id}/settings
         self.app.router.add_get("/{tail:(?!api|renders|output|assets|ws).*$}", self.handle_spa_fallback)
+
+    async def handle_auth_verify(self, request: web.Request) -> web.Response:
+        """Verify 6-digit PIN and issue session token."""
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+
+        raw_pin = str(body.get("pin", "")).strip().replace("-", "").replace(" ", "")
+        if not raw_pin or len(raw_pin) != 6 or not raw_pin.isdigit():
+            return web.json_response(
+                {"error": {"code": "INVALID_PIN", "message": "PIN must be a 6-digit numeric code."}},
+                status=400
+            )
+
+        ua = request.headers.get("User-Agent", "Web Browser")[:60]
+        session = await verify_auth_pin(raw_pin, device_info=ua)
+        if not session:
+            return web.json_response(
+                {"error": {"code": "PIN_EXPIRED", "message": "Invalid or expired PIN. Please generate a new one via Telegram (/pin)."}},
+                status=401
+            )
+
+        resp = web.json_response({
+            "success": True,
+            "token": session["token"],
+            "expires_at": session["expires_at"],
+            "duration_seconds": session["duration_seconds"],
+        })
+        # Set HttpOnly cookie as convenient fallback
+        resp.set_cookie(
+            "autoclip_session",
+            session["token"],
+            max_age=session["duration_seconds"],
+            path="/",
+            httponly=True,
+            samesite="Lax"
+        )
+        return resp
 
     async def handle_index(self, request: web.Request) -> web.Response:
         """Serve main dashboard React SPA index.html from frontend/dist (SPA fallback supported)."""

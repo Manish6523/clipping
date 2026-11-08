@@ -43,15 +43,17 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
       <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between">
         {/* Left: Brand Logo */}
         <div className="flex items-center shrink-0">
-          <NavLink to="/" className="flex items-center gap-2 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20 group-hover:scale-105 transition-all">
-              M
-            </div>
+          <NavLink to="/" className="flex items-center gap-2.5 group">
+            <img 
+              src="/logo.png" 
+              alt="AutoClip Logo" 
+              className="w-8 h-8 rounded-xl object-cover shadow-md shadow-violet-500/20 group-hover:scale-105 transition-all border border-white/10" 
+            />
             <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white group-hover:text-[#8FD3FF] transition-colors">
+              <span className="font-extrabold text-sm sm:text-base tracking-tight text-white group-hover:text-[#A78BFA] transition-colors">
                 AUTOCLIP
               </span>
-              <span className="text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-white/[0.06] border border-white/[0.08] text-[#8FD3FF] hidden sm:inline-block">
+              <span className="text-[9px] uppercase font-mono font-bold tracking-wider px-1.5 py-0.5 rounded bg-violet-500/10 border border-violet-500/20 text-[#A78BFA] hidden sm:inline-block">
                 SUITE
               </span>
             </div>

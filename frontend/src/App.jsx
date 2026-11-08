@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Navbar from './components/Navbar';
 import ReviewStation from './components/ReviewStation';
+import PinLockScreen from './components/PinLockScreen';
 import { getStatus, getPipelineStatus } from './api';
 import { eventStream } from './services/eventStream';
 import HypeMomentToasts from './components/HypeMomentToasts';
@@ -120,6 +121,25 @@ function ReviewStationWrapper() {
 }
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return Boolean(localStorage.getItem('autoclip_session_token'));
+  });
+
+  useEffect(() => {
+    const handleAuthRequired = () => {
+      localStorage.removeItem('autoclip_session_token');
+      localStorage.removeItem('autoclip_session_expires');
+      setIsAuthenticated(false);
+    };
+
+    window.addEventListener('autoclip_auth_required', handleAuthRequired);
+    return () => window.removeEventListener('autoclip_auth_required', handleAuthRequired);
+  }, []);
+
+  if (!isAuthenticated) {
+    return <PinLockScreen onAuthenticated={() => setIsAuthenticated(true)} />;
+  }
+
   return (
     <Routes>
       {/* Root Layout for Main Dashboard Navigation */}

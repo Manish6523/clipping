@@ -39,6 +39,9 @@ from src.database import (
     enqueue_clip,
     get_upcoming_queue,
     delete_clip_completely,
+    create_auth_pin,
+    get_active_sessions,
+    revoke_all_sessions,
 )
 from src.bot.trimmer import ClipTrimmer, load_template
 from src.publisher.youtube_shorts import YouTubeShortsPublisher
@@ -129,16 +132,120 @@ class AutoClipBot:
             if not self._is_admin(message.from_user.id):
                 return
             await message.reply(
-                "🚀 <b>AutoClipDaemon Active</b>\n\n"
-                "Autonomous Live &amp; VOD social clipping engine.\n\n"
-                "<b>Available Commands:</b>\n"
-                "• <code>/add &lt;platform&gt; &lt;channel&gt; &lt;template&gt;</code> — Monitor creator\n"
-                "• <code>/remove &lt;channel&gt;</code> — Stop monitoring\n"
-                "• <code>/clip &lt;url&gt; &lt;template&gt; [start-end]</code> — Force manual clip\n"
-                "• <code>/templates</code> — View layouts &amp; mapped accounts\n"
-                "• <code>/queue</code> — View scheduled drip uploads\n\n"
-                "🌐 <b>Web UI Dashboard:</b> http://localhost:8080",
+                "🎬 <b>AutoClip Suite • Telegram Control Center</b>\n\n"
+                "Here are all available commands:\n\n"
+                "🔐 <b>Authentication & Web Access:</b>\n"
+                "• <code>/pin [duration]</code> — Generate web access PIN. E.g.:\n"
+                "   › <code>/pin</code> (Default 30 days)\n"
+                "   › <code>/pin 11min</code> or <code>/pin 120min</code>\n"
+                "   › <code>/pin 2h</code> or <code>/pin 24h</code>\n"
+                "   › <code>/pin 7d</code> or <code>/pin 30d</code>\n"
+                "• <code>/sessions</code> — List active logged-in web sessions\n"
+                "• <code>/logout_all</code> — Revoke all sessions & lock the dashboard\n\n"
+                "📹 <b>Stream Monitoring:</b>\n"
+                "• <code>/add &lt;platform&gt; &lt;channel&gt; &lt;template&gt;</code> — Start monitoring streamer\n"
+                "• <code>/remove &lt;channel&gt;</code> — Stop monitoring streamer\n"
+                "• <code>/clip &lt;url&gt; &lt;template&gt; [start-end]</code> — Force manual clip from URL\n\n"
+                "📋 <b>Templates & Publishing Queue:</b>\n"
+                "• <code>/templates</code> — View all visual templates & accounts\n"
+                "• <code>/queue</code> — View upcoming scheduled drip uploads\n\n"
+                "🌐 <b>Web Dashboard:</b> https://clip.manish.casa",
                 parse_mode="HTML",
+            )
+
+        @self.dp.message(Command("pin"))
+        async def cmd_pin(message: types.Message, command: CommandObject):
+            if not self._is_admin(message.from_user.id):
+                return
+
+            import re
+            import random
+
+            # Parse duration from argument (e.g., '11min', '120min', '2h', '24h', '7d', '30m')
+            raw_dur = (command.args or "").strip().lower()
+            duration_seconds = 30 * 86400  # Default 30 days
+            display_label = "30 Days"
+
+            if raw_dur:
+                # Minutes: e.g. 11min, 120min, 15m
+                m_min = re.match(r"^(\d+)\s*(?:min|mins|m)$", raw_dur)
+                # Hours: e.g. 2h, 24hours
+                m_hr = re.match(r"^(\d+)\s*(?:hour|hours|hr|hrs|h)$", raw_dur)
+                # Days: e.g. 1d, 7days
+                m_day = re.match(r"^(\d+)\s*(?:day|days|d)$", raw_dur)
+
+                if m_min:
+                    mins = int(m_min.group(1))
+                    duration_seconds = max(60, mins * 60)
+                    display_label = f"{mins} Minute{'s' if mins != 1 else ''}"
+                elif m_hr:
+                    hrs = int(m_hr.group(1))
+                    duration_seconds = max(60, hrs * 3600)
+                    display_label = f"{hrs} Hour{'s' if hrs != 1 else ''}"
+                elif m_day:
+                    days = int(m_day.group(1))
+                    duration_seconds = max(60, days * 86400)
+                    display_label = f"{days} Day{'s' if days != 1 else ''}"
+                elif raw_dur.isdigit():
+                    # If just digits, treat as minutes if <= 180, otherwise hours
+                    val = int(raw_dur)
+                    if val <= 180:
+                        duration_seconds = val * 60
+                        display_label = f"{val} Minutes"
+                    else:
+                        duration_seconds = val * 3600
+                        display_label = f"{val} Hours"
+                else:
+                    await message.reply(
+                        "⚠️ <b>Invalid duration format!</b>\n"
+                        "Examples: <code>/pin 11min</code>, <code>/pin 120min</code>, <code>/pin 2h</code>, <code>/pin 24h</code>, <code>/pin 7d</code>",
+                        parse_mode="HTML"
+                    )
+                    return
+
+            # Generate random 6-digit PIN
+            pin_code = f"{random.randint(100000, 999999)}"
+            await create_auth_pin(pin_code, session_duration_seconds=duration_seconds, pin_valid_seconds=900)
+
+            formatted_pin = f"{pin_code[:3]}-{pin_code[3:]}"
+            await message.reply(
+                f"🔐 <b>AutoClip Web Access PIN:</b>\n\n"
+                f"<code>{pin_code}</code> (or <code>{formatted_pin}</code>)\n\n"
+                f"⏱️ <b>Session Validity:</b> <b>{display_label}</b>\n"
+                f"⏳ <b>PIN Expiry:</b> Enter within 15 minutes\n\n"
+                f"🌐 Login at: https://clip.manish.casa",
+                parse_mode="HTML"
+            )
+
+        @self.dp.message(Command("sessions"))
+        async def cmd_sessions(message: types.Message):
+            if not self._is_admin(message.from_user.id):
+                return
+
+            sessions = await get_active_sessions()
+            if not sessions:
+                await message.reply("🔒 No active web sessions found.", parse_mode="HTML")
+                return
+
+            lines = ["📱 <b>Active Web Dashboard Sessions:</b>\n"]
+            for i, s in enumerate(sessions, 1):
+                token_preview = s['token'][:6] + "..."
+                exp = s.get('expires_at', '').replace("T", " ")[:19]
+                lines.append(f"{i}. <code>{token_preview}</code> — Expires: <code>{exp} UTC</code>")
+
+            lines.append("\n💡 <i>To log out all devices, send /logout_all</i>")
+            await message.reply("\n".join(lines), parse_mode="HTML")
+
+        @self.dp.message(Command("logout_all"))
+        async def cmd_logout_all(message: types.Message):
+            if not self._is_admin(message.from_user.id):
+                return
+
+            count = await revoke_all_sessions()
+            await message.reply(
+                f"🚪 <b>All Sessions Revoked!</b>\n"
+                f"Logged out {count} active device(s). The Web Dashboard is now locked.",
+                parse_mode="HTML"
             )
 
         @self.dp.message(Command("add"))

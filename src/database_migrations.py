@@ -429,6 +429,29 @@ async def migration_v11(db):
     await db.commit()
 
 
+@migration(12, "Add web auth PINs and sessions tables")
+async def migration_v12(db):
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS auth_pins (
+            pin TEXT PRIMARY KEY,
+            session_duration_seconds INTEGER NOT NULL,
+            expires_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            token TEXT PRIMARY KEY,
+            device_info TEXT,
+            expires_at TEXT NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_auth_pins_exp ON auth_pins(expires_at);
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_exp ON auth_sessions(expires_at);
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

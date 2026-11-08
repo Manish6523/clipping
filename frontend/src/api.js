@@ -5,6 +5,29 @@ const api = axios.create({
   timeout: 30000,
 });
 
+// Attach Authorization Bearer token to all outgoing API requests
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('autoclip_session_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Intercept 401 Unauthorized responses to trigger lock screen
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      // Trigger auth required event
+      window.dispatchEvent(new CustomEvent('autoclip_auth_required'));
+    }
+    return Promise.reject(error);
+  }
+);
+
+export const verifyPin = (pin) => api.post('/api/auth/verify', { pin }).then(r => r.data);
+
 export const getStatus = () => api.get('/api/status').then(r => r.data);
 export const getHealth = () => api.get('/api/health').then(r => r.data);
 export const getPipelineStatus = () => api.get('/api/pipeline/status').then(r => r.data);

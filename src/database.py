@@ -4,7 +4,7 @@ Supports native aiosqlite or standard library sqlite3 via async thread execution
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from config.settings import DATABASE_PATH
@@ -821,3 +821,98 @@ async def get_all_system_settings() -> Dict[str, Any]:
                 "updated_at": r_dict["updated_at"],
             }
         return settings
+
+
+# ==========================================
+# Web Dashboard Authentication
+# ==========================================
+
+async def create_auth_pin(pin: str, session_duration_seconds: int, pin_valid_seconds: int = 600) -> None:
+    """Store a 6-digit PIN with a short entry expiration window."""
+    now = datetime.now(timezone.utc)
+    pin_expiry = (now + timedelta(seconds=pin_valid_seconds)).isoformat()
+    async with get_db_connection() as db:
+        # Remove any expired PINs first
+        await db.execute("DELETE FROM auth_pins WHERE expires_at < ?", (now.isoformat(),))
+        await db.execute(
+            """
+            INSERT OR REPLACE INTO auth_pins (pin, session_duration_seconds, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (pin, session_duration_seconds, pin_expiry)
+        )
+        await db.commit()
+
+
+async def verify_auth_pin(pin: str, device_info: str = "Web Browser") -> Optional[Dict[str, Any]]:
+    """Validate a PIN and issue a cryptographically random session token if valid."""
+    import secrets
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    async with get_db_connection() as db:
+        cur = await db.execute(
+            "SELECT pin, session_duration_seconds, expires_at FROM auth_pins WHERE pin = ? AND expires_at >= ?",
+            (pin, now_iso)
+        )
+        row = await cur.fetchone()
+        if not row:
+            return None
+
+        duration = row[1] if isinstance(row, (list, tuple)) else row["session_duration_seconds"]
+        session_expiry = (now + timedelta(seconds=duration)).isoformat()
+        token = secrets.token_hex(24)
+
+        # Delete used PIN (one-time use)
+        await db.execute("DELETE FROM auth_pins WHERE pin = ?", (pin,))
+        # Store new session
+        await db.execute(
+            """
+            INSERT INTO auth_sessions (token, device_info, expires_at)
+            VALUES (?, ?, ?)
+            """,
+            (token, device_info, session_expiry)
+        )
+        await db.commit()
+
+        return {
+            "token": token,
+            "expires_at": session_expiry,
+            "duration_seconds": duration,
+        }
+
+
+async def validate_auth_session(token: str) -> bool:
+    """Check if session token exists and has not expired."""
+    if not token:
+        return False
+    now_iso = datetime.now(timezone.utc).isoformat()
+    async with get_db_connection() as db:
+        cur = await db.execute(
+            "SELECT token FROM auth_sessions WHERE token = ? AND expires_at >= ?",
+            (token, now_iso)
+        )
+        row = await cur.fetchone()
+        return bool(row)
+
+
+async def get_active_sessions() -> List[Dict[str, Any]]:
+    """Return all currently valid sessions."""
+    now_iso = datetime.now(timezone.utc).isoformat()
+    async with get_db_connection() as db:
+        cur = await db.execute(
+            "SELECT token, device_info, expires_at, created_at FROM auth_sessions WHERE expires_at >= ? ORDER BY created_at DESC",
+            (now_iso,)
+        )
+        rows = await cur.fetchall()
+        return [dict(r) for r in rows]
+
+
+async def revoke_all_sessions() -> int:
+    """Invalidate all active sessions immediately."""
+    async with get_db_connection() as db:
+        cur = await db.execute("DELETE FROM auth_sessions")
+        await db.execute("DELETE FROM auth_pins")
+        await db.commit()
+        return cur.rowcount or 0
+
