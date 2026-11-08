@@ -13,6 +13,7 @@ from aiohttp import web
 
 from config.settings import (
     RENDER_DIR,
+    OUTPUT_DIR,
     TEMPLATES_DIR,
     DRIP_INTERVAL_HOURS,
     WEB_HOST,
@@ -103,6 +104,7 @@ class WebUIServer:
 
         # Serve static rendered video files & posters
         self.app.router.add_static("/renders", path=str(RENDER_DIR), name="renders", show_index=False)
+        self.app.router.add_static("/output", path=str(OUTPUT_DIR), name="output_clips", show_index=False)
 
         # Serve built frontend static assets
         dist_assets = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist" / "assets"
@@ -120,7 +122,7 @@ class WebUIServer:
         self.app.router.add_post("/api/channels/{id}/learning/pause", self.handle_pause_channel_learning)
 
         # SPA catch-all for react-router routes like /clips/{id}/editor and /channels/{id}/settings
-        self.app.router.add_get("/{tail:(?!api|renders|assets|ws).*$}", self.handle_spa_fallback)
+        self.app.router.add_get("/{tail:(?!api|renders|output|assets|ws).*$}", self.handle_spa_fallback)
 
     async def handle_index(self, request: web.Request) -> web.Response:
         """Serve main dashboard React SPA index.html from frontend/dist (SPA fallback supported)."""

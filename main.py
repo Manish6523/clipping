@@ -26,6 +26,7 @@ from config.settings import (
     ADMIN_CHAT_ID,
     TEMPLATES_DIR,
     RENDER_DIR,
+    OUTPUT_DIR,
     WEB_HOST,
     WEB_PORT,
     MAX_CONCURRENT_JOBS,
@@ -181,7 +182,7 @@ class AutoClipEngine:
                 )
 
                 update_pipeline_progress("processing", channel_id="manual", step=4, step_name=f"Compositing 9:16 vertical layout ({template_name})...")
-                rendered_mp4 = str(work_dir / f"{fake_vod_id}_vertical.mp4")
+                rendered_mp4 = str(Path(OUTPUT_DIR) / f"{fake_vod_id}_vertical.mp4")
                 await self.renderer.render_clip(
                     source_path=str(slice_source),
                     start_time=0.0,
@@ -352,7 +353,7 @@ class AutoClipEngine:
                     step_name=f"Rendering 9:16 layout ({template_name}) & burning kinetic captions...",
                 )
 
-                rendered_mp4 = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
+                rendered_mp4 = str(Path(OUTPUT_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
                 await self.renderer.render_clip(
                     source_path=video_path,
                     start_time=clip_start,
@@ -477,7 +478,7 @@ class AutoClipEngine:
                 max_duration=clip_dur,
             )
 
-            rendered_mp4 = str(work_dir / f"{vod_id}_vertical.mp4")
+            rendered_mp4 = str(Path(OUTPUT_DIR) / f"{vod_id}_vertical.mp4")
             await self.renderer.render_clip(
                 source_path=str(slice_source),
                 start_time=0.0,

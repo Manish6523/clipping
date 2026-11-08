@@ -406,16 +406,29 @@ class AutoClipBot:
         hashtags = [h.strip() for h in (clip.get("hashtags") or "").split() if h.strip()]
 
         dests = load_template_destinations(template_name)
-        yt_key = dests.get("youtube_account_key")
+        channel_id = clip.get("channel_id") or ""
+
+        # Check mapped YouTube accounts for streamer
+        from src.database import get_accounts_for_streamer
+        mapped_yt_keys = await get_accounts_for_streamer(channel_id)
+        if not mapped_yt_keys and channel_id.startswith("@"):
+            mapped_yt_keys = await get_accounts_for_streamer(channel_id[1:])
+        elif not mapped_yt_keys:
+            mapped_yt_keys = await get_accounts_for_streamer(f"@{channel_id}")
+
+        if not mapped_yt_keys and dests.get("youtube_account_key"):
+            mapped_yt_keys = [dests.get("youtube_account_key")]
+
         ig_key = dests.get("instagram_account_key")
 
         yt_res = {"success": False, "error": "Not configured"}
         ig_res = {"success": False, "error": "Not configured"}
 
         tasks = []
-        if yt_key:
-            yt_pub = YouTubeShortsPublisher(yt_key)
-            tasks.append(yt_pub.upload_short(video_path, title, description, hashtags))
+        if mapped_yt_keys:
+            for yk in mapped_yt_keys:
+                pub = YouTubeShortsPublisher(yk)
+                tasks.append(pub.upload_short(video_path, title, description, hashtags))
         if ig_key:
             ig_pub = InstagramReelsPublisher(ig_key)
             tasks.append(ig_pub.upload_reel(video_path, title, hashtags))
@@ -423,9 +436,14 @@ class AutoClipBot:
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         idx = 0
-        if yt_key:
-            yt_res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
-            idx += 1
+        if mapped_yt_keys:
+            for _ in mapped_yt_keys:
+                res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
+                if res.get("success"):
+                    yt_res = res
+                    break
+                yt_res = res
+                idx += 1
         if ig_key:
             ig_res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
 

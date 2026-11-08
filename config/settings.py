@@ -47,6 +47,10 @@ BUFFER_DIR.mkdir(parents=True, exist_ok=True)
 RENDER_DIR = Path(os.getenv("RENDER_DIR", BASE_DIR / "tmp" / "renders"))
 RENDER_DIR.mkdir(parents=True, exist_ok=True)
 
+# Persistent output directory for finalized, queued, and published clips
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", BASE_DIR / "output" / "clips"))
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
 TEMPLATES_DIR = BASE_DIR / "templates"
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 

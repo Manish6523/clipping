@@ -21,7 +21,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from config.settings import RENDER_DIR
+from config.settings import RENDER_DIR, OUTPUT_DIR
 from src.database import get_db_connection, get_clip
 
 logger = logging.getLogger(__name__)
@@ -206,14 +206,14 @@ class SafeRenderManager:
             old_video_path = clip.get("rendered_video_path")
             old_thumb_path = clip.get("thumbnail_path")
 
-            render_dir = Path(RENDER_DIR)
-            render_dir.mkdir(parents=True, exist_ok=True)
+            output_dir = Path(OUTPUT_DIR)
+            output_dir.mkdir(parents=True, exist_ok=True)
 
             final_video_name = f"clip_{clip_id}_v{new_version}.mp4"
-            final_video_path = render_dir / final_video_name
+            final_video_path = output_dir / final_video_name
 
             final_thumb_name = f"clip_{clip_id}_v{new_version}_thumb.jpg"
-            final_thumb_path = render_dir / final_thumb_name if temp_thumb_path else None
+            final_thumb_path = output_dir / final_thumb_name if temp_thumb_path else None
 
             # 3. Atomic file swap on disk via os.replace
             try:
