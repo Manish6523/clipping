@@ -74,7 +74,7 @@ class GeminiClient:
 
         if HAS_GENAI and genai is not None:
             try:
-                self._client = genai.Client(api_key=k)
+                self._client = genai.Client(api_key=k, http_options={"api_version": "v1beta"})
                 self._mode = "genai"
                 return
             except Exception as e:

@@ -75,9 +75,9 @@ class ViralScorer:
 
         if HAS_GENAI and genai is not None:
             try:
-                self._client = genai.Client(api_key=self.api_key)
+                self._client = genai.Client(api_key=self.api_key, http_options={"api_version": "v1beta"})
                 self._mode = "genai"
-                logger.info("Initialized Google GenAI client.")
+                logger.info("Initialized Google GenAI client (v1beta).")
                 return
             except Exception as e:
                 logger.warning("Could not initialize google-genai: %s", e)
