@@ -28,6 +28,7 @@ from config.settings import (
     RENDER_DIR,
     WEB_HOST,
     WEB_PORT,
+    MAX_CONCURRENT_JOBS,
 )
 from src.database import (
     init_db,
@@ -94,7 +95,9 @@ class AutoClipEngine:
         )
         self.active_live_watchers: Dict[str, LiveStreamWatcher] = {}
         self.running = False
-        self._clip_semaphore = asyncio.Semaphore(1)
+        concurrency = max(1, MAX_CONCURRENT_JOBS)
+        self._clip_semaphore = asyncio.Semaphore(concurrency)
+        logger.info("Pipeline concurrency limit initialized: %d parallel job(s)", concurrency)
 
     async def initialize(self) -> None:
         """Initialize database and verify configuration."""

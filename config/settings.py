@@ -89,6 +89,9 @@ DEFAULT_MIN_VIRALITY_SCORE = int(os.getenv("DEFAULT_MIN_VIRALITY_SCORE", "70"))
 CHAT_SPIKE_MULTIPLIER = float(os.getenv("CHAT_SPIKE_MULTIPLIER", "2.5"))
 AUDIO_PEAK_DB_THRESHOLD = float(os.getenv("AUDIO_PEAK_DB_THRESHOLD", "-6.0"))
 
+# Pipeline Concurrency (1 on low-spec 2-vCPU VPS to prevent lockups, 3-8 on multi-core local machines)
+MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
+
 # Scheduler
 DRIP_INTERVAL_HOURS = int(os.getenv("DRIP_INTERVAL_HOURS", "4"))
 
