@@ -527,6 +527,21 @@ async def migration_v13(db):
     await db.commit()
 
 
+@migration(14, "Add group_tag and avatar_url to channels")
+async def migration_v14(db):
+    """Add category group_tag and streamer avatar_url to channels table."""
+    cur = await db.execute("PRAGMA table_info(channels)")
+    rows = await cur.fetchall()
+    cols = [r[1] if isinstance(r, (list, tuple)) else r["name"] for r in rows]
+
+    if "group_tag" not in cols:
+        await db.execute("ALTER TABLE channels ADD COLUMN group_tag TEXT DEFAULT 'General'")
+    if "avatar_url" not in cols:
+        await db.execute("ALTER TABLE channels ADD COLUMN avatar_url TEXT")
+
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

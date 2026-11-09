@@ -96,19 +96,27 @@ async def init_db() -> None:
 # Channels Management
 # ==========================================
 
-async def add_channel(platform: str, channel_id_or_handle: str, template_name: str) -> int:
-    """Add or re-activate a channel to monitor."""
+async def add_channel(
+    platform: str,
+    channel_id_or_handle: str,
+    template_name: str,
+    group_tag: str = "General",
+    avatar_url: Optional[str] = None,
+) -> int:
+    """Add or re-activate a channel to monitor with optional group/label and avatar URL."""
     async with get_db_connection() as db:
         cursor = await db.execute(
             """
-            INSERT INTO channels (platform, channel_id_or_handle, template_name, is_active)
-            VALUES (?, ?, ?, 1)
+            INSERT INTO channels (platform, channel_id_or_handle, template_name, is_active, group_tag, avatar_url)
+            VALUES (?, ?, ?, 1, ?, ?)
             ON CONFLICT(channel_id_or_handle) DO UPDATE SET
                 platform = excluded.platform,
                 template_name = excluded.template_name,
-                is_active = 1
+                is_active = 1,
+                group_tag = COALESCE(excluded.group_tag, channels.group_tag),
+                avatar_url = COALESCE(excluded.avatar_url, channels.avatar_url)
             """,
-            (platform.lower(), channel_id_or_handle.strip(), template_name.strip()),
+            (platform.lower(), channel_id_or_handle.strip(), template_name.strip(), group_tag.strip() or "General", avatar_url),
         )
         await db.commit()
         return cursor.lastrowid or 0

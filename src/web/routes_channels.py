@@ -32,12 +32,59 @@ def make_json_error(code: str, message: str, status: int = 400) -> web.Response:
     return web.json_response({"error": {"code": code, "message": message}}, status=status)
 
 
+async def fetch_streamer_avatar(platform: str, channel_id_or_handle: str) -> str:
+    """Fetch profile avatar URL from Twitch GraphQL or YouTube channel page."""
+    import aiohttp
+    import re
+    handle = channel_id_or_handle.strip().lstrip("@")
+    if platform.lower() == "twitch":
+        try:
+            url = "https://gql.twitch.tv/gql"
+            headers = {
+                "Client-ID": "kimne78kx3ncx6brgo4mv6wki5h1ko",
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            }
+            payload = {
+                "query": f'query {{ user(login: "{handle.lower()}") {{ profileImageURL(width: 300) }} }}'
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        img = (data.get("data", {}).get("user") or {}).get("profileImageURL")
+                        if img:
+                            return img
+        except Exception as e:
+            logger.debug("Twitch avatar fetch error for %s: %s", handle, e)
+
+    elif platform.lower() == "youtube":
+        try:
+            yt_url = f"https://www.youtube.com/@{handle}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            }
+            async with aiohttp.ClientSession() as session:
+                async with session.get(yt_url, headers=headers, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        html = await resp.text()
+                        m = re.search(r'"avatar":\{"thumbnails":\[\{"url":"([^"]+)"', html)
+                        if m:
+                            return m.group(1).replace("\\u0026", "&")
+                        m_og = re.search(r'<meta property="og:image" content="([^"]+)"', html)
+                        if m_og:
+                            return m_og.group(1)
+        except Exception as e:
+            logger.debug("YouTube avatar fetch error for %s: %s", handle, e)
+
+    return ""
+
+
 async def get_channels_list(request: web.Request) -> web.Response:
     """Return all channels with enriched supervisor state, template, and stats."""
     async with get_db_connection() as db:
         cur = await db.execute("""
             SELECT id, platform, channel_id_or_handle, template_name, is_active,
-                   enabled, paused_at, pause_reason, display_name, notes, settings_json, created_at
+                   enabled, paused_at, pause_reason, display_name, notes, group_tag, avatar_url, settings_json, created_at
             FROM channels
             ORDER BY id ASC
         """)
@@ -93,7 +140,15 @@ async def patch_channel_settings(request: web.Request) -> web.Response:
         template_name = data.get("template_name", channel.get("template_name", "custom_gaming_split")).strip()
         display_name = data.get("display_name", channel.get("display_name"))
         notes = data.get("notes", channel.get("notes"))
+        group_tag = data.get("group_tag", channel.get("group_tag", "General"))
+        avatar_url = data.get("avatar_url", channel.get("avatar_url"))
         settings_obj = data.get("settings", {})
+
+        # If avatar_url is missing or requested refresh, try auto-fetching
+        if not avatar_url or data.get("refresh_avatar"):
+            fetched = await fetch_streamer_avatar(channel.get("platform", "twitch"), handle)
+            if fetched:
+                avatar_url = fetched
 
         # Settings validation & defaults
         clip_rules = settings_obj.get("clip_rules", {})
@@ -106,9 +161,9 @@ async def patch_channel_settings(request: web.Request) -> web.Response:
 
         await db.execute("""
             UPDATE channels
-            SET template_name = ?, display_name = ?, notes = ?, settings_json = ?
+            SET template_name = ?, display_name = ?, notes = ?, group_tag = ?, avatar_url = ?, settings_json = ?
             WHERE id = ?
-        """, (template_name, display_name, notes, settings_str, cid))
+        """, (template_name, display_name, notes, group_tag, avatar_url, settings_str, cid))
         await db.commit()
 
     # Broadcast hot-reload event

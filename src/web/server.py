@@ -327,17 +327,27 @@ class WebUIServer:
         return web.json_response(channels)
 
     async def handle_add_channel(self, request: web.Request) -> web.Response:
-        """Add new channel."""
+        """Add new channel with optional label/group and auto-fetched avatar."""
         data = await request.json()
         platform = data.get("platform", "twitch").lower()
         channel = data.get("channel", "").strip()
         template = data.get("template", "ishowspeed_gaming").strip()
+        group_tag = data.get("group_tag", "General").strip() or "General"
+        avatar_url = data.get("avatar_url")
 
         if not channel:
             return web.json_response({"error": "Channel handle required"}, status=400)
 
-        cid = await add_channel(platform, channel, template)
-        return web.json_response({"success": True, "channel_id": cid})
+        # Auto-fetch avatar if not provided
+        if not avatar_url:
+            try:
+                from src.web.routes_channels import fetch_streamer_avatar
+                avatar_url = await fetch_streamer_avatar(platform, channel)
+            except Exception:
+                pass
+
+        cid = await add_channel(platform, channel, template, group_tag=group_tag, avatar_url=avatar_url)
+        return web.json_response({"success": True, "channel_id": cid, "avatar_url": avatar_url, "group_tag": group_tag})
 
     async def handle_remove_channel(self, request: web.Request) -> web.Response:
         """Deactivate and delete channel permanently."""
