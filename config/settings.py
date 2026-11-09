@@ -51,6 +51,10 @@ RENDER_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", BASE_DIR / "output" / "clips"))
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
+# Persistent raw 16:9 source directory for interactive editing in Review Station
+SOURCES_DIR = Path(os.getenv("SOURCES_DIR", BASE_DIR / "data" / "sources"))
+SOURCES_DIR.mkdir(parents=True, exist_ok=True)
+
 TEMPLATES_DIR = BASE_DIR / "templates"
 TEMPLATES_DIR.mkdir(parents=True, exist_ok=True)
 

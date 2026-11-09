@@ -487,8 +487,23 @@ class AutoClipEngine:
                 )
 
                 rendered_mp4 = str(Path(OUTPUT_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
+
+                # Method 1: Permanently preserve 16:9 source footage in SOURCES_DIR so it can never be deleted by buffer rotation
+                from config.settings import SOURCES_DIR
+                import shutil
+                permanent_source_path = str(Path(SOURCES_DIR) / f"live_{channel_id}_{timestamp_id}_source.mp4")
+                try:
+                    if Path(video_path).exists():
+                        shutil.copy2(video_path, permanent_source_path)
+                        logger.info("Preserved permanent 16:9 raw source video to: %s", permanent_source_path)
+                    else:
+                        permanent_source_path = video_path
+                except Exception as cp_err:
+                    logger.warning("Could not copy source footage to permanent storage: %s", cp_err)
+                    permanent_source_path = video_path
+
                 await self.renderer.render_clip(
-                    source_path=video_path,
+                    source_path=permanent_source_path,
                     start_time=clip_start,
                     end_time=clip_end,
                     output_path=rendered_mp4,
@@ -515,7 +530,7 @@ class AutoClipEngine:
                     teaser_hook_timestamp=teaser_ts,
                     description=description_text,
                     hashtags=hashtags_text,
-                    source_video_path=video_path,
+                    source_video_path=permanent_source_path,
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
                     trigger_json=json.dumps(trigger_ctx) if trigger_ctx else None,

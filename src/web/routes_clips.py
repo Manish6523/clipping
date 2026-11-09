@@ -245,9 +245,13 @@ async def serve_clip_source(request: web.Request) -> web.StreamResponse:
     if not clip:
         return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
 
-    svp = clip.get("source_video_path") or clip.get("rendered_video_path")
+    svp = clip.get("source_video_path")
+    # If original 16:9 source does not exist on disk, fall back to rendered_video_path so editor still loads video!
     if not svp or not Path(svp).exists():
-        return make_json_error("SOURCE_NOT_FOUND", f"Original source video for clip #{clip_id} not found on disk", status=404)
+        svp = clip.get("rendered_video_path")
+
+    if not svp or not Path(svp).exists():
+        return make_json_error("SOURCE_NOT_FOUND", f"Video for clip #{clip_id} not found on disk", status=404)
 
     return await serve_file_range(Path(svp), request)
 
