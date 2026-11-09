@@ -99,6 +99,8 @@ MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
 # Scheduler
 DRIP_INTERVAL_HOURS = int(os.getenv("DRIP_INTERVAL_HOURS", "4"))
 
-# Web UI Server
+# Web UI Server & Security
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
+# Web lock / Telegram PIN protection (defaults to False for localhost convenience, True in production/VPS)
+AUTH_LOCK_ENABLED = os.getenv("AUTH_LOCK_ENABLED", "false").lower() in ("true", "1", "yes")

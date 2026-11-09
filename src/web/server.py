@@ -18,6 +18,7 @@ from config.settings import (
     DRIP_INTERVAL_HOURS,
     WEB_HOST,
     WEB_PORT,
+    AUTH_LOCK_ENABLED,
 )
 from src.database import (
     get_db_connection,
@@ -69,7 +70,10 @@ class WebUIServer:
 
     @web.middleware
     async def auth_middleware(self, request: web.Request, handler):
-        """Protect API endpoints, media files, and websockets via session token."""
+        """Protect API endpoints, media files, and websockets via session token (if AUTH_LOCK_ENABLED)."""
+        if not AUTH_LOCK_ENABLED:
+            return await handler(request)
+
         path = request.path
 
         # Unrestricted public paths: SPA pages, assets, favicon, login API, health check
@@ -79,6 +83,7 @@ class WebUIServer:
             or path.startswith("/favicon")
             or path == "/logo.png"
             or path == "/api/status"
+            or path == "/api/auth/config"
             or path == "/api/auth/verify"
             or not (path.startswith("/api/") or path.startswith("/ws") or path.startswith("/renders/") or path.startswith("/output/"))
         ):
@@ -112,6 +117,7 @@ class WebUIServer:
         """Register web routes."""
         self.app.router.add_get("/", self.handle_index)
         self.app.router.add_get("/api/status", self.handle_status)
+        self.app.router.add_get("/api/auth/config", self.handle_auth_config)
         self.app.router.add_post("/api/auth/verify", self.handle_auth_verify)
         self.app.router.add_get("/ws", ws_manager.handle_ws)
 
@@ -174,6 +180,12 @@ class WebUIServer:
 
         # SPA catch-all for react-router routes like /clips/{id}/editor and /channels/{id}/settings
         self.app.router.add_get("/{tail:(?!api|renders|output|assets|ws|favicon\\.ico|logo\\.png).*$}", self.handle_spa_fallback)
+
+    async def handle_auth_config(self, request: web.Request) -> web.Response:
+        """Return authentication requirement status."""
+        return web.json_response({
+            "auth_lock_enabled": AUTH_LOCK_ENABLED
+        })
 
     async def handle_auth_verify(self, request: web.Request) -> web.Response:
         """Verify 6-digit PIN and issue session token."""

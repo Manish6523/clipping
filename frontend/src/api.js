@@ -27,6 +27,7 @@ api.interceptors.response.use(
 );
 
 export const verifyPin = (pin) => api.post('/api/auth/verify', { pin }).then(r => r.data);
+export const getAuthConfig = () => api.get('/api/auth/config').then(r => r.data);
 
 export const getStatus = () => api.get('/api/status').then(r => r.data);
 export const getHealth = () => api.get('/api/health').then(r => r.data);

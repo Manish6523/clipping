@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import Navbar from './components/Navbar';
 import ReviewStation from './components/ReviewStation';
 import PinLockScreen from './components/PinLockScreen';
-import { getStatus, getPipelineStatus } from './api';
+import { getStatus, getPipelineStatus, getAuthConfig } from './api';
 import { eventStream } from './services/eventStream';
 import HypeMomentToasts from './components/HypeMomentToasts';
 
@@ -121,11 +121,31 @@ function ReviewStationWrapper() {
 }
 
 export default function App() {
+  const [authRequired, setAuthRequired] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return Boolean(localStorage.getItem('autoclip_session_token'));
   });
 
   useEffect(() => {
+    // Check with server if auth lock is enabled
+    getAuthConfig()
+      .then((cfg) => {
+        if (cfg && cfg.auth_lock_enabled === false) {
+          setAuthRequired(false);
+          setIsAuthenticated(true);
+        } else {
+          setAuthRequired(true);
+        }
+      })
+      .catch(() => {
+        // Fallback: if server not reachable or error, default to local state
+        setAuthRequired(true);
+      })
+      .finally(() => {
+        setAuthChecked(true);
+      });
+
     const handleAuthRequired = () => {
       localStorage.removeItem('autoclip_session_token');
       localStorage.removeItem('autoclip_session_expires');
@@ -136,7 +156,7 @@ export default function App() {
     return () => window.removeEventListener('autoclip_auth_required', handleAuthRequired);
   }, []);
 
-  if (!isAuthenticated) {
+  if (authChecked && authRequired && !isAuthenticated) {
     return <PinLockScreen onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
