@@ -176,6 +176,7 @@ export default function LayoutBuilder({
   onSelectLayer,
   onSelectCaption,
   onTestRenderFrame,
+  showToolbar = true,
   showBottomPanel = false, // Deleted in round 3; kept as opt-in prop for legacy
 }) {
   const [internalSelectedLayerId, setInternalSelectedLayerId] = useState(null);
@@ -421,6 +422,20 @@ export default function LayoutBuilder({
             );
           } else {
             ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x, dr.y, dr.w, dr.h);
+          }
+
+          // Render border on canvas preview if border.w > 0
+          const borderW = layer.style?.border?.w || 0;
+          if (borderW > 0) {
+            ctx.strokeStyle = layer.style?.border?.color || '#FFFFFF';
+            ctx.lineWidth = borderW;
+            if (layer.style?.radius > 0 && ctx.roundRect) {
+              ctx.beginPath();
+              ctx.roundRect(dr.x, dr.y, dr.w, dr.h, layer.style.radius);
+              ctx.stroke();
+            } else {
+              ctx.strokeRect(dr.x, dr.y, dr.w, dr.h);
+            }
           }
 
           ctx.restore();
@@ -674,108 +689,110 @@ export default function LayoutBuilder({
 
   return (
     <div className="w-full flex flex-col gap-3 select-none flex-1 min-h-0">
-      {/* Action Toolbar Header */}
-      <div className="flex flex-wrap items-center justify-between gap-2 bg-[#0D1017] px-3 py-2 rounded-xl border border-white/[0.08] shrink-0">
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-            <Layers size={14} className="text-[#8FD3FF]" /> Layout Builder (Schema v2)
-          </span>
+      {/* Action Toolbar Header (Hidden when showToolbar is false) */}
+      {showToolbar && (
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#0D1017] px-3 py-2 rounded-xl border border-white/[0.08] shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
+              <Layers size={14} className="text-[#8FD3FF]" /> Layout Builder (Schema v2)
+            </span>
 
-          {/* Preset Starters */}
-          <div className="flex items-center gap-1 bg-[#13151A] px-2 py-0.5 rounded-lg border border-white/10">
-            <span className="text-[10px] text-slate-400 font-semibold uppercase">Preset:</span>
-            <select
-              onChange={(e) => {
-                if (e.target.value) handleSelectPreset(e.target.value);
-              }}
-              value=""
-              className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer"
-            >
-              <option value="" disabled className="bg-slate-900 text-slate-400">
-                Choose Preset...
-              </option>
-              {Object.values(PRESET_STARTERS).map((p) => (
-                <option key={p.id} value={p.id} className="bg-slate-900 text-white">
-                  {p.label}
+            {/* Preset Starters */}
+            <div className="flex items-center gap-1 bg-[#13151A] px-2 py-0.5 rounded-lg border border-white/10">
+              <span className="text-[10px] text-slate-400 font-semibold uppercase">Preset:</span>
+              <select
+                onChange={(e) => {
+                  if (e.target.value) handleSelectPreset(e.target.value);
+                }}
+                value=""
+                className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer"
+              >
+                <option value="" disabled className="bg-slate-900 text-slate-400">
+                  Choose Preset...
                 </option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2">
-          {/* Undo / Redo buttons */}
-          <div className="flex items-center gap-1 bg-[#13151A] p-0.5 rounded-lg border border-white/10">
-            <button
-              onClick={handleUndo}
-              disabled={history.length === 0}
-              title="Undo (Ctrl+Z)"
-              className={`p-1.5 rounded text-xs transition-all ${
-                history.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
-              }`}
-            >
-              <RotateCcw size={13} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              title="Redo (Ctrl+Shift+Z)"
-              className={`p-1.5 rounded text-xs transition-all ${
-                redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
-              }`}
-            >
-              <RotateCw size={13} />
-            </button>
+                {Object.values(PRESET_STARTERS).map((p) => (
+                  <option key={p.id} value={p.id} className="bg-slate-900 text-white">
+                    {p.label}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Delete Selected Layer Button */}
-          {selectedLayerId && (
+          <div className="flex items-center gap-2">
+            {/* Undo / Redo buttons */}
+            <div className="flex items-center gap-1 bg-[#13151A] p-0.5 rounded-lg border border-white/10">
+              <button
+                onClick={handleUndo}
+                disabled={history.length === 0}
+                title="Undo (Ctrl+Z)"
+                className={`p-1.5 rounded text-xs transition-all ${
+                  history.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+                }`}
+              >
+                <RotateCcw size={13} />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                title="Redo (Ctrl+Shift+Z)"
+                className={`p-1.5 rounded text-xs transition-all ${
+                  redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+                }`}
+              >
+                <RotateCw size={13} />
+              </button>
+            </div>
+
+            {/* Delete Selected Layer Button */}
+            {selectedLayerId && (
+              <button
+                onClick={() => handleDeleteLayer(selectedLayerId)}
+                disabled={layers.length <= 1}
+                title="Delete Selected Frame (Del / Backspace)"
+                className="flex items-center gap-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
+              >
+                <Trash2 size={13} /> Delete Frame
+              </button>
+            )}
+
             <button
-              onClick={() => handleDeleteLayer(selectedLayerId)}
-              disabled={layers.length <= 1}
-              title="Delete Selected Frame (Del / Backspace)"
-              className="flex items-center gap-1 bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
+              onClick={() => handleAddLayer()}
+              disabled={layers.length >= 8}
+              className="flex items-center gap-1 bg-gradient-to-r from-[#8FD3FF]/20 to-[#A9B8FF]/20 hover:from-[#8FD3FF]/30 hover:to-[#A9B8FF]/30 border border-[#8FD3FF]/40 text-[#8FD3FF] px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
             >
-              <Trash2 size={13} /> Delete Frame
+              <Plus size={13} /> Add Frame ({layers.length}/8)
             </button>
-          )}
 
-          <button
-            onClick={() => handleAddLayer()}
-            disabled={layers.length >= 8}
-            className="flex items-center gap-1 bg-gradient-to-r from-[#8FD3FF]/20 to-[#A9B8FF]/20 hover:from-[#8FD3FF]/30 hover:to-[#A9B8FF]/30 border border-[#8FD3FF]/40 text-[#8FD3FF] px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
-          >
-            <Plus size={13} /> Add Frame ({layers.length}/8)
-          </button>
-
-          <button
-            onClick={() => setShowSafeArea(!showSafeArea)}
-            className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
-              showSafeArea ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-            }`}
-          >
-            <Smartphone size={12} /> Safe Areas
-          </button>
-
-          <button
-            onClick={() => setEnableSnapping(!enableSnapping)}
-            className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
-              enableSnapping ? 'bg-[#8FD3FF]/15 border-[#8FD3FF]/40 text-[#8FD3FF]' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-            }`}
-          >
-            Snap: {enableSnapping ? 'ON' : 'OFF'}
-          </button>
-
-          {onTestRenderFrame && (
             <button
-              onClick={onTestRenderFrame}
-              className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-all border border-white/10"
+              onClick={() => setShowSafeArea(!showSafeArea)}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                showSafeArea ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
             >
-              <Sparkles size={12} className="text-amber-400" /> Test Render Frame
+              <Smartphone size={12} /> Safe Areas
             </button>
-          )}
+
+            <button
+              onClick={() => setEnableSnapping(!enableSnapping)}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
+                enableSnapping ? 'bg-[#8FD3FF]/15 border-[#8FD3FF]/40 text-[#8FD3FF]' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+            >
+              Snap: {enableSnapping ? 'ON' : 'OFF'}
+            </button>
+
+            {onTestRenderFrame && (
+              <button
+                onClick={onTestRenderFrame}
+                className="flex items-center gap-1 bg-white/10 hover:bg-white/20 text-white px-2.5 py-1 rounded-lg text-xs font-bold transition-all border border-white/10"
+              >
+                <Sparkles size={12} className="text-amber-400" /> Test Render Frame
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Dual Canvases Row */}
       <div className="grid grid-cols-12 gap-3 items-stretch flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-4 lg:pb-0">

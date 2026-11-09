@@ -210,21 +210,23 @@ export default function LayoutPanel({ isCompact = false }) {
           </select>
         </div>
 
-        {/* Quick Starter Layouts buttons */}
+        {/* Standard Starters dropdown */}
         <div>
-          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Standard Starters</label>
-          <div className="grid grid-cols-2 gap-1.5">
-            {Object.values(PRESET_STARTERS).slice(0, 4).map((starter) => (
-              <button
-                key={starter.id}
-                onClick={() => handleApplyStarter(starter.id)}
-                className="py-1 px-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-[10px] font-bold text-slate-300 hover:text-white truncate text-left"
-                title={starter.label}
-              >
+          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Standard Starter Layout</label>
+          <select
+            onChange={(e) => {
+              if (e.target.value) handleApplyStarter(e.target.value);
+            }}
+            defaultValue=""
+            className="w-full bg-[#0E1118] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+          >
+            <option value="" disabled>Choose a starter layout...</option>
+            {Object.values(PRESET_STARTERS).map((starter) => (
+              <option key={starter.id} value={starter.id}>
                 {starter.label}
-              </button>
+              </option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
 

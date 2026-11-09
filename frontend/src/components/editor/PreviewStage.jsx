@@ -122,6 +122,7 @@ export default function PreviewStage({ videoRef }) {
           setSelection({ type: 'caption', id: 'main' });
         }}
         onTestRenderFrame={handleTestRenderFrame}
+        showToolbar={false}
         showBottomPanel={false}
       />
 
