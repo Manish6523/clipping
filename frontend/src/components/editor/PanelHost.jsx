@@ -103,17 +103,46 @@ export default function PanelHost({
   }, [mode, sheetSnap, onClose]);
 
   // 1. DESKTOP SIDEBAR EMBED
+  const tabs = [
+    { id: 'layout', label: 'Layout', icon: Layers },
+    { id: 'captions', label: 'Captions', icon: Type },
+    { id: 'transcript', label: 'Script', icon: FileText },
+    { id: 'presets', label: 'Presets', icon: Bookmark },
+    { id: 'clip', label: 'Overview', icon: Clock },
+    { id: 'audio', label: 'Audio', icon: Volume2 },
+    { id: 'publish', label: 'Publish', icon: Share2 },
+  ];
+
   if (mode === 'desktop') {
     return (
       <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-xl select-none overflow-hidden">
-        <div className="px-3.5 py-3 border-b border-white/[0.06] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <config.icon size={15} className="text-[#8FD3FF]" />
-            <span className="font-extrabold text-white text-xs tracking-tight">
-              {config.label}
-            </span>
-          </div>
+        {/* Unified Tool Tabs Header */}
+        <div className="grid grid-cols-7 gap-0.5 bg-[#0A0B0E] p-1.5 border-b border-white/[0.06] shrink-0">
+          {tabs.map((t) => {
+            const Icon = t.icon;
+            const isActive = (resolvedPanel === t.id);
+            return (
+              <button
+                key={t.id}
+                onClick={() => {
+                  const { setActivePanel, setSelection } = useEditorStore.getState();
+                  setActivePanel(t.id);
+                  if (t.id === 'captions') setSelection({ type: 'caption', id: 'main' });
+                }}
+                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[9px] font-bold transition-all ${
+                  isActive
+                    ? 'bg-[#1A1D24] text-[#8FD3FF] shadow-sm border border-white/[0.08]'
+                    : 'text-[#8B90A0] hover:text-[#E8EAF0] hover:bg-white/[0.02]'
+                }`}
+                title={t.label}
+              >
+                <Icon size={13} />
+                <span className="truncate mt-0.5">{t.label}</span>
+              </button>
+            );
+          })}
         </div>
+
         <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
           <PanelComponent isCompact={false} />
         </div>

@@ -361,19 +361,14 @@ export default function ClipEditorPage() {
         {/* Slim Top Bar */}
         <TopBar />
 
-        {/* 3-Column Studio: Left Tools | Center Dual Canvases | Right Contextual PanelHost */}
-        <div className="flex-1 px-3 py-2 grid grid-cols-[220px_1fr_280px] gap-3 min-h-0 overflow-hidden">
-          {/* Left Tools Panel */}
-          <div className="h-full min-h-0 overflow-hidden flex flex-col">
-            <LeftPanel />
-          </div>
-
+        {/* 2-Column Studio: Center Dual Canvases | Right Unified Inspector & Tool Host */}
+        <div className="flex-1 px-3 py-2 grid grid-cols-[1fr_320px] gap-3 min-h-0 overflow-hidden">
           {/* Center Stage Row: Dual Canvases */}
           <div className="h-full min-h-0 flex flex-col">
             <PreviewStage videoRef={videoRef} />
           </div>
 
-          {/* Right Inspector Panel */}
+          {/* Right Unified Inspector & Tool Host */}
           <div className="h-full min-h-0 overflow-hidden flex flex-col">
             <PanelHost mode="desktop" />
           </div>
