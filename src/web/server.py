@@ -162,6 +162,8 @@ class WebUIServer:
             self.app.router.add_static("/assets", path=str(dist_assets), name="frontend_assets", show_index=False)
 
         self.app.router.add_get("/api/pipeline/runs", self.handle_get_pipeline_runs)
+        self.app.router.add_get("/api/pipeline/live-hypes", self.handle_get_live_hypes)
+        self.app.router.add_post("/api/pipeline/live-hypes/{id}/force-render", self.handle_force_render_hype)
         self.app.router.add_get("/api/settings", self.handle_get_settings)
         self.app.router.add_post("/api/settings", self.handle_save_settings)
         self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
@@ -1181,6 +1183,102 @@ class WebUIServer:
             logger.warning("Could not query pipeline_runs table: %s", e)
 
         return web.json_response(runs)
+
+    async def handle_get_live_hypes(self, request: web.Request) -> web.Response:
+        """Get recent live detected hypes (both passed and rejected) with reasons."""
+        from src.database import get_db_connection
+        try:
+            async with get_db_connection() as db:
+                cur = await db.execute("SELECT * FROM live_hypes ORDER BY created_at DESC LIMIT 50")
+                rows = await cur.fetchall()
+                result = []
+                for r in rows:
+                    item = dict(r)
+                    if item.get("rubric_json"):
+                        try:
+                            item["rubric"] = json.loads(item["rubric_json"])
+                        except Exception:
+                            item["rubric"] = {}
+                    result.append(item)
+                return web.json_response(result)
+        except Exception as e:
+            logger.warning("Could not query live_hypes: %s", e)
+            return web.json_response([])
+
+    async def handle_force_render_hype(self, request: web.Request) -> web.Response:
+        """Force-render a rejected live highlight overriding AI filter."""
+        hype_id = int(request.match_info["id"])
+        from src.database import get_db_connection, get_channel, create_clip
+        from src.bot.trimmer import load_template
+        from src.renderer.subtitles import generate_ass_subtitles
+        from config.settings import OUTPUT_DIR, RENDER_DIR
+        import time
+
+        async with get_db_connection() as db:
+            cur = await db.execute("SELECT * FROM live_hypes WHERE id = ?", (hype_id,))
+            row = await cur.fetchone()
+            if not row:
+                return web.json_response({"error": "Live hype record not found"}, status=404)
+            hype = dict(row)
+
+        video_path = hype.get("video_slice_path")
+        if not video_path or not Path(video_path).exists():
+            return web.json_response({"error": "Video slice file no longer exists on disk"}, status=400)
+
+        channel_id = hype.get("channel_id", "streamer")
+        channel_rec = await get_channel(channel_id)
+        template_name = channel_rec.get("template_name") if channel_rec else "Bottom Left"
+        template = load_template(template_name)
+
+        timestamp_id = int(time.time())
+        ass_path = str(Path(RENDER_DIR) / f"forced_{channel_id}_{timestamp_id}.ass")
+        rendered_mp4 = str(Path(OUTPUT_DIR) / f"forced_{channel_id}_{timestamp_id}_final.mp4")
+
+        # Create quick minimal subtitle and render
+        generate_ass_subtitles(
+            word_timestamps=[],
+            output_path=ass_path,
+            template_config=template,
+            time_offset=0.0,
+            max_duration=60.0
+        )
+
+        try:
+            await self.renderer.render_clip(
+                source_path=video_path,
+                start_time=0.0,
+                end_time=60.0,
+                output_path=rendered_mp4,
+                template=template,
+                ass_path=ass_path,
+                teaser_timestamp=None,
+                include_teaser=False
+            )
+            clip_id = await create_clip(
+                source_type="live_force",
+                source_id=str(timestamp_id),
+                channel_id=channel_id,
+                template_name=template_name,
+                raw_start=0.0,
+                raw_end=60.0,
+                virality_score=hype.get("virality_score") or 70,
+                final_score=float(hype.get("virality_score") or 70),
+                title=f"Forced Highlight: {channel_id}",
+                description=hype.get("transcript_text", "")[:100],
+                hashtags="#Shorts #Reels #Highlight",
+                source_video_path=video_path,
+                rendered_video_path=rendered_mp4,
+                subtitle_path=ass_path
+            )
+
+            # Update live_hypes row
+            async with get_db_connection() as db:
+                await db.execute("UPDATE live_hypes SET status = 'force_passed', clip_id = ? WHERE id = ?", (clip_id, hype_id))
+                await db.commit()
+
+            return web.json_response({"success": True, "clip_id": clip_id})
+        except Exception as e:
+            return web.json_response({"error": f"Render failed: {str(e)}"}, status=500)
 
     async def handle_get_clip_explain(self, request: web.Request) -> web.Response:
         """Provide detailed 'Why this clip' explanation, sub-scores, and AI reasoning."""

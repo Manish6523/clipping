@@ -63,10 +63,14 @@ export default function ClipEditorPage() {
     try {
       setRendering(true);
       await saveEDL();
-      const res = await fetch(`/api/clips/${clipId}/render`, { method: 'POST' });
+      const res = await fetch(`/api/clips/${clipId}/render-edl`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(edl),
+      });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Render failed');
-      alert('Render job queued successfully!');
+      if (!res.ok || !data.success) throw new Error(data.error || 'Render failed');
+      alert('Render completed successfully!');
     } catch (err) {
       alert(`Render error: ${err.message}`);
     } finally {

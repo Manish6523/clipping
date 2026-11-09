@@ -11,43 +11,67 @@ import {
   Activity,
   Layers,
   Terminal,
-  FileText
+  FileText,
+  RotateCcw,
+  Scissors
 } from 'lucide-react';
 import axios from 'axios';
+import { getLiveHypes, forceRenderHype } from '../api';
 
 export default function PipelineMonitor() {
   const [runs, setRuns] = useState([]);
+  const [liveHypes, setLiveHypes] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedRun, setSelectedRun] = useState(null);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [selectedHype, setSelectedHype] = useState(null);
+  const [activeTab, setActiveTab] = useState('live_hypes');
   const [filterActiveOnly, setFilterActiveOnly] = useState(true);
+  const [forcingId, setForcingId] = useState(null);
 
   useEffect(() => {
-    fetchRuns();
-    const interval = setInterval(fetchRuns, 4000);
+    fetchData();
+    const interval = setInterval(fetchData, 4000);
     return () => clearInterval(interval);
   }, [filterActiveOnly]);
 
-  const fetchRuns = async () => {
+  const fetchData = async () => {
     try {
-      const res = await axios.get('/api/pipeline/runs');
-      const allRuns = res.data || [];
-      // If user wants to only see active in-flight pipelines, filter out finished ones
+      const [runsRes, hypesData] = await Promise.all([
+        axios.get('/api/pipeline/runs'),
+        getLiveHypes().catch(() => [])
+      ]);
+      const allRuns = runsRes.data || [];
       const displayed = filterActiveOnly 
         ? allRuns.filter(r => r.status === 'running' || r.status === 'processing' || r.status === 'triggered') 
         : allRuns;
       
       setRuns(displayed);
+      setLiveHypes(hypesData || []);
       if (displayed.length > 0) {
-        // Keep selected if still in list, or select first
         setSelectedRun(prev => (prev && displayed.some(r => r.id === prev.id) ? prev : displayed[0]));
-      } else {
-        setSelectedRun(null);
       }
     } catch (err) {
-      console.error('Failed to fetch pipeline runs:', err);
+      console.error('Failed fetching pipeline data:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleForceRender = async (hypeId) => {
+    if (!confirm('Force render this highlight ignoring the AI rejection filter?')) return;
+    setForcingId(hypeId);
+    try {
+      const res = await forceRenderHype(hypeId);
+      if (res.success) {
+        alert(`Clip #${res.clip_id} generated successfully! Check Review Station.`);
+        await fetchData();
+      } else {
+        alert('Force render failed: ' + (res.error || 'Unknown error'));
+      }
+    } catch (e) {
+      alert('Error triggering render: ' + e.message);
+    } finally {
+      setForcingId(null);
     }
   };
 
@@ -142,6 +166,16 @@ export default function PipelineMonitor() {
 
         <div className="flex items-center gap-2">
           <button
+            onClick={() => setActiveTab('live_hypes')}
+            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+              activeTab === 'live_hypes'
+                ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
+                : 'text-slate-400 hover:text-white'
+            }`}
+          >
+            🔥 Live Stream Hypes &amp; Rejections ({liveHypes.length})
+          </button>
+          <button
             onClick={() => setActiveTab('architecture')}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
               activeTab === 'architecture'
@@ -159,12 +193,102 @@ export default function PipelineMonitor() {
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Live Execution Runs
+            VOD Execution Runs
           </button>
         </div>
       </div>
 
-      {activeTab === 'architecture' ? (
+      {activeTab === 'live_hypes' ? (
+        <div className="space-y-4">
+          <div className="bg-[#0f172a]/60 border border-slate-800 rounded-xl p-5 mb-4">
+            <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
+              <Activity className="w-5 h-5 text-amber-400" />
+              Live Hype Moments Filter &amp; Rejection Inspector
+            </h2>
+            <p className="text-sm text-slate-300 leading-relaxed">
+              Every live audio peak and chat spike captured from your monitored streamers is listed below. Inspect which moments passed into rendering, which were filtered out by the AI Judge rubric, and hit <strong>Force Render</strong> to override any rejection.
+            </p>
+          </div>
+
+          {liveHypes.length === 0 ? (
+            <div className="p-12 text-center text-slate-500 bg-slate-900/40 rounded-xl border border-slate-800 text-sm">
+              No live moments recorded yet. They will appear here in real-time as your watched streamers trigger chat or audio spikes!
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {liveHypes.map((hype) => {
+                const isPassed = hype.status === 'passed' || hype.status === 'force_passed';
+                return (
+                  <div 
+                    key={hype.id} 
+                    className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
+                      isPassed 
+                        ? 'bg-emerald-950/20 border-emerald-500/30' 
+                        : 'bg-rose-950/20 border-rose-500/30'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-extrabold text-white text-sm">
+                          @{hype.channel_id}
+                        </span>
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                          isPassed 
+                            ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' 
+                            : 'bg-rose-500/20 text-rose-300 border border-rose-500/40'
+                        }`}>
+                          {hype.status === 'force_passed' ? 'FORCED RENDER' : isPassed ? 'PASSED TO RENDER' : 'FILTERED OUT'}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-slate-300 font-mono mb-2">
+                        Trigger: <span className="text-[#8FD3FF] font-bold">{hype.trigger_type}</span> | Score: <span className="font-bold text-amber-400">{hype.virality_score}/100</span> (Min: {hype.threshold_value})
+                      </div>
+
+                      {hype.rejection_reason && (
+                        <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs mb-2">
+                          <span className="font-bold block text-[10px] uppercase text-rose-400 mb-0.5">Rejection Gate: {hype.gate_failed || 'Gate 4'}</span>
+                          {hype.rejection_reason}
+                        </div>
+                      )}
+
+                      {hype.transcript_text && (
+                        <div className="text-[11px] text-slate-400 italic bg-black/40 p-2 rounded-lg border border-white/5 line-clamp-3">
+                          "{hype.transcript_text}"
+                        </div>
+                      )}
+
+                      {hype.rubric && Object.keys(hype.rubric).length > 0 && (
+                        <div className="grid grid-cols-3 gap-1.5 mt-2.5 text-[10px] font-mono text-slate-300">
+                          {Object.entries(hype.rubric).slice(0, 6).map(([k, v]) => (
+                            <div key={k} className="p-1 rounded bg-white/5 truncate">
+                              {k.replace('_', ' ')}: <strong className="text-white">{v}/5</strong>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/5 text-[10px] text-slate-400">
+                      <span>{new Date(hype.created_at).toLocaleTimeString()}</span>
+                      {!isPassed && (
+                        <button
+                          onClick={() => handleForceRender(hype.id)}
+                          disabled={forcingId === hype.id}
+                          className="flex items-center gap-1 px-3 py-1 rounded-lg bg-gradient-to-r from-amber-400 to-amber-500 text-black font-extrabold text-xs shadow-md shadow-amber-500/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
+                        >
+                          <Scissors size={11} className={forcingId === hype.id ? 'animate-spin' : ''} />
+                          <span>{forcingId === hype.id ? 'Rendering...' : 'Force Render'}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'architecture' ? (
         <div className="space-y-4">
           <div className="bg-[#0f172a]/60 border border-slate-800 rounded-xl p-5 mb-6">
             <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">

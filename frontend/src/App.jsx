@@ -17,6 +17,7 @@ const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
+const PresetStudio = lazy(() => import('./components/PresetStudio'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 
 function AppLayout() {
@@ -166,6 +167,7 @@ export default function App() {
       <Route path="/" element={<AppLayout />}>
         <Route index element={<ReviewStationWrapper />} />
         <Route path="templates" element={<TemplateStudio />} />
+        <Route path="presets" element={<PresetStudio />} />
         <Route path="channels" element={<ChannelManager />} />
         <Route path="accounts" element={<AccountsManager />} />
         <Route path="queue" element={<QueueCalendar />} />

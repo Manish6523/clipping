@@ -73,6 +73,18 @@ export const testTemplateSample = (data) => api.post('/api/templates/test-sample
 export const getQueue = () => api.get('/api/queue').then(r => r.data);
 export const clipManual = (data) => api.post('/api/clip-manual', data).then(r => r.data);
 
+export const getLiveHypes = () => api.get('/api/pipeline/live-hypes').then(r => r.data);
+export const forceRenderHype = (id) => api.post(`/api/pipeline/live-hypes/${id}/force-render`).then(r => r.data);
+
+// Presets API
+export const getPresets = (channelId = '') => 
+  api.get(`/api/presets${channelId ? `?channel_id=${encodeURIComponent(channelId)}` : ''}`).then(r => r.data);
+export const createPreset = (data) => api.post('/api/presets', data).then(r => r.data);
+export const updatePreset = (id, data) => api.patch(`/api/presets/${id}`, data).then(r => r.data);
+export const deletePreset = (id) => api.delete(`/api/presets/${id}`).then(r => r.data);
+export const applyPreset = (id, clipId = null) => 
+  api.post(`/api/presets/${id}/apply`, { clip_id: clipId }).then(r => r.data);
+
 // YouTube Accounts & Streamer Mappings
 export const getYouTubeAppConfig = () => api.get('/api/youtube/app-config').then(r => r.data);
 export const saveYouTubeAppConfig = (data) => api.post('/api/youtube/app-config', data).then(r => r.data);

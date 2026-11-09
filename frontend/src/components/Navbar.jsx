@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from 'react-router-dom';
 import { 
   Film, 
   Palette, 
+  Bookmark,
   Radio, 
   Calendar, 
   Terminal, 
@@ -26,6 +27,7 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
   const navItems = [
     { to: '/', label: 'Review', shortLabel: 'Review', icon: Film, badge: pendingCount, end: true },
     { to: '/templates', label: 'Templates', shortLabel: 'Templates', icon: Palette },
+    { to: '/presets', label: 'Presets Studio', shortLabel: 'Presets', icon: Bookmark },
     { to: '/channels', label: 'Channels & Live', shortLabel: 'Channels', icon: Radio },
     { to: '/accounts', label: 'Distribution', shortLabel: 'Distribution', icon: Share2 },
     { to: '/pipelines', label: 'Pipelines', shortLabel: 'Pipelines', icon: Flame },

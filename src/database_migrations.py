@@ -542,6 +542,32 @@ async def migration_v14(db):
     await db.commit()
 
 
+@migration(15, "Add live_hypes table for pipeline tracking and rejection explanations")
+async def migration_v15(db):
+    """Store every detected live hype with its evaluation, gate, and rejection reason."""
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS live_hypes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL,
+            trigger_type TEXT NOT NULL,
+            trigger_value REAL DEFAULT 0.0,
+            threshold_value REAL DEFAULT 0.0,
+            video_slice_path TEXT,
+            status TEXT NOT NULL, -- 'detected', 'transcribing', 'evaluating', 'passed', 'rejected'
+            gate_failed TEXT,     -- 'gate_1_sensor', 'gate_3_transcription', 'gate_4_ai_judge', etc.
+            rejection_reason TEXT,
+            virality_score INTEGER DEFAULT 0,
+            rubric_json TEXT,
+            transcript_text TEXT,
+            clip_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_live_hypes_channel ON live_hypes(channel_id, created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_live_hypes_status ON live_hypes(status);
+    """)
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

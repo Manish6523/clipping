@@ -376,8 +376,48 @@ class AutoClipEngine:
                     chosen_from_new = True
 
                 if not best_candidate:
-                    logger.info("No candidates passed min_virality_score threshold (%d). Discarding.", min_score)
-                    update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"No clips above score {min_score}. Returning to live watch.")
+                    rej_reason = f"Candidate score below creator threshold ({min_score})"
+                    reasons = []
+                    score_val = 0
+                    rubric_dict = {}
+                    if calibrated_candidates:
+                        c_cand = calibrated_candidates[0]
+                        score_val = c_cand.get("virality_score", 0)
+                        rubric_dict = c_cand.get("scores", {})
+                        if c_cand.get("flags"):
+                            reasons = [f.get("note", f.get("type")) for f in c_cand.get("flags", [])]
+                    elif candidates:
+                        score_val = getattr(candidates[0], "virality_score", 0)
+
+                    if reasons:
+                        rej_reason = f"Rejected: {'; '.join(reasons)} (Score: {score_val} < {min_score})"
+                    else:
+                        rej_reason = f"Score {score_val} below threshold {min_score}"
+
+                    logger.info("No candidates passed min_virality_score threshold (%d). Discarding (%s).", min_score, rej_reason)
+                    update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"Rejected: {rej_reason}")
+
+                    # Persist rejected live hype to DB for transparency & inspection
+                    try:
+                        async with get_db_connection() as db:
+                            await db.execute("""
+                                INSERT INTO live_hypes (channel_id, trigger_type, trigger_value, threshold_value, video_slice_path, status, gate_failed, rejection_reason, virality_score, rubric_json, transcript_text)
+                                VALUES (?, ?, ?, ?, ?, 'rejected', 'gate_4_ai_judge', ?, ?, ?, ?)
+                            """, (
+                                channel_id,
+                                trigger_ctx.get("type", "chat_spike"),
+                                float(trigger_ctx.get("current_velocity") or trigger_ctx.get("peak_db") or 0.0),
+                                float(min_score),
+                                video_path,
+                                rej_reason,
+                                score_val,
+                                json.dumps(rubric_dict),
+                                transcription.get("text", "")[:300]
+                            ))
+                            await db.commit()
+                    except Exception as db_err:
+                        logger.debug("Failed saving rejected live_hype: %s", db_err)
+
                     # Auto-reset banner after 10s
                     async def _clear_banner():
                         await asyncio.sleep(10)
@@ -510,6 +550,27 @@ class AutoClipEngine:
                         await self.bot.send_clip_card(clip_record)
                     except Exception as bot_err:
                         logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
+
+                # Persist passed live hype to DB
+                try:
+                    async with get_db_connection() as db:
+                        await db.execute("""
+                            INSERT INTO live_hypes (channel_id, trigger_type, trigger_value, threshold_value, video_slice_path, status, gate_failed, rejection_reason, virality_score, rubric_json, transcript_text, clip_id)
+                            VALUES (?, ?, ?, ?, ?, 'passed', NULL, NULL, ?, ?, ?, ?)
+                        """, (
+                            channel_id,
+                            trigger_ctx.get("type", "chat_spike"),
+                            float(trigger_ctx.get("current_velocity") or trigger_ctx.get("peak_db") or 0.0),
+                            float(min_score),
+                            video_path,
+                            cand_score,
+                            score_breakdown_json,
+                            transcription.get("text", "")[:300],
+                            clip_id
+                        ))
+                        await db.commit()
+                except Exception as db_err:
+                    logger.debug("Failed saving passed live_hype: %s", db_err)
 
                 async def _reset():
                     await asyncio.sleep(20)
