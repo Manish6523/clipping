@@ -144,6 +144,18 @@ class Transcriber:
 
         result = await loop.run_in_executor(None, _run_transcription)
 
+        # Persist full transcript words to data/transcripts/{source_id}.json
+        try:
+            from config.settings import DATA_DIR
+            transcripts_dir = Path(DATA_DIR) / "transcripts"
+            transcripts_dir.mkdir(parents=True, exist_ok=True)
+            stem_name = Path(audio_or_video_path).stem
+            out_path = transcripts_dir / f"{stem_name}.json"
+            with open(out_path, "w", encoding="utf-8") as f:
+                json.dump(result, f, indent=2)
+        except Exception as e:
+            logger.warning("Failed to persist transcript json: %s", e)
+
         if audio_path != path and os.path.exists(audio_path):
             try:
                 os.unlink(audio_path)

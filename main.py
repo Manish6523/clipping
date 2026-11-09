@@ -323,9 +323,16 @@ class AutoClipEngine:
                     step_name="Evaluating viral hooks with Gemini AI...",
                 )
 
+                chat_features = metadata.get("chat_features", {})
+                trigger_ctx = metadata.get("trigger_context", {})
+                chat_spikes_list = [trigger_ctx] if trigger_ctx.get("type") in ("chat_spike", "keyword_hit") else []
+                audio_peaks_list = [trigger_ctx] if trigger_ctx.get("type") == "audio_peak" else []
+
                 candidates = await self.scorer.analyze_transcript(
                     transcript_data=transcription,
                     min_score=min_score,
+                    chat_spikes=chat_spikes_list,
+                    audio_peaks=audio_peaks_list,
                 )
 
                 if not candidates:
@@ -402,6 +409,8 @@ class AutoClipEngine:
                     source_video_path=video_path,
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
+                    trigger_json=json.dumps(trigger_ctx) if trigger_ctx else None,
+                    model=getattr(self.scorer, "model_name", "gemini-flash-lite-latest"),
                 )
 
                 update_pipeline_progress(

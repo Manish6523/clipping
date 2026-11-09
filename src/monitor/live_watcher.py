@@ -47,6 +47,7 @@ class LiveStreamWatcher:
 
         # Chat velocity tracking
         self.chat_messages_timestamps: deque = deque()
+        self.chat_history_buffer: deque = deque(maxlen=300)  # Rolling 90s chat buffer (timestamp, message)
         self.chat_baseline_mps = 1.0
         self.hype_keywords = [
             k.upper() for k in self.template.get("hype_keywords", ["CLIP IT", "WTF", "LMAO", "W SPEED"])
@@ -79,7 +80,7 @@ class LiveStreamWatcher:
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                     }
                     payload = {
-                        "query": f'query {{ user(login: "{self.channel_id.lower()}") {{ stream {{ id type }} }} }}'
+                        "query": f'query {{ user(login: "{self.channel_id.lower()}") {{ stream {{ id type title game {{ name }} }} }} }}'
                     }
                     async with session.post("https://gql.twitch.tv/gql", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                         if resp.status == 200:
@@ -87,7 +88,11 @@ class LiveStreamWatcher:
                             user_data = data.get("data", {}).get("user")
                             if user_data:
                                 stream = user_data.get("stream")
-                                return stream is not None and stream.get("type") == "live"
+                                is_live = stream is not None and stream.get("type") == "live"
+                                if is_live and stream:
+                                    self._stream_title = stream.get("title") or ""
+                                    self._stream_category = (stream.get("game") or {}).get("name") or ""
+                                return is_live
             except Exception as e:
                 logger.debug("Fast Twitch live check failed for %s (%s), falling back...", self.channel_id, e)
 
@@ -240,6 +245,46 @@ class LiveStreamWatcher:
                 logger.warning("Twitch IRC connection drop for %s: %s. Reconnecting in 10s...", self.channel_id, e)
                 await asyncio.sleep(10)
 
+    def _extract_chat_features(self) -> Dict[str, Any]:
+        """Extract deduplicated, spam-filtered chat messages and top tokens/emotes from rolling history."""
+        from collections import Counter
+        import re
+
+        now = time.time()
+        # Keep last 90 seconds
+        recent = [msg for (ts, msg) in self.chat_history_buffer if ts >= now - 90.0]
+        if not recent:
+            return {"top_messages": [], "top_tokens": []}
+
+        # Deduplicate & filter spam: keep unique messages with character repetition collapsing
+        seen = set()
+        deduped = []
+        token_counter = Counter()
+
+        for m in reversed(recent): # most recent first
+            clean_m = m.strip()
+            # Collapse excessive repeats (e.g. Wwwwwwwwwww -> Www)
+            collapsed = re.sub(r'(.)\1{3,}', r'\1\1', clean_m)
+            norm = collapsed.lower()
+            if norm not in seen:
+                seen.add(norm)
+                deduped.append(collapsed)
+            
+            # Count tokens
+            for word in collapsed.split():
+                clean_word = word.strip(".,!?\"'()[]{}")
+                if len(clean_word) >= 2:
+                    token_counter[clean_word] += 1
+
+        top_messages = deduped[:25]
+        top_tokens = [{"token": t, "count": c} for t, c in token_counter.most_common(8)]
+
+        return {
+            "top_messages": top_messages,
+            "top_tokens": top_tokens,
+            "total_messages_90s": len(recent),
+        }
+
     async def _on_chat_message(self, message: str) -> None:
         """Record message and check for hype velocity or keyword spikes."""
         # Only process chat hype if the streamer is actually live broadcasting
@@ -248,6 +293,7 @@ class LiveStreamWatcher:
 
         now = time.time()
         self.chat_messages_timestamps.append(now)
+        self.chat_history_buffer.append((now, message))
 
         while self.chat_messages_timestamps and self.chat_messages_timestamps[0] < now - 60.0:
             self.chat_messages_timestamps.popleft()
@@ -280,12 +326,26 @@ class LiveStreamWatcher:
         # Enforce minimum cooldown of 90s between live triggers to let previous pipeline finish
         cooldown = max(90.0, getattr(self, "cooldown_seconds", 60.0))
         if should_trigger and (now - self.last_trigger_time > cooldown):
+            trigger_context = {
+                "type": "chat_spike" if velocity_spike else "keyword_hit",
+                "mps_recent": round(current_5s_mps, 2),
+                "mps_baseline": round(self.chat_baseline_mps, 2),
+                "ratio": round(current_5s_mps / max(0.1, self.chat_baseline_mps), 2),
+                "recent_5s_count": recent_5s,
+                "keyword": keyword_hit,
+                "t_trigger": now,
+            }
+            chat_features = self._extract_chat_features()
             logger.info(
                 "Hype Triggered on %s! (Velocity: %.2f MPS vs baseline %.2f MPS | Keyword: %s)",
                 self.channel_id, current_5s_mps, self.chat_baseline_mps, keyword_hit
             )
             self.last_trigger_time = now
-            asyncio.create_task(self._handle_hype_event(reason="chat_spike"))
+            asyncio.create_task(self._handle_hype_event(
+                reason="chat_spike",
+                trigger_context=trigger_context,
+                chat_features=chat_features
+            ))
 
     # ==========================================
     # Trigger 2: Audio dB Peak / Scream Detector
@@ -316,7 +376,18 @@ class LiveStreamWatcher:
                 if now - self.last_trigger_time > self.cooldown_seconds:
                     logger.info("Audio Peak Triggered on %s! (dB: %.2f >= %.2f)", self.channel_id, peak_db, AUDIO_PEAK_DB_THRESHOLD)
                     self.last_trigger_time = now
-                    asyncio.create_task(self._handle_hype_event(reason=f"audio_peak_{peak_db:.1f}dB"))
+                    trigger_context = {
+                        "type": "audio_peak",
+                        "peak_db": round(peak_db, 2),
+                        "threshold_db": AUDIO_PEAK_DB_THRESHOLD,
+                        "t_trigger": now,
+                    }
+                    chat_features = self._extract_chat_features()
+                    asyncio.create_task(self._handle_hype_event(
+                        reason=f"audio_peak_{peak_db:.1f}dB",
+                        trigger_context=trigger_context,
+                        chat_features=chat_features
+                    ))
 
     async def _analyze_chunk_audio_db(self, chunk_path: str) -> Optional[float]:
         """Run FFmpeg astats filter to extract max peak audio level in dB."""
@@ -349,7 +420,12 @@ class LiveStreamWatcher:
     # Hype Event Slicing
     # ==========================================
 
-    async def _handle_hype_event(self, reason: str) -> None:
+    async def _handle_hype_event(
+        self,
+        reason: str,
+        trigger_context: Optional[Dict[str, Any]] = None,
+        chat_features: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Wait 20s for moment to conclude, concatenate surrounding 75s of .ts chunks into an MP4."""
         logger.info("🔥 Hype moment triggered on %s (%s). Waiting 20 seconds for conclusion...", self.channel_id, reason)
         update_pipeline_progress("triggered", channel_id=self.channel_id, step=1, step_name=f"Hype Moment Triggered ({reason})! Buffering event...", trigger_reason=reason)
@@ -397,8 +473,13 @@ class LiveStreamWatcher:
                     "channel_id": self.channel_id,
                     "platform": self.platform,
                     "trigger_reason": reason,
+                    "trigger_context": trigger_context or {},
+                    "chat_features": chat_features or {},
+                    "stream_title": getattr(self, "_stream_title", ""),
+                    "stream_category": getattr(self, "_stream_category", ""),
                     "timestamp": timestamp_id,
                 }
+                asyncio.create_task(self.on_viral_moment_detected(str(target_mp4), metadata))
                 asyncio.create_task(self.on_viral_moment_detected(str(target_mp4), metadata))
         else:
             err_msg = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else 'Unknown FFmpeg error'

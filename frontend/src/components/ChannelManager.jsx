@@ -131,6 +131,10 @@ export default function ChannelManager() {
       ai: {
         whisper_model: existing.ai?.whisper_model || 'base',
         gemini_context: existing.ai?.gemini_context || 'Gaming streamer, prioritize funny clips and energetic reactions.',
+        persona: existing.ai?.persona || '',
+        good_clip_notes: existing.ai?.good_clip_notes || '',
+        avoid_notes: existing.ai?.avoid_notes || '',
+        inside_jokes: existing.ai?.inside_jokes || '',
       },
       publishing: {
         auto_approve_score: existing.publishing?.auto_approve_score || 95,
@@ -475,18 +479,59 @@ export default function ChannelManager() {
 
               {/* AI & Context Prompt */}
               <div className="space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">AI Context &amp; Persona</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">AI Context &amp; Persona Guidelines</span>
                 <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Gemini Creator Context</label>
+                  <label className="text-[11px] text-slate-400 block mb-1">Creator Persona &amp; Niche</label>
                   <textarea
-                    rows={3}
-                    value={drawerForm.ai.gemini_context}
+                    rows={2}
+                    value={drawerForm.ai.persona || ''}
                     onChange={(e) => setDrawerForm({
                       ...drawerForm,
-                      ai: { ...drawerForm.ai, gemini_context: e.target.value }
+                      ai: { ...drawerForm.ai, persona: e.target.value }
                     })}
                     className="w-full bg-slate-950 border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                    placeholder="e.g. Counter-Strike streamer, high energy reaction clips are highest priority."
+                    placeholder="e.g. High energy German streamer who unboxes CS cases, screams at rare knives, and talks fast."
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[11px] text-emerald-400 block mb-1">What Makes a GOOD Clip</label>
+                    <textarea
+                      rows={2}
+                      value={drawerForm.ai.good_clip_notes || ''}
+                      onChange={(e) => setDrawerForm({
+                        ...drawerForm,
+                        ai: { ...drawerForm.ai, good_clip_notes: e.target.value }
+                      })}
+                      className="w-full bg-slate-950 border border-emerald-500/20 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
+                      placeholder="e.g. Unboxing gold knives, sudden rage quits, hilarious voice cracks."
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[11px] text-rose-400 block mb-1">What to AVOID / REJECT</label>
+                    <textarea
+                      rows={2}
+                      value={drawerForm.ai.avoid_notes || ''}
+                      onChange={(e) => setDrawerForm({
+                        ...drawerForm,
+                        ai: { ...drawerForm.ai, avoid_notes: e.target.value }
+                      })}
+                      className="w-full bg-slate-950 border border-rose-500/20 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-rose-500"
+                      placeholder="e.g. Boring inventory sorting, quiet AFK moments, off-topic chat reading."
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[11px] text-amber-400 block mb-1">Inside Jokes &amp; Key Catchphrases</label>
+                  <input
+                    type="text"
+                    value={drawerForm.ai.inside_jokes || ''}
+                    onChange={(e) => setDrawerForm({
+                      ...drawerForm,
+                      ai: { ...drawerForm.ai, inside_jokes: e.target.value }
+                    })}
+                    className="w-full bg-slate-950 border border-amber-500/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
+                    placeholder="e.g. gold gold gold, L, W, Cooked, Juicer"
                   />
                 </div>
               </div>

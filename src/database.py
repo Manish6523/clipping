@@ -181,6 +181,9 @@ async def get_effective_min_score(channel_id: str, template: Optional[Dict[str, 
             pass
 
     return int(DEFAULT_MIN_VIRALITY_SCORE)
+
+
+async def get_channel(channel_id_or_handle: str) -> Optional[Dict[str, Any]]:
     """Get channel record by id or handle."""
     async with get_db_connection() as db:
         cursor = await db.execute(
