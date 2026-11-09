@@ -452,6 +452,81 @@ async def migration_v12(db):
     await db.commit()
 
 
+@migration(13, "Add clips AI context columns and backfill feedback events")
+async def migration_v13(db):
+    """Additive schema evolution for Phase A pre-flight fixes."""
+    # 1. Additive columns for clips
+    cur = await db.execute("PRAGMA table_info(clips)")
+    cols = [r["name"] if isinstance(r, dict) else r[1] for r in await cur.fetchall()]
+    add_cols = {
+        "ai_start": "REAL",
+        "ai_end": "REAL",
+        "model": "TEXT",
+        "tokens_in": "INTEGER",
+        "tokens_out": "INTEGER",
+        "trigger_json": "TEXT",
+        "formula_version": "TEXT",
+    }
+    for col, col_type in add_cols.items():
+        if col not in cols:
+            await db.execute(f"ALTER TABLE clips ADD COLUMN {col} {col_type}")
+
+    # 2. Additive columns for candidates
+    cur = await db.execute("PRAGMA table_info(candidates)")
+    cand_cols = [r["name"] if isinstance(r, dict) else r[1] for r in await cur.fetchall()]
+    cand_add = {
+        "llm_response_json": "TEXT",
+        "trigger_json": "TEXT",
+        "chat_sample_json": "TEXT",
+    }
+    for col, col_type in cand_add.items():
+        if col not in cand_cols:
+            await db.execute(f"ALTER TABLE candidates ADD COLUMN {col} {col_type}")
+
+    # 3. Rebuild clip_feedback_events to allow 'reason_tagged' and 'marked_great'
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS clip_feedback_events_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER,
+            candidate_id TEXT,
+            channel_id TEXT,
+            event TEXT NOT NULL CHECK(event IN ('approved', 'rejected', 'trimmed', 'words_edited', 'layout_changed', 'published', 'deleted', 'reason_tagged', 'marked_great')),
+            payload_json TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+    """)
+    # Copy any existing data
+    await db.execute("INSERT OR IGNORE INTO clip_feedback_events_new SELECT * FROM clip_feedback_events")
+    await db.execute("DROP TABLE clip_feedback_events")
+    await db.execute("ALTER TABLE clip_feedback_events_new RENAME TO clip_feedback_events")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_feedback_clip ON clip_feedback_events(clip_id)")
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_feedback_channel ON clip_feedback_events(channel_id, created_at)")
+
+    # 4. Backfill feedback events from existing clips
+    cur = await db.execute("SELECT id, channel_id, status FROM clips")
+    existing_clips = await cur.fetchall()
+    for row in existing_clips:
+        c_id = row[0] if isinstance(row, (list, tuple)) else row["id"]
+        ch_id = row[1] if isinstance(row, (list, tuple)) else row["channel_id"]
+        st = row[2] if isinstance(row, (list, tuple)) else row["status"]
+        if st in ("approved", "published", "queued"):
+            evt = "approved"
+        elif st == "rejected":
+            evt = "rejected"
+        else:
+            continue
+
+        # Check if already logged
+        chk_cur = await db.execute("SELECT 1 FROM clip_feedback_events WHERE clip_id = ? AND event = ?", (c_id, evt))
+        if not await chk_cur.fetchone():
+            await db.execute(
+                "INSERT INTO clip_feedback_events (clip_id, channel_id, event, payload_json) VALUES (?, ?, ?, ?)",
+                (c_id, ch_id, evt, '{"source": "backfill"}')
+            )
+
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

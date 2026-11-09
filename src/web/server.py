@@ -167,6 +167,7 @@ class WebUIServer:
         self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
         self.app.router.add_get("/api/clips/{id}/explain", self.handle_get_clip_explain)
         self.app.router.add_post("/api/clips/{id}/feedback", self.handle_post_clip_feedback)
+        self.app.router.add_get("/api/analytics/feedback", self.handle_get_feedback_analytics)
         self.app.router.add_get("/api/channels/{id}/learning", self.handle_get_channel_learning)
         self.app.router.add_post("/api/channels/{id}/learning/reset", self.handle_reset_channel_learning)
         self.app.router.add_post("/api/channels/{id}/learning/pause", self.handle_pause_channel_learning)
@@ -773,6 +774,29 @@ class WebUIServer:
         )
         if not updated_clip:
             return web.json_response({"error": "Trimming failed"}, status=500)
+
+        # Log trim feedback with deltas relative to AI boundaries if available
+        try:
+            ai_s = updated_clip.get("ai_start") or updated_clip.get("raw_start")
+            ai_e = updated_clip.get("ai_end") or updated_clip.get("raw_end")
+            trim_payload = {
+                "delta_start": delta_start,
+                "delta_end": delta_end,
+                "start_delta": (updated_clip["adjusted_start"] - ai_s) if ai_s is not None else delta_start,
+                "end_delta": (updated_clip["adjusted_end"] - ai_e) if ai_e is not None else delta_end,
+                "source": "web_editor_trim",
+            }
+            from src.intelligence.learning.feedback import FeedbackLearner
+            await FeedbackLearner.log_feedback(
+                clip_id=clip_id,
+                channel_id=updated_clip.get("channel_id", "default"),
+                event="trimmed",
+                payload=trim_payload,
+                candidate_id=updated_clip.get("candidate_id"),
+            )
+        except Exception as trim_fb_err:
+            logger.warning("Trim feedback logging failed: %s", trim_fb_err)
+
         return web.json_response(updated_clip)
 
     async def handle_toggle_teaser(self, request: web.Request) -> web.Response:
@@ -853,6 +877,17 @@ class WebUIServer:
         overall_success = has_yt_success or ig_res.get("success", False)
         if overall_success:
             await update_clip_status(clip_id, "published")
+            try:
+                from src.intelligence.learning.feedback import FeedbackLearner
+                await FeedbackLearner.log_feedback(
+                    clip_id=clip_id,
+                    channel_id=clip.get("channel_id", "default"),
+                    event="published",
+                    payload={"source": "web_post_now"},
+                    candidate_id=clip.get("candidate_id"),
+                )
+            except Exception as fb_err:
+                logger.warning("Feedback logging failed on publish: %s", fb_err)
 
         return web.json_response({
             "success": overall_success,
@@ -865,11 +900,54 @@ class WebUIServer:
         clip_id = int(request.match_info["id"])
         next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
         qid = await enqueue_clip(clip_id, next_slot)
+        await update_clip_status(clip_id, "approved")
+        try:
+            from src.database import get_clip
+            c_rec = await get_clip(clip_id)
+            from src.intelligence.learning.feedback import FeedbackLearner
+            await FeedbackLearner.log_feedback(
+                clip_id=clip_id,
+                channel_id=(c_rec.get("channel_id") if c_rec else None) or "default",
+                event="approved",
+                payload={"source": "web_queue"},
+                candidate_id=c_rec.get("candidate_id") if c_rec else None,
+            )
+        except Exception as fb_err:
+            logger.warning("Feedback logging failed on queue: %s", fb_err)
+
         return web.json_response({"success": True, "queue_id": qid, "scheduled_for": next_slot})
 
     async def handle_discard_clip(self, request: web.Request) -> web.Response:
         """Purge clip and delete all its files, database rows, and instances."""
         clip_id = int(request.match_info["id"])
+        data = {}
+        try:
+            data = await request.json()
+        except Exception:
+            pass
+        reason = data.get("reason")
+        try:
+            from src.database import get_clip
+            c_rec = await get_clip(clip_id)
+            from src.intelligence.learning.feedback import FeedbackLearner
+            await FeedbackLearner.log_feedback(
+                clip_id=clip_id,
+                channel_id=(c_rec.get("channel_id") if c_rec else None) or "default",
+                event="rejected",
+                payload={"source": "web_discard", "reason": reason},
+                candidate_id=c_rec.get("candidate_id") if c_rec else None,
+            )
+            if reason:
+                await FeedbackLearner.log_feedback(
+                    clip_id=clip_id,
+                    channel_id=(c_rec.get("channel_id") if c_rec else None) or "default",
+                    event="reason_tagged",
+                    payload={"source": "web_discard", "reason": reason},
+                    candidate_id=c_rec.get("candidate_id") if c_rec else None,
+                )
+        except Exception as fb_err:
+            logger.warning("Feedback logging failed on discard: %s", fb_err)
+
         success = await delete_clip_completely(clip_id)
         await ws_manager.broadcast("clip_deleted", {"clip_id": clip_id})
         return web.json_response({"success": success, "deleted": clip_id})
@@ -1117,21 +1195,109 @@ class WebUIServer:
         })
 
     async def handle_post_clip_feedback(self, request: web.Request) -> web.Response:
-        """Record human feedback (approved, rejected, trimmed) with reason codes."""
+        """Record human feedback (approved, rejected, trimmed, marked_great, reason_tagged) with reason codes."""
         clip_id = int(request.match_info["id"])
-        data = await request.json()
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
         event = data.get("event", "approved")
-        channel_id = data.get("channel_id", "default")
+        channel_id = data.get("channel_id")
         payload = data.get("payload", {})
 
+        # If reason is provided at top-level, nest into payload
+        if "reason" in data and "reason" not in payload:
+            payload["reason"] = data["reason"]
+
+        from src.database import get_clip, update_clip_status
+        clip = await get_clip(clip_id)
+        if not channel_id and clip:
+            channel_id = clip.get("channel_id", "default")
+        candidate_id = clip.get("candidate_id") if clip else None
+
+        # Update clip status if event corresponds to terminal status
+        if event in ("approved", "published", "queued"):
+            await update_clip_status(clip_id, "approved" if event == "approved" else event)
+        elif event == "rejected":
+            await update_clip_status(clip_id, "rejected")
+
         from src.intelligence.learning.feedback import FeedbackLearner
-        await FeedbackLearner.log_feedback(
-            clip_id=clip_id,
-            channel_id=channel_id,
-            event=event,
-            payload=payload,
-        )
+        try:
+            await FeedbackLearner.log_feedback(
+                clip_id=clip_id,
+                channel_id=channel_id or "default",
+                event=event,
+                payload=payload,
+                candidate_id=candidate_id,
+            )
+        except Exception as e:
+            logger.warning("Feedback logging failed: %s", e)
+
         return web.json_response({"success": True})
+
+    async def handle_get_feedback_analytics(self, request: web.Request) -> web.Response:
+        """Return approval rate over time, reason counts, average trim deltas, and label counts."""
+        target_channel = request.query.get("channel")
+        from src.database import get_db_connection
+
+        query = "SELECT * FROM clip_feedback_events"
+        params = []
+        if target_channel:
+            query += " WHERE channel_id = ? OR channel_id = ?"
+            params.extend([target_channel, target_channel.lstrip("@")])
+        query += " ORDER BY created_at ASC"
+
+        async with get_db_connection() as db:
+            cur = await db.execute(query, params)
+            rows = await cur.fetchall()
+
+        events = [dict(r) for r in rows]
+        event_counts = Counter(e["event"] for e in events)
+
+        # Reason counts
+        reason_counts = Counter()
+        start_deltas = []
+        end_deltas = []
+
+        for e in events:
+            p = {}
+            if e.get("payload_json"):
+                try:
+                    p = json.loads(e["payload_json"])
+                except Exception:
+                    pass
+            if p.get("reason"):
+                reason_counts[p["reason"]] += 1
+            if e["event"] == "trimmed":
+                if "start_delta" in p:
+                    start_deltas.append(float(p["start_delta"]))
+                elif "delta_start" in p:
+                    start_deltas.append(float(p["delta_start"]))
+                if "end_delta" in p:
+                    end_deltas.append(float(p["end_delta"]))
+                elif "delta_end" in p:
+                    end_deltas.append(float(p["delta_end"]))
+
+        approved_total = event_counts.get("approved", 0) + event_counts.get("published", 0) + event_counts.get("marked_great", 0)
+        rejected_total = event_counts.get("rejected", 0)
+        total_decisions = approved_total + rejected_total
+        approval_rate = round(approved_total / total_decisions * 100, 1) if total_decisions > 0 else 0.0
+
+        avg_start_delta = round(sum(start_deltas) / len(start_deltas), 2) if start_deltas else 0.0
+        avg_end_delta = round(sum(end_deltas) / len(end_deltas), 2) if end_deltas else 0.0
+
+        return web.json_response({
+            "channel_filter": target_channel,
+            "total_events": len(events),
+            "approval_rate": approval_rate,
+            "counts_by_event": dict(event_counts),
+            "rejection_reasons": dict(reason_counts),
+            "trim_analytics": {
+                "count": len(start_deltas),
+                "avg_start_delta": avg_start_delta,
+                "avg_end_delta": avg_end_delta,
+            }
+        })
 
     async def handle_get_channel_learning(self, request: web.Request) -> web.Response:
         """Retrieve learned boundary biases, signal weights, and review statistics."""

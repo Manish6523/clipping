@@ -201,7 +201,9 @@ class AutoClipEngine:
                     template_name=template_name,
                     raw_start=start_sec,
                     raw_end=end_sec,
-                    virality_score=85,
+                    virality_score=0,
+                    final_score=None,
+                    flags=json.dumps([{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]),
                     title=f"Manual Highlight ({template_name})",
                     teaser_hook_timestamp=None,
                     description=transcription.get("text", "")[:100],
@@ -234,7 +236,7 @@ class AutoClipEngine:
                     "clip_id": clip_id,
                     "channel_id": "manual",
                     "title": f"Manual Highlight ({template_name})",
-                    "virality_score": 85,
+                    "virality_score": 0,
                     "template_name": template_name,
                     "rendered_video_path": rendered_mp4,
                     "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
@@ -300,7 +302,19 @@ class AutoClipEngine:
                     template_name = "Bottom Left"
 
                 template = load_template(template_name)
-                min_score = template.get("min_virality_score", 70)
+                from src.database import get_effective_min_score
+                min_score = await get_effective_min_score(channel_id, template)
+                logger.info("Effective min_score for creator '%s': %d (Channel > Template > System)", channel_id, min_score)
+
+                # Check if channel configured skip_unscored
+                channel_record = await get_channel(channel_id)
+                skip_unscored = False
+                if channel_record and channel_record.get("settings_json"):
+                    try:
+                        s_cfg = json.loads(channel_record["settings_json"]) if isinstance(channel_record["settings_json"], str) else channel_record["settings_json"]
+                        skip_unscored = bool(s_cfg.get("clip_rules", {}).get("skip_unscored", False))
+                    except Exception:
+                        pass
 
                 update_pipeline_progress(
                     "processing",
@@ -324,7 +338,15 @@ class AutoClipEngine:
                     asyncio.create_task(_clear_banner())
                     return
 
+                # Guaranteed highest-scoring candidate selection
+                candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
                 best_candidate = candidates[0]
+
+                if getattr(best_candidate, "virality_score", 0) <= 0 and skip_unscored:
+                    logger.info("Best candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
+                    update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Moment unscored (skipped).")
+                    return
+
                 logger.info("Selected viral candidate: '%s' (Score: %d/100)", best_candidate.suggested_title, best_candidate.virality_score)
 
                 clip_start = best_candidate.start_time
@@ -426,7 +448,18 @@ class AutoClipEngine:
         template_name = metadata.get("template_name", "podcast_split")
         video_url = metadata.get("video_url")
         template = load_template(template_name)
-        min_score = template.get("min_virality_score", 70)
+        from src.database import get_effective_min_score
+        min_score = await get_effective_min_score(channel_id, template)
+
+        # Check if channel configured skip_unscored
+        channel_record = await get_channel(channel_id)
+        skip_unscored = False
+        if channel_record and channel_record.get("settings_json"):
+            try:
+                s_cfg = json.loads(channel_record["settings_json"]) if isinstance(channel_record["settings_json"], str) else channel_record["settings_json"]
+                skip_unscored = bool(s_cfg.get("clip_rules", {}).get("skip_unscored", False))
+            except Exception:
+                pass
 
         logger.info("Evaluating VOD '%s' (%s) with template '%s'...", vod_id, channel_id, template_name)
         update_pipeline_progress("processing", channel_id=channel_id, step=2, step_name=f"Transcribing VOD audio ({vod_id})...")
@@ -450,7 +483,13 @@ class AutoClipEngine:
                     await db.commit()
                 return
 
+            candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
             best_candidate = candidates[0]
+
+            if getattr(best_candidate, "virality_score", 0) <= 0 and skip_unscored:
+                logger.info("VOD candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
+                update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Moment unscored (skipped).")
+                return
             work_dir = Path(metadata.get("work_dir", RENDER_DIR))
             slice_source = work_dir / f"{vod_id}_slice.mp4"
 
@@ -635,16 +674,39 @@ class AutoClipEngine:
 
         logger.info("AutoClipDaemon running. Web UI at http://localhost:%d | Telegram active.", WEB_PORT)
 
-        # Start Telegram Bot polling if token configured
-        if self.bot.bot:
-            try:
-                await self.bot.dp.start_polling(self.bot.bot)
-            finally:
-                self.running = False
-                scheduler_task.cancel()
-                gc_task.cancel()
-                sync_task.cancel()
-                vod_task.cancel()
+        # Start Telegram Bot polling if token configured and polling is explicitly enabled
+        from config.settings import TELEGRAM_POLLING_ENABLED
+        if self.bot.bot and TELEGRAM_POLLING_ENABLED:
+            logger.info("🤖 Starting Telegram Bot polling (TELEGRAM_POLLING_ENABLED=true)...")
+            backoff_s = 5.0
+            while self.running:
+                try:
+                    await self.bot.dp.start_polling(self.bot.bot)
+                    break
+                except Exception as poll_err:
+                    err_msg = str(poll_err)
+                    if "conflict" in err_msg.lower() or "terminated by other getupdates" in err_msg.lower():
+                        logger.warning(
+                            "⚠️ TelegramConflictError detected (another instance is polling this bot token). "
+                            "Backing off for %.1fs without crash-looping...", backoff_s
+                        )
+                        await asyncio.sleep(backoff_s)
+                        backoff_s = min(60.0, backoff_s * 1.5)
+                    else:
+                        logger.error("Telegram polling error: %s", poll_err)
+                        await asyncio.sleep(5)
+            self.running = False
+            scheduler_task.cancel()
+            gc_task.cancel()
+            sync_task.cancel()
+            vod_task.cancel()
+        elif self.bot.bot and not TELEGRAM_POLLING_ENABLED:
+            logger.warning(
+                "⚠️ TELEGRAM_POLLING_ENABLED is false. Bot will send outgoing notifications but will NOT poll "
+                "getUpdates (safe single-instance guard to prevent TelegramConflictError with cloud server)."
+            )
+            while self.running:
+                await asyncio.sleep(1)
         else:
             logger.warning("TELEGRAM_BOT_TOKEN not provided. Running in web-only mode.")
             while self.running:

@@ -13,7 +13,10 @@ import {
   Trash2,
   Layers,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  RotateCcw,
+  LockKeyhole,
+  UnlockKeyhole
 } from 'lucide-react';
 import { calculateLayerGeometry } from '../../utils/layoutMath';
 import { renderCaptionsToCanvas } from '../../utils/captionRenderer';
@@ -143,17 +146,46 @@ export default function MobileStage({
       } else if (dragState.actionType === 'resize') {
         const hnd = dragState.handle;
         let { x, y, w, h } = curRect;
-        if (hnd.includes('e')) w = Math.max(0.04, Math.min(1.0 - x, curRect.w + deltaXNorm));
-        if (hnd.includes('s')) h = Math.max(0.04, Math.min(1.0 - y, curRect.h + deltaYNorm));
+        if (hnd.includes('e')) {
+          w = Math.max(0.04, Math.min(1.0 - x, curRect.w + deltaXNorm));
+        }
+        if (hnd.includes('s')) {
+          h = Math.max(0.04, Math.min(1.0 - y, curRect.h + deltaYNorm));
+        }
         if (hnd.includes('w')) {
-          const propW = Math.max(0.04, curRect.w - deltaXNorm);
-          const propX = curRect.x + (curRect.w - propW);
-          if (propX >= 0) { w = propW; x = propX; }
+          const rawW = curRect.w - deltaXNorm;
+          const maxAllowedW = curRect.x + curRect.w;
+          const clampedW = Math.max(0.04, Math.min(maxAllowedW, rawW));
+          w = clampedW;
+          x = Math.max(0, curRect.x + (curRect.w - clampedW));
         }
         if (hnd.includes('n')) {
-          const propH = Math.max(0.04, curRect.h - deltaYNorm);
-          const propY = curRect.y + (curRect.h - propH);
-          if (propY >= 0) { h = propH; y = propY; }
+          const rawH = curRect.h - deltaYNorm;
+          const maxAllowedH = curRect.y + curRect.h;
+          const clampedH = Math.max(0.04, Math.min(maxAllowedH, rawH));
+          h = clampedH;
+          y = Math.max(0, curRect.y + (curRect.h - clampedH));
+        }
+
+        // Clamp inside bounds
+        x = Math.max(0, Math.min(1.0 - 0.04, x));
+        y = Math.max(0, Math.min(1.0 - 0.04, y));
+        w = Math.max(0.04, Math.min(1.0 - x, w));
+        h = Math.max(0.04, Math.min(1.0 - y, h));
+
+        // If aspect ratio is locked for dst
+        const layer = dragState.layer;
+        if (dragState.target === 'dst' && layer?.aspect_lock && curRect.h > 0) {
+          const targetRatio = (curRect.w * dragState.canvasW) / (curRect.h * dragState.canvasH);
+          if (hnd.includes('e') || hnd.includes('w')) {
+            const desiredH = (w * dragState.canvasW) / targetRatio / dragState.canvasH;
+            if (y + desiredH <= 1.0) {
+              h = desiredH;
+            } else {
+              h = 1.0 - y;
+              w = (h * dragState.canvasH * targetRatio) / dragState.canvasW;
+            }
+          }
         }
 
         const finalX = Math.round(x * 1000) / 1000;
@@ -389,9 +421,9 @@ export default function MobileStage({
                   borderColor: layer.color || '#00F0FF',
                 }}
                 onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'move')}
-                className={`absolute border-2 rounded-xl cursor-grab active:cursor-grabbing transition-shadow touch-none ${
+                className={`absolute border rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                   isSelected 
-                    ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30 ring-2 ring-white/40' 
+                    ? 'border-white shadow-[0_0_10px_rgba(255,255,255,0.7)] z-30 ring-1 ring-white/40' 
                     : 'border-white/40 z-20'
                 }`}
               >
@@ -470,9 +502,9 @@ export default function MobileStage({
                   borderColor: layer.color || '#00F0FF',
                 }}
                 onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
-                className={`absolute border-2 rounded-xl cursor-grab active:cursor-grabbing transition-shadow touch-none ${
+                className={`absolute border rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                   isSelected 
-                    ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30 ring-2 ring-white/40' 
+                    ? 'border-white shadow-[0_0_10px_rgba(255,255,255,0.7)] z-30 ring-1 ring-white/40' 
                     : 'border-white/40 z-20'
                 }`}
               >
@@ -544,6 +576,37 @@ export default function MobileStage({
             className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
           >
             {selectedLayer.locked ? <Lock size={14} className="text-amber-400" /> : <Unlock size={14} className="text-slate-400" />}
+          </button>
+
+          {/* Aspect Ratio Lock / Unlock */}
+          <button
+            onClick={() => handleUpdateLayer(selectedLayer.id, { aspect_lock: !selectedLayer.aspect_lock })}
+            title={selectedLayer.aspect_lock ? "Unlock aspect ratio" : "Lock aspect ratio"}
+            className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
+          >
+            {selectedLayer.aspect_lock ? <LockKeyhole size={14} className="text-[#8FD3FF]" /> : <UnlockKeyhole size={14} className="text-slate-400" />}
+          </button>
+
+          {/* Reset Aspect Ratio */}
+          <button
+            onClick={() => {
+              const curDst = selectedLayer.dst || { x: 0, y: 0, w: 1, h: 1 };
+              const srcW = selectedLayer.src?.w || 1;
+              const srcH = selectedLayer.src?.h || 1;
+              const srcAspect = (srcW * 16) / (srcH * 9);
+              const newH = Math.min(1.0 - curDst.y, (curDst.w * 9) / (srcAspect * 16));
+              handleUpdateLayer(selectedLayer.id, {
+                dst: {
+                  ...curDst,
+                  h: Math.round(newH * 1000) / 1000
+                },
+                aspect_lock: true
+              });
+            }}
+            title="Reset aspect ratio to source crop"
+            className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
+          >
+            <RotateCcw size={13} className="text-[#8FD3FF]" />
           </button>
 
           {/* Visibility */}

@@ -40,8 +40,23 @@ import {
   postClipNow, 
   queueClip, 
   discardClip,
-  batchDiscardClips
+  batchDiscardClips,
+  sendClipFeedback
 } from '../api';
+
+const REJECTION_REASONS = [
+  { code: 'boring', label: 'Boring' },
+  { code: 'no_context', label: 'No context' },
+  { code: 'bad_start', label: 'Bad start' },
+  { code: 'bad_end', label: 'Bad end' },
+  { code: 'off_topic', label: 'Off-topic' },
+  { code: 'unsafe', label: 'Unsafe' },
+  { code: 'duplicate', label: 'Duplicate' },
+  { code: 'bad_crop', label: 'Bad crop' },
+  { code: 'bad_captions', label: 'Bad captions' },
+  { code: 'audio', label: 'Audio' },
+  { code: 'other', label: 'Other' },
+];
 
 export default function ReviewStation({ onStatusChange }) {
   const queryClient = useQueryClient();
@@ -62,6 +77,8 @@ export default function ReviewStation({ onStatusChange }) {
 
   // Multi-select state
   const [selectedClipIds, setSelectedClipIds] = useState(new Set());
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [retroTagClip, setRetroTagClip] = useState(null);
 
   // Single video player ref
   const videoRef = useRef(null);
@@ -286,16 +303,39 @@ export default function ReviewStation({ onStatusChange }) {
     }
   };
 
-  const handleDiscard = async () => {
+  const handleMarkGreat = async () => {
     if (!activeClipId) return;
-    if (!window.confirm(`Discard and delete Clip #${activeClipId}?`)) return;
     try {
-      await discardClip(activeClipId);
+      await sendClipFeedback(activeClipId, 'marked_great', { source: 'web_button' });
+      await queueClip(activeClipId);
       queryClient.invalidateQueries({ queryKey: ['clips'] });
       if (onStatusChange) onStatusChange();
-      showFeedback(`Clip #${activeClipId} discarded.`);
+      showFeedback(`Clip #${activeClipId} marked ⭐ GREAT and Queued!`);
+    } catch (err) {
+      alert('Failed to mark great: ' + err.message);
+    }
+  };
+
+  const handleDiscardWithReason = async (reasonCode = null) => {
+    if (!activeClipId) return;
+    try {
+      await discardClip(activeClipId, reasonCode);
+      setShowRejectModal(false);
+      queryClient.invalidateQueries({ queryKey: ['clips'] });
+      if (onStatusChange) onStatusChange();
+      showFeedback(`Clip #${activeClipId} rejected${reasonCode ? ` (${reasonCode})` : ''}.`);
     } catch (err) {
       alert('Failed to discard clip: ' + err.message);
+    }
+  };
+
+  const handleTagRejectedClip = async (clipId, reasonCode) => {
+    try {
+      await sendClipFeedback(clipId, 'reason_tagged', { reason: reasonCode, source: 'retro_tagging_ui' });
+      queryClient.invalidateQueries({ queryKey: ['clips'] });
+      showFeedback(`Clip #${clipId} tagged: ${reasonCode}`);
+    } catch (err) {
+      alert('Tagging failed: ' + err.message);
     }
   };
 
@@ -504,7 +544,9 @@ export default function ReviewStation({ onStatusChange }) {
                             </span>
                           </div>
                           <span className="flex items-center gap-1 font-extrabold text-amber-400 font-mono text-[11px] bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20 shrink-0">
-                            🔥 {clip.virality_score}
+                            {(!clip.virality_score || clip.virality_score === 0 || (clip.flags && clip.flags.includes('unscored')))
+                              ? '⚪ unscored'
+                              : `🔥 ${clip.virality_score}`}
                           </span>
                         </div>
 
@@ -575,7 +617,9 @@ export default function ReviewStation({ onStatusChange }) {
                   Channel: <b className="text-white">@{activeClipSummary.channel_id}</b>
                 </span>
                 <span className="px-2.5 py-1 rounded-lg bg-amber-500/10 border border-amber-500/20 font-bold text-amber-400 flex items-center gap-1 font-mono">
-                  🔥 Score: {activeClipSummary.virality_score}/100
+                  {(!activeClipSummary.virality_score || activeClipSummary.virality_score === 0 || (activeClipSummary.flags && activeClipSummary.flags.includes('unscored')))
+                    ? '⚪ Score: unscored'
+                    : `🔥 Score: ${activeClipSummary.virality_score}/100`}
                 </span>
                 <span className="px-2.5 py-1 rounded-lg bg-[#141722] border border-white/[0.08] font-mono text-[#8FD3FF]">
                   ⏱️ {((activeClipSummary.adjusted_end || 30) - (activeClipSummary.adjusted_start || 0)).toFixed(1)}s
@@ -707,13 +751,20 @@ export default function ReviewStation({ onStatusChange }) {
               </div>
 
               {/* Bottom Action Buttons (Fixed Footer) */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-2 border-t border-white/[0.06] shrink-0">
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-2 border-t border-white/[0.06] shrink-0">
                 <a
                   href={`/clips/${activeClipSummary.id}/editor`}
                   className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-[#8FD3FF]/20"
                 >
                   <Maximize2 size={13} /> Full Editor
                 </a>
+                <button
+                  onClick={handleMarkGreat}
+                  disabled={loading}
+                  className="flex items-center justify-center gap-1.5 bg-amber-500 hover:bg-amber-400 text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-amber-500/20"
+                >
+                  ⭐ Great
+                </button>
                 <button
                   onClick={handlePostNow}
                   disabled={loading}
@@ -724,7 +775,7 @@ export default function ReviewStation({ onStatusChange }) {
                 <button
                   onClick={handleQueue}
                   disabled={loading}
-                  className="flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white font-bold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-amber-600/20"
+                  className="flex items-center justify-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white font-bold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-cyan-600/20"
                 >
                   <Calendar size={13} /> Queue
                 </button>
@@ -736,13 +787,61 @@ export default function ReviewStation({ onStatusChange }) {
                   <Save size={13} /> Save
                 </button>
                 <button
-                  onClick={handleDiscard}
+                  onClick={() => setShowRejectModal(true)}
                   disabled={loading}
                   className="flex items-center justify-center gap-1.5 bg-rose-600/20 hover:bg-rose-600/40 text-rose-300 border border-rose-500/30 font-bold py-2 px-2 rounded-xl text-xs transition-all"
                 >
-                  <Trash2 size={13} /> Discard
+                  <Trash2 size={13} /> Reject
                 </button>
               </div>
+
+              {/* One-Tap Rejection Reason Modal */}
+              {showRejectModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#0E1118] border border-white/[0.1] rounded-2xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-3">
+                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                      <div className="flex items-center gap-2">
+                        <Trash2 size={16} className="text-rose-400" />
+                        <h3 className="font-extrabold text-sm text-white">Why did you reject this clip?</h3>
+                      </div>
+                      <button onClick={() => setShowRejectModal(false)} className="text-slate-400 hover:text-white">
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <p className="text-xs text-[#8B90A0]">
+                      Your feedback trains the AI scoring judge to avoid similar moments for this streamer.
+                    </p>
+
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 py-2">
+                      {REJECTION_REASONS.map((r) => (
+                        <button
+                          key={r.code}
+                          onClick={() => handleDiscardWithReason(r.code)}
+                          className="px-3 py-2 rounded-xl bg-white/[0.04] hover:bg-rose-500/20 border border-white/[0.06] hover:border-rose-500/40 text-xs font-semibold text-slate-200 hover:text-white transition-all text-center"
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
+                      <button
+                        onClick={() => handleDiscardWithReason(null)}
+                        className="text-xs text-slate-400 hover:text-slate-200 underline"
+                      >
+                        Skip reason
+                      </button>
+                      <button
+                        onClick={() => setShowRejectModal(false)}
+                        className="px-4 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-24 text-[#8B90A0] text-sm">

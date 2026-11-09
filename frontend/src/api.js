@@ -49,7 +49,9 @@ export const toggleTeaser = (id) =>
 export const updateClip = (id, data) => api.post(`/api/clips/${id}/update`, data).then(r => r.data);
 export const postClipNow = (id) => api.post(`/api/clips/${id}/post-now`).then(r => r.data);
 export const queueClip = (id) => api.post(`/api/clips/${id}/queue`).then(r => r.data);
-export const discardClip = (id) => api.post(`/api/clips/${id}/discard`).then(r => r.data);
+export const discardClip = (id, reason = null) => api.post(`/api/clips/${id}/discard`, { reason }).then(r => r.data);
+export const sendClipFeedback = (id, event, payload = {}) => api.post(`/api/clips/${id}/feedback`, { event, payload }).then(r => r.data);
+export const getFeedbackAnalytics = (channel = '') => api.get(`/api/analytics/feedback${channel ? `?channel=${encodeURIComponent(channel)}` : ''}`).then(r => r.data);
 export const batchDiscardClips = (clipIds) => api.post('/api/clips/batch-discard', { clip_ids: clipIds }).then(r => r.data);
 
 export const getChannels = () => api.get('/api/channels').then(r => r.data);

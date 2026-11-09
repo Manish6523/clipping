@@ -134,6 +134,53 @@ async def get_active_channels() -> List[Dict[str, Any]]:
 
 
 async def get_channel(channel_id_or_handle: str) -> Optional[Dict[str, Any]]:
+    """Retrieve channel by handle or numeric ID."""
+    async with get_db_connection() as db:
+        cursor = await db.execute(
+            "SELECT * FROM channels WHERE channel_id_or_handle = ? OR channel_id_or_handle = ?",
+            (channel_id_or_handle, channel_id_or_handle.lstrip("@")),
+        )
+        row = await cursor.fetchone()
+        return dict(row) if row else None
+
+
+async def get_effective_min_score(channel_id: str, template: Optional[Dict[str, Any]] = None) -> int:
+    """Resolve authoritative minimum score.
+    Order of precedence: Channel setting > Template > System setting (default 70).
+    """
+    from config.settings import DEFAULT_MIN_VIRALITY_SCORE
+
+    # 1. Channel setting
+    ch = await get_channel(channel_id)
+    if ch and ch.get("settings_json"):
+        try:
+            s_dict = json.loads(ch["settings_json"]) if isinstance(ch["settings_json"], str) else ch["settings_json"]
+            c_score = s_dict.get("clip_rules", {}).get("min_score")
+            if c_score is not None and int(c_score) > 0:
+                return int(c_score)
+        except Exception:
+            pass
+
+    # 2. Template
+    if template and "min_virality_score" in template:
+        try:
+            t_score = int(template["min_virality_score"])
+            if t_score > 0:
+                return t_score
+        except Exception:
+            pass
+
+    # 3. System setting / settings.py
+    sys_settings = await get_all_system_settings()
+    if "min_virality_score" in sys_settings:
+        try:
+            val = sys_settings["min_virality_score"].get("value")
+            if val is not None and int(val) > 0:
+                return int(val)
+        except Exception:
+            pass
+
+    return int(DEFAULT_MIN_VIRALITY_SCORE)
     """Get channel record by id or handle."""
     async with get_db_connection() as db:
         cursor = await db.execute(
@@ -222,6 +269,18 @@ async def create_clip(
     rendered_video_path: Optional[str] = None,
     subtitle_path: Optional[str] = None,
     thumbnail_path: Optional[str] = None,
+    final_score: Optional[float] = None,
+    score_breakdown: Optional[str] = None,
+    flags: Optional[str] = None,
+    prompt_version: Optional[str] = None,
+    candidate_id: Optional[str] = None,
+    ai_start: Optional[float] = None,
+    ai_end: Optional[float] = None,
+    model: Optional[str] = None,
+    tokens_in: Optional[int] = None,
+    tokens_out: Optional[int] = None,
+    trigger_json: Optional[str] = None,
+    formula_version: Optional[str] = None,
 ) -> int:
     """Insert a newly detected candidate clip."""
     now = datetime.now(timezone.utc).isoformat()
@@ -238,8 +297,11 @@ async def create_clip(
                 raw_start, raw_end, adjusted_start, adjusted_end,
                 teaser_hook_timestamp, has_teaser, virality_score,
                 title, description, hashtags, source_video_path,
-                rendered_video_path, subtitle_path, thumbnail_path, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?)
+                rendered_video_path, subtitle_path, thumbnail_path, status,
+                final_score, score_breakdown, flags, prompt_version, candidate_id,
+                ai_start, ai_end, model, tokens_in, tokens_out, trigger_json, formula_version,
+                created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_approval', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 source_type,
@@ -259,6 +321,18 @@ async def create_clip(
                 rendered_video_path,
                 subtitle_path,
                 thumbnail_path,
+                final_score,
+                score_breakdown,
+                flags,
+                prompt_version,
+                candidate_id,
+                ai_start,
+                ai_end,
+                model,
+                tokens_in,
+                tokens_out,
+                trigger_json,
+                formula_version,
                 now,
                 now,
             ),

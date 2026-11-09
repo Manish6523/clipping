@@ -70,6 +70,12 @@ DATABASE_PATH = DATA_DIR / "autoclip.db"
 # Telegram Bot
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
 ADMIN_CHAT_ID = int(os.getenv("ADMIN_CHAT_ID", "0"))
+TELEGRAM_POLLING_ENABLED = os.getenv("TELEGRAM_POLLING_ENABLED", "false").lower() in ("true", "1", "yes")
+
+# Pipeline Mode: 'legacy' (original single-call viral_scorer) | 'shadow' (run new pipeline in background) | 'new' (use new judge pipeline)
+PIPELINE_MODE = os.getenv("PIPELINE_MODE", "legacy").lower().strip()
+SHADOW_MAX_RUNS_PER_DAY = int(os.getenv("SHADOW_MAX_RUNS_PER_DAY", "50"))
+GEMINI_JUDGE_MODEL = os.getenv("GEMINI_JUDGE_MODEL", os.getenv("GEMINI_MODEL", "gemini-flash-lite-latest"))
 
 # Gemini API & Multi-Key Pool
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")

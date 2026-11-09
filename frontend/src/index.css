@@ -48,3 +48,14 @@
   box-shadow: 0 4px 20px rgba(143, 211, 255, 0.35);
   transform: translateY(-1px);
 }
+
+/* Explicit cursor utility classes so direction cursors always work */
+.cursor-nw-resize, .cursor-nwse-resize { cursor: nwse-resize !important; }
+.cursor-se-resize { cursor: nwse-resize !important; }
+.cursor-ne-resize, .cursor-nesw-resize { cursor: nesw-resize !important; }
+.cursor-sw-resize { cursor: nesw-resize !important; }
+.cursor-n-resize, .cursor-ns-resize { cursor: ns-resize !important; }
+.cursor-s-resize { cursor: ns-resize !important; }
+.cursor-e-resize, .cursor-ew-resize { cursor: ew-resize !important; }
+.cursor-w-resize { cursor: ew-resize !important; }
+

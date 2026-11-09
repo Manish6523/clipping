@@ -92,6 +92,8 @@ async def execute_database_reset(
         # Wipe operational tables
         tables_to_clear = [
             "clips",
+            "candidates",
+            "clip_feedback_events",
             "vods",
             "pipeline_jobs",
             "clip_edls",
@@ -113,7 +115,7 @@ async def execute_database_reset(
 
         # Reset autoincrement sequence
         try:
-            await db.execute("DELETE FROM sqlite_sequence WHERE name IN ('clips', 'vods', 'scheduled_queue', 'pending_deletes');")
+            await db.execute("DELETE FROM sqlite_sequence WHERE name IN ('clips', 'candidates', 'clip_feedback_events', 'vods', 'scheduled_queue', 'pending_deletes');")
             if not keep_channels:
                 await db.execute("DELETE FROM sqlite_sequence WHERE name = 'channels';")
             if not keep_presets:

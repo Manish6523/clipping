@@ -57,8 +57,9 @@ def build_approval_keyboard(clip_id: int, has_teaser: bool = True) -> InlineKeyb
 
     keyboard = [
         [
-            InlineKeyboardButton(text="✅ Post Now (YT + IG)", callback_data=f"post_now:{clip_id}"),
-            InlineKeyboardButton(text="🗓️ Add to Drip Queue", callback_data=f"queue:{clip_id}"),
+            InlineKeyboardButton(text="⭐ Great", callback_data=f"great:{clip_id}"),
+            InlineKeyboardButton(text="✅ Approve / Queue", callback_data=f"queue:{clip_id}"),
+            InlineKeyboardButton(text="🚀 Post Now", callback_data=f"post_now:{clip_id}"),
         ],
         [
             InlineKeyboardButton(text="⏪ -3s Start", callback_data=f"trim:{clip_id}:s:-3"),
@@ -70,10 +71,42 @@ def build_approval_keyboard(clip_id: int, has_teaser: bool = True) -> InlineKeyb
         ],
         [
             InlineKeyboardButton(text=teaser_label, callback_data=f"teaser:{clip_id}"),
-            InlineKeyboardButton(text="❌ Discard", callback_data=f"discard:{clip_id}"),
+            InlineKeyboardButton(text="❌ Reject", callback_data=f"reject_prompt:{clip_id}"),
         ],
     ]
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
+
+
+def build_rejection_reasons_keyboard(clip_id: int) -> InlineKeyboardMarkup:
+    """Construct 1-tap rejection reason chips for mobile feedback."""
+    reasons = [
+        ("Boring", "boring"),
+        ("No context", "no_context"),
+        ("Bad start", "bad_start"),
+        ("Bad end", "bad_end"),
+        ("Off-topic", "off_topic"),
+        ("Unsafe", "unsafe"),
+        ("Duplicate", "duplicate"),
+        ("Bad crop", "bad_crop"),
+        ("Bad captions", "bad_captions"),
+        ("Audio", "audio"),
+        ("Other", "other"),
+    ]
+    rows = []
+    current_row = []
+    for label, code in reasons:
+        current_row.append(InlineKeyboardButton(text=label, callback_data=f"reject_reason:{clip_id}:{code}"))
+        if len(current_row) == 3:
+            rows.append(current_row)
+            current_row = []
+    if current_row:
+        rows.append(current_row)
+
+    rows.append([
+        InlineKeyboardButton(text="⏩ Skip Reason", callback_data=f"reject_reason:{clip_id}:none"),
+        InlineKeyboardButton(text="↩️ Cancel", callback_data=f"cancel_reject:{clip_id}"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def format_clip_caption_html(clip: Dict[str, Any]) -> str:
@@ -85,11 +118,16 @@ def format_clip_caption_html(clip: Dict[str, Any]) -> str:
     template_name = html.escape(str(clip.get("template_name", "default")))
     title = html.escape(str(clip.get("title", "Highlight")))
 
+    v_score = clip.get("virality_score", 0)
+    flags_raw = clip.get("flags") or ""
+    is_unscored = v_score == 0 or "unscored" in flags_raw
+    score_display = "unscored" if is_unscored else f"{v_score}/100"
+
     caption = (
         f"🔥 <b>Viral Candidate #{clip['id']}</b>\n\n"
         f"📺 <b>Channel:</b> <code>{channel_id}</code>\n"
         f"🎨 <b>Template:</b> <code>{template_name}</code>\n"
-        f"📈 <b>Virality Score:</b> <code>{clip.get('virality_score', 0)}/100</code>\n"
+        f"📈 <b>Virality Score:</b> <code>{score_display}</code>\n"
         f"⏱️ <b>Duration:</b> <code>{duration:.1f}s</code> ({clip['adjusted_start']:.1f}s - {clip['adjusted_end']:.1f}s)\n"
         f"🎬 <b>Teaser Pre-Roll:</b> <code>{teaser_status}</code>\n\n"
         f"📝 <b>Title:</b> {title}\n"
@@ -418,7 +456,74 @@ class AutoClipBot:
                 await callback.answer("Invalid request.")
                 return
 
+            # Helper for non-blocking feedback event logging
+            async def _safe_log_feedback(evt: str, payload: dict):
+                try:
+                    c_rec = await get_clip(clip_id)
+                    ch_id = (c_rec.get("channel_id") if c_rec else None) or "unknown"
+                    from src.intelligence.learning.feedback import FeedbackLearner
+                    await FeedbackLearner.log_feedback(
+                        clip_id=clip_id,
+                        channel_id=ch_id,
+                        event=evt,
+                        payload=payload,
+                        candidate_id=c_rec.get("candidate_id") if c_rec else None,
+                    )
+                except Exception as log_err:
+                    logger.warning("Feedback logging failed for clip #%d: %s", clip_id, log_err)
+
+            if action == "great":
+                next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
+                await enqueue_clip(clip_id, next_slot)
+                await update_clip_status(clip_id, "approved")
+                await _safe_log_feedback("marked_great", {"source": "telegram_button"})
+                await callback.message.edit_caption(
+                    caption=f"⭐ <b>Clip #{clip_id} Marked GREAT &amp; Queued!</b>\nScheduled for: <code>{next_slot}</code>",
+                    reply_markup=None,
+                    parse_mode="HTML",
+                )
+                await callback.answer("Marked as Great & Queued!")
+                return
+
+            if action == "reject_prompt":
+                kb = build_rejection_reasons_keyboard(clip_id)
+                await callback.message.edit_caption(
+                    caption=f"❌ <b>Reject Clip #{clip_id}</b>\n\nWhy did you reject this moment? (Tap a reason or skip):",
+                    reply_markup=kb,
+                    parse_mode="HTML",
+                )
+                await callback.answer()
+                return
+
+            if action == "reject_reason":
+                reason_code = parts[2] if len(parts) > 2 else "none"
+                reason_val = None if reason_code == "none" else reason_code
+                await update_clip_status(clip_id, "rejected")
+                await _safe_log_feedback("rejected", {"reason": reason_val, "source": "telegram_chip"})
+                if reason_val:
+                    await _safe_log_feedback("reason_tagged", {"reason": reason_val, "source": "telegram_chip"})
+
+                reason_label = f"Reason: <i>{reason_code.replace('_', ' ').capitalize()}</i>" if reason_val else "<i>No reason given</i>"
+                await callback.message.edit_caption(
+                    caption=f"❌ <b>Clip #{clip_id} Rejected.</b>\n{reason_label}",
+                    reply_markup=None,
+                    parse_mode="HTML",
+                )
+                await callback.answer("Rejection logged.")
+                return
+
+            if action == "cancel_reject":
+                c_rec = await get_clip(clip_id)
+                if c_rec:
+                    cap = format_clip_caption_html(c_rec)
+                    kb = build_approval_keyboard(clip_id, has_teaser=bool(c_rec.get("has_teaser", 1)))
+                    await callback.message.edit_caption(caption=cap, reply_markup=kb, parse_mode="HTML")
+                await callback.answer("Cancelled.")
+                return
+
             if action == "discard":
+                await update_clip_status(clip_id, "rejected")
+                await _safe_log_feedback("rejected", {"source": "telegram_discard"})
                 await delete_clip_completely(clip_id)
                 await callback.message.edit_caption(
                     caption=f"❌ <b>Clip #{clip_id} Discarded &amp; Purged.</b>",
@@ -429,6 +534,7 @@ class AutoClipBot:
                 return
 
             if action == "post_now":
+                await _safe_log_feedback("approved", {"source": "telegram_post_now"})
                 await callback.answer("Publishing to YouTube & Instagram...")
                 await callback.message.edit_caption(
                     caption=f"⏳ <b>Publishing Clip #{clip_id} to YouTube Shorts &amp; Instagram Reels...</b>",
@@ -441,6 +547,8 @@ class AutoClipBot:
             if action == "queue":
                 next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
                 await enqueue_clip(clip_id, next_slot)
+                await update_clip_status(clip_id, "approved")
+                await _safe_log_feedback("approved", {"source": "telegram_queue"})
                 await callback.message.edit_caption(
                     caption=f"🗓️ <b>Clip #{clip_id} Added to Drip Queue!</b>\nScheduled for: <code>{next_slot}</code>",
                     reply_markup=None,
@@ -457,12 +565,24 @@ class AutoClipBot:
                 delta_start = delta if bound_type == "s" else 0.0
                 delta_end = delta if bound_type == "e" else 0.0
 
+                c_rec_before = await get_clip(clip_id)
                 updated_clip = await self.trimmer.trim_and_rerender(
                     clip_id=clip_id,
                     delta_start=delta_start,
                     delta_end=delta_end,
                 )
                 if updated_clip:
+                    # Log trim feedback with deltas relative to AI boundaries if available
+                    ai_s = updated_clip.get("ai_start") or updated_clip.get("raw_start")
+                    ai_e = updated_clip.get("ai_end") or updated_clip.get("raw_end")
+                    trim_payload = {
+                        "delta_start": delta_start,
+                        "delta_end": delta_end,
+                        "start_delta": (updated_clip["adjusted_start"] - ai_s) if ai_s is not None else delta_start,
+                        "end_delta": (updated_clip["adjusted_end"] - ai_e) if ai_e is not None else delta_end,
+                        "source": "telegram_trim",
+                    }
+                    await _safe_log_feedback("trimmed", trim_payload)
                     await self._update_telegram_card(callback.message, updated_clip)
                 return
 
@@ -560,7 +680,7 @@ class AutoClipBot:
         status_lines = [f"🚀 <b>Clip #{clip_id} Published!</b>"]
         if yt_url:
             status_lines.append(f"• 🔴 <b>YouTube Shorts:</b> <a href=\"{yt_url}\">Watch Here</a>")
-        elif yt_key:
+        elif mapped_yt_keys:
             status_lines.append(f"• 🔴 YouTube Failed: <code>{html.escape(str(yt_res.get('error')))}</code>")
 
         if ig_url:
@@ -569,6 +689,18 @@ class AutoClipBot:
             status_lines.append(f"• 📸 Instagram Failed: <code>{html.escape(str(ig_res.get('error')))}</code>")
 
         await update_clip_status(clip_id, "published")
+        try:
+            from src.intelligence.learning.feedback import FeedbackLearner
+            await FeedbackLearner.log_feedback(
+                clip_id=clip_id,
+                channel_id=clip.get("channel_id", "default"),
+                event="published",
+                payload={"source": "telegram_post_now"},
+                candidate_id=clip.get("candidate_id"),
+            )
+        except Exception:
+            pass
+
         await message.edit_caption(
             caption="\n\n".join(status_lines),
             reply_markup=None,

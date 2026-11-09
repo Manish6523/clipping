@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Layers, 
   Plus, 
@@ -15,9 +15,15 @@ import {
   ChevronUp,
   Circle,
   Square,
-  Sparkles
+  Sparkles,
+  Bookmark,
+  RotateCcw,
+  LockKeyhole,
+  UnlockKeyhole
 } from 'lucide-react';
 import { useEditorStore } from '../../../store/editorStore';
+import { PRESET_STARTERS } from '../../LayoutBuilder';
+import { getTemplates } from '../../../api';
 
 const LAYER_COLORS = [
   '#FFB020', '#00F0FF', '#A855F7', '#EC4899', 
@@ -31,6 +37,45 @@ export default function LayoutPanel({ isCompact = false }) {
   const selectedLayer = layers.find((l) => l.id === selectedLayerId) || null;
 
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplateName, setSelectedTemplateName] = useState('');
+
+  useEffect(() => {
+    getTemplates().then((tpls) => {
+      setTemplates(tpls || []);
+    }).catch(() => {});
+  }, []);
+
+  const handleApplyTemplate = (tplName) => {
+    setSelectedTemplateName(tplName);
+    const target = templates.find((t) => t.name === tplName);
+    if (!target || !target.layout) return;
+
+    updateEDL((prev) => ({
+      ...prev,
+      layout: target.layout,
+      captions: {
+        ...(prev.captions || {}),
+        font: target.subtitles?.font_name || prev.captions?.font || 'Montserrat ExtraBold',
+        size: target.subtitles?.font_size || prev.captions?.size || 72,
+        animation: target.subtitles?.animation || prev.captions?.animation || 'pop',
+      }
+    }));
+  };
+
+  const handleApplyStarter = (starterId) => {
+    const starter = PRESET_STARTERS[starterId];
+    if (!starter) return;
+    updateEDL((prev) => ({
+      ...prev,
+      layout: {
+        schema: 2,
+        canvas: { w: 1080, h: 1920 },
+        background: { ...starter.background },
+        layers: starter.layers.map((l) => ({ ...l, id: `l_${Date.now()}_${l.name.toLowerCase()}` }))
+      }
+    }));
+  };
 
   const handleSelectLayer = (id) => {
     setSelection({ type: 'layer', id });
@@ -142,6 +187,47 @@ export default function LayoutPanel({ isCompact = false }) {
 
   return (
     <div className="flex flex-col gap-3 text-xs select-none">
+      {/* Template & Preset Selector */}
+      <div className="bg-[#141722] border border-white/10 rounded-xl p-2.5 flex flex-col gap-2">
+        <label className="text-[10px] uppercase font-bold text-[#8FD3FF] tracking-wider flex items-center gap-1.5">
+          <Bookmark size={12} /> Apply Template / Preset
+        </label>
+        
+        {/* Streamer Templates dropdown */}
+        <div>
+          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Streamer Template</label>
+          <select
+            value={selectedTemplateName}
+            onChange={(e) => handleApplyTemplate(e.target.value)}
+            className="w-full bg-[#0E1118] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+          >
+            <option value="">Select a template...</option>
+            {templates.map((t) => (
+              <option key={t.name} value={t.name}>
+                {t.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Quick Starter Layouts buttons */}
+        <div>
+          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Standard Starters</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {Object.values(PRESET_STARTERS).slice(0, 4).map((starter) => (
+              <button
+                key={starter.id}
+                onClick={() => handleApplyStarter(starter.id)}
+                className="py-1 px-2 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-[10px] font-bold text-slate-300 hover:text-white truncate text-left"
+                title={starter.label}
+              >
+                {starter.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* Layer List Section */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
@@ -230,6 +316,46 @@ export default function LayoutPanel({ isCompact = false }) {
             </div>
             <div className="flex items-center gap-1 font-mono text-[10px] text-slate-400">
               <span>{Math.round((selectedLayer.src?.w || 1) * 100)}% x {Math.round((selectedLayer.src?.h || 1) * 100)}%</span>
+            </div>
+          </div>
+
+          {/* Aspect Ratio Lock & Reset */}
+          <div>
+            <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Aspect Ratio Control</label>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => updateSelectedLayer({ aspect_lock: !selectedLayer.aspect_lock })}
+                className={`py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1.5 font-bold text-xs transition-all ${
+                  selectedLayer.aspect_lock
+                    ? 'bg-[#181C26] border-[#8FD3FF] text-[#8FD3FF]'
+                    : 'bg-white/[0.04] border-white/10 text-slate-400 hover:text-white'
+                }`}
+              >
+                {selectedLayer.aspect_lock ? <LockKeyhole size={13} /> : <UnlockKeyhole size={13} />}
+                <span>{selectedLayer.aspect_lock ? 'Locked' : 'Unlocked'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const curDst = selectedLayer.dst || { x: 0, y: 0, w: 1, h: 1 };
+                  const srcW = selectedLayer.src?.w || 1;
+                  const srcH = selectedLayer.src?.h || 1;
+                  const srcAspect = (srcW * 16) / (srcH * 9);
+                  const newH = Math.min(1.0 - curDst.y, (curDst.w * 9) / (srcAspect * 16));
+                  updateSelectedLayer({
+                    dst: {
+                      ...curDst,
+                      h: Math.round(newH * 1000) / 1000,
+                    },
+                    aspect_lock: true,
+                  });
+                }}
+                className="py-1.5 px-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-slate-300 hover:text-white flex items-center justify-center gap-1.5 font-bold text-xs transition-all"
+              >
+                <RotateCcw size={12} />
+                <span>Reset 16:9</span>
+              </button>
             </div>
           </div>
 

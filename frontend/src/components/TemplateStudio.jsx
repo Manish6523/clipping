@@ -77,8 +77,12 @@ export default function TemplateStudio() {
       const data = await getChannels();
       setChannels(data);
       if (data.length > 0) {
-        setSelectedChannel(data[0].channel_id_or_handle);
-        fetchChannelFrame(data[0].channel_id_or_handle);
+        const first = data[0];
+        setSelectedChannel(first.channel_id_or_handle);
+        fetchChannelFrame(first.channel_id_or_handle);
+        if (first.template_name) {
+          handleLoadPreset(first.template_name);
+        }
       }
     } catch (err) {
       console.error('Failed to load channels:', err);
@@ -94,6 +98,11 @@ export default function TemplateStudio() {
   const handleChannelSelect = (channelHandle) => {
     setSelectedChannel(channelHandle);
     fetchChannelFrame(channelHandle);
+    // Auto-select streamer's template layout if mapped
+    const channelObj = channels.find(c => c.channel_id_or_handle === channelHandle);
+    if (channelObj && channelObj.template_name) {
+      handleLoadPreset(channelObj.template_name);
+    }
   };
 
   const handleLoadPreset = (tplName) => {

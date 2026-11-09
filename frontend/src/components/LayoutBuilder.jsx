@@ -21,7 +21,10 @@ import {
   HelpCircle,
   Smartphone,
   Monitor,
-  Scissors
+  Scissors,
+  Ratio,
+  LockKeyhole,
+  UnlockKeyhole
 } from 'lucide-react';
 import { calculateLayerGeometry } from '../utils/layoutMath';
 import { renderCaptionsToCanvas } from '../utils/captionRenderer';
@@ -538,22 +541,45 @@ export default function LayoutBuilder({
         const handle = dragState.handle;
         let { x, y, w, h } = curRect;
 
-        if (handle.includes('e')) w = Math.max(0.04, Math.min(1.0 - x, curRect.w + deltaXNorm));
-        if (handle.includes('s')) h = Math.max(0.04, Math.min(1.0 - y, curRect.h + deltaYNorm));
+        if (handle.includes('e')) {
+          w = Math.max(0.04, Math.min(1.0 - x, curRect.w + deltaXNorm));
+        }
+        if (handle.includes('s')) {
+          h = Math.max(0.04, Math.min(1.0 - y, curRect.h + deltaYNorm));
+        }
         if (handle.includes('w')) {
-          const propW = Math.max(0.04, curRect.w - deltaXNorm);
-          const propX = curRect.x + (curRect.w - propW);
-          if (propX >= 0) {
-            w = propW;
-            x = propX;
-          }
+          const rawW = curRect.w - deltaXNorm;
+          const maxAllowedW = curRect.x + curRect.w;
+          const clampedW = Math.max(0.04, Math.min(maxAllowedW, rawW));
+          w = clampedW;
+          x = Math.max(0, curRect.x + (curRect.w - clampedW));
         }
         if (handle.includes('n')) {
-          const propH = Math.max(0.04, curRect.h - deltaYNorm);
-          const propY = curRect.y + (curRect.h - propH);
-          if (propY >= 0) {
-            h = propH;
-            y = propY;
+          const rawH = curRect.h - deltaYNorm;
+          const maxAllowedH = curRect.y + curRect.h;
+          const clampedH = Math.max(0.04, Math.min(maxAllowedH, rawH));
+          h = clampedH;
+          y = Math.max(0, curRect.y + (curRect.h - clampedH));
+        }
+
+        // Clamp to ensure inside bounds [0, 1]
+        x = Math.max(0, Math.min(1.0 - 0.04, x));
+        y = Math.max(0, Math.min(1.0 - 0.04, y));
+        w = Math.max(0.04, Math.min(1.0 - x, w));
+        h = Math.max(0.04, Math.min(1.0 - y, h));
+
+        // If aspect ratio is locked for dst, maintain ratio
+        const layer = dragState.layer;
+        if (dragState.target === 'dst' && layer?.aspect_lock && curRect.h > 0) {
+          const targetRatio = (curRect.w * dragState.canvasW) / (curRect.h * dragState.canvasH);
+          if (handle.includes('e') || handle.includes('w')) {
+            const desiredH = (w * dragState.canvasW) / targetRatio / dragState.canvasH;
+            if (y + desiredH <= 1.0) {
+              h = desiredH;
+            } else {
+              h = 1.0 - y;
+              w = (h * dragState.canvasH * targetRatio) / dragState.canvasW;
+            }
           }
         }
 
@@ -837,7 +863,7 @@ export default function LayoutBuilder({
                     setSelectedLayerId(layer.id);
                   }}
                   onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
-                  className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
+                  className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                     isSelected 
                       ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
                       : 'border-white/40 hover:border-white/80 z-20'
@@ -973,19 +999,55 @@ export default function LayoutBuilder({
                       setSelectedLayerId(layer.id);
                     }}
                     onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'move')}
-                    className={`absolute border-2 rounded cursor-grab active:cursor-grabbing transition-shadow touch-none ${
+                    className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
                       isSelected
                         ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
                         : 'border-white/30 hover:border-white/80 z-20'
                     }`}
                   >
-                    {/* Selected layer tag indicator in output viewport */}
+                    {/* Selected layer tag indicator & Aspect controls in output viewport */}
                     {isSelected && (
                       <div 
                         style={{ backgroundColor: layer.color || '#00F0FF' }}
-                        className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black flex items-center gap-1 shadow select-none pointer-events-none"
+                        className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black flex items-center gap-1.5 shadow select-none"
                       >
-                        {layer.name} ({Math.round(w * 100)}% x {Math.round(h * 100)}%)
+                        <span className="pointer-events-none">{layer.name} ({Math.round(w * 100)}% x {Math.round(h * 100)}%)</span>
+                        <div className="flex items-center gap-1 border-l border-black/20 pl-1">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              updateLayer(layer.id, { aspect_lock: !layer.aspect_lock });
+                            }}
+                            title={layer.aspect_lock ? "Aspect ratio locked (click to unlock freeform)" : "Aspect ratio freeform (click to lock)"}
+                            className="p-0.5 rounded hover:bg-black/20 transition-colors pointer-events-auto cursor-pointer"
+                          >
+                            {layer.aspect_lock ? <LockKeyhole size={10} className="text-black" /> : <UnlockKeyhole size={10} className="text-black/60" />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              // Reset aspect ratio to match source crop (src.w / src.h converted to dst coordinate space)
+                              const srcW = layer.src?.w || 1;
+                              const srcH = layer.src?.h || 1;
+                              const srcAspect = (srcW * 16) / (srcH * 9);
+                              // Calculate dst height in 9:16 canvas for current dst width w
+                              const newH = Math.min(1.0 - (dstRect.y || 0), (w * 9) / (srcAspect * 16));
+                              updateLayer(layer.id, {
+                                dst: {
+                                  ...dstRect,
+                                  h: Math.round(newH * 1000) / 1000
+                                },
+                                aspect_lock: true
+                              });
+                            }}
+                            title="Reset aspect ratio to 16:9 source ratio"
+                            className="p-0.5 rounded hover:bg-black/20 transition-colors pointer-events-auto cursor-pointer font-bold text-[8px] uppercase"
+                          >
+                            <RotateCcw size={9} className="text-black" />
+                          </button>
+                        </div>
                       </div>
                     )}
                     {/* Destination 8-Point Resize Handles */}
