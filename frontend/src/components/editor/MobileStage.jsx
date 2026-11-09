@@ -427,13 +427,11 @@ export default function MobileStage({
                     : 'border-white/40 z-20'
                 }`}
               >
-                {/* Compact non-intrusive label inside box */}
+                {/* Clean minimal corner dot instead of obstructing banner */}
                 <div
                   style={{ backgroundColor: layer.color || '#00F0FF' }}
-                  className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black max-w-[85%] truncate pointer-events-none"
-                >
-                  {layer.name}
-                </div>
+                  className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
+                />
 
                 {/* 4 Touch Corner Handles with 44x44dp hit area */}
                 {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se'].map((hnd) => (
@@ -508,13 +506,11 @@ export default function MobileStage({
                     : 'border-white/40 z-20'
                 }`}
               >
-                {/* Compact Truncated Label */}
+                {/* Clean minimal corner dot instead of obstructing banner */}
                 <div
                   style={{ backgroundColor: layer.color || '#00F0FF' }}
-                  className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black max-w-[85%] truncate pointer-events-none"
-                >
-                  {layer.name}
-                </div>
+                  className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
+                />
 
                 {/* 4 Touch Corner Handles with 44x44dp hit area */}
                 {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se'].map((hnd) => (

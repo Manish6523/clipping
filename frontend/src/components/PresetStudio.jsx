@@ -11,9 +11,11 @@ import {
   Check, 
   ChevronRight,
   Globe,
-  Radio
+  Radio,
+  UserCheck,
+  Image as ImageIcon
 } from 'lucide-react';
-import { getPresets, createPreset, deletePreset, getChannels } from '../api';
+import { getPresets, createPreset, deletePreset, getChannels, patchChannelSettings } from '../api';
 import LayoutBuilder, { PRESET_STARTERS } from './LayoutBuilder';
 
 export default function PresetStudio() {
@@ -27,6 +29,7 @@ export default function PresetStudio() {
   const [presetName, setPresetName] = useState('');
   const [presetScope, setPresetScope] = useState('global');
   const [selectedChannel, setSelectedChannel] = useState('');
+  const [assigningStreamer, setAssigningStreamer] = useState('');
   const [saving, setSaving] = useState(false);
   const [feedback, setFeedback] = useState(null);
 
@@ -75,6 +78,9 @@ export default function PresetStudio() {
   const selectPresetItem = (p) => {
     setSelectedPreset(p);
     setIsCreating(false);
+    setPresetName(p.name || '');
+    setPresetScope(p.scope || 'global');
+    setSelectedChannel(p.channel_id || '');
     if (p.data?.layout) {
       setActiveLayout(p.data.layout);
     }
@@ -135,9 +141,11 @@ export default function PresetStudio() {
   };
 
   const handleDeletePreset = async (pId) => {
-    if (!confirm('Are you sure you want to delete this preset?')) return;
+    if (!confirm('Are you sure you want to permanently delete this preset?')) return;
     try {
       await deletePreset(pId);
+      setFeedback({ type: 'success', msg: 'Preset deleted successfully' });
+      setTimeout(() => setFeedback(null), 3000);
       setPresets(prev => prev.filter(p => p.id !== pId));
       if (selectedPreset?.id === pId) {
         setSelectedPreset(null);
@@ -147,31 +155,56 @@ export default function PresetStudio() {
     }
   };
 
+  // Direct 1-Click Assignment to Streamer
+  const handleAssignToStreamer = async () => {
+    if (!assigningStreamer) {
+      alert('Please select a streamer to assign');
+      return;
+    }
+    const targetPresetName = presetName.trim() || selectedPreset?.name;
+    if (!targetPresetName) {
+      alert('Please save the preset first');
+      return;
+    }
+    try {
+      await patchChannelSettings(assigningStreamer, { template_name: targetPresetName });
+      setFeedback({ type: 'success', msg: `Successfully assigned preset '${targetPresetName}' to @${assigningStreamer}!` });
+      setTimeout(() => setFeedback(null), 4000);
+      setAssigningStreamer('');
+    } catch (err) {
+      alert('Failed assigning preset to streamer: ' + err.message);
+    }
+  };
+
+  // Selected channel object for live frame or avatar
+  const activeChannelObj = channels.find(c => c.channel_id_or_handle === (selectedChannel || assigningStreamer));
+  const channelFrameUrl = activeChannelObj ? `/api/channels/${activeChannelObj.channel_id_or_handle}/frame` : null;
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6 text-slate-100 flex flex-col gap-6 select-none">
+    <div className="w-full max-w-7xl mx-auto px-2 sm:px-4 py-4 sm:py-6 text-slate-100 flex flex-col gap-4 sm:gap-6 select-none">
       {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/[0.08]">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-white/[0.08]">
         <div>
-          <h1 className="text-xl sm:text-2xl font-black text-white flex items-center gap-2.5">
-            <Bookmark className="text-[#8FD3FF]" size={24} />
+          <h1 className="text-lg sm:text-2xl font-black text-white flex items-center gap-2">
+            <Bookmark className="text-[#8FD3FF]" size={22} />
             Visual Preset Studio
           </h1>
-          <p className="text-xs text-[#8B90A0] mt-1">
-            Design reusable 9:16 layout frame crops and animated kinetic caption presets to apply anywhere.
+          <p className="text-[11px] sm:text-xs text-[#8B90A0] mt-0.5">
+            Design reusable 9:16 layout crops and kinetic caption presets. Assign them directly to your streamers.
           </p>
         </div>
 
         <button
-          onClick={() => handleStartCreate('facecam_top')}
-          className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] text-[#0A0B0E] font-extrabold text-xs shadow-md shadow-[#8FD3FF]/20 hover:scale-105 active:scale-95 transition-all"
+          onClick={() => handleStartCreate('facecam_top_gameplay_bottom')}
+          className="flex items-center justify-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-xl bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] text-[#0A0B0E] font-extrabold text-xs shadow-md shadow-[#8FD3FF]/20 active:scale-95 transition-all self-start sm:self-auto"
         >
-          <Plus size={15} />
+          <Plus size={14} />
           <span>New Preset</span>
         </button>
       </div>
 
       {feedback && (
-        <div className={`p-3 rounded-xl text-xs font-bold ${
+        <div className={`p-2.5 sm:p-3 rounded-xl text-xs font-bold ${
           feedback.type === 'success' 
             ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-300' 
             : 'bg-rose-500/10 border border-rose-500/20 text-rose-300'
@@ -180,44 +213,47 @@ export default function PresetStudio() {
         </div>
       )}
 
-      {/* Main Grid: Left Presets List | Right Interactive Canvas & Controls */}
-      <div className="grid grid-cols-1 lg:grid-cols-[320px_1fr] gap-6">
-        {/* Left Column: Preset Cards */}
-        <div className="flex flex-col gap-3">
-          <label className="text-[11px] uppercase font-bold text-[#8B90A0] tracking-wider">
-            Saved Presets ({presets.length})
-          </label>
+      {/* Main Grid: Responsive stacked on mobile, 2-column on desktop */}
+      <div className="flex flex-col lg:grid lg:grid-cols-[280px_1fr] gap-4 sm:gap-6">
+        
+        {/* Left Column: Preset List & Quick Delete */}
+        <div className="flex flex-col gap-2.5">
+          <div className="flex items-center justify-between">
+            <label className="text-[10px] sm:text-[11px] uppercase font-bold text-[#8B90A0] tracking-wider">
+              Saved Presets ({presets.length})
+            </label>
+          </div>
 
-          <div className="flex flex-col gap-2 max-h-[700px] overflow-y-auto custom-scrollbar pr-1">
+          <div className="flex lg:flex-col gap-2 overflow-x-auto lg:overflow-y-auto lg:max-h-[680px] custom-scrollbar pb-2 lg:pb-0 pr-1">
             {presets.map((p) => {
               const isSelected = selectedPreset?.id === p.id && !isCreating;
               return (
                 <div
                   key={p.id}
                   onClick={() => selectPresetItem(p)}
-                  className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-between gap-3 ${
+                  className={`p-2.5 sm:p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between gap-2 shrink-0 w-64 lg:w-full ${
                     isSelected
                       ? 'bg-[#1A1D24] border-[#8FD3FF] shadow-lg shadow-[#8FD3FF]/10'
                       : 'bg-[#101217] border-white/[0.06] hover:border-white/20'
                   }`}
                 >
-                  <div className="min-w-0">
+                  <div className="min-w-0 flex-1">
                     <div className="font-bold text-white text-xs truncate flex items-center gap-1.5">
                       <span>{p.name}</span>
                       {p.is_default ? (
-                        <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[9px] font-extrabold">
+                        <span className="px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 text-[8px] font-extrabold">
                           Default
                         </span>
                       ) : null}
                     </div>
-                    <div className="flex items-center gap-2 mt-1 text-[10px] text-slate-400 font-mono">
+                    <div className="flex items-center gap-1.5 mt-0.5 text-[9px] sm:text-[10px] text-slate-400 font-mono">
                       {p.scope === 'global' ? (
-                        <span className="flex items-center gap-1 text-[#8FD3FF]">
-                          <Globe size={10} /> Global
+                        <span className="flex items-center gap-0.5 text-[#8FD3FF]">
+                          <Globe size={9} /> Global
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-emerald-400">
-                          <Radio size={10} /> @{p.channel_id}
+                        <span className="flex items-center gap-0.5 text-emerald-400">
+                          <Radio size={9} /> @{p.channel_id}
                         </span>
                       )}
                       <span>•</span>
@@ -225,40 +261,96 @@ export default function PresetStudio() {
                     </div>
                   </div>
 
-                  {!p.is_default && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleDeletePreset(p.id);
-                      }}
-                      className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-all"
-                      title="Delete Preset"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  )}
+                  {/* Always accessible Delete Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeletePreset(p.id);
+                    }}
+                    className="p-1.5 text-slate-500 hover:text-rose-400 rounded-lg hover:bg-rose-500/10 transition-all shrink-0"
+                    title="Delete Preset"
+                  >
+                    <Trash2 size={13} />
+                  </button>
                 </div>
               );
             })}
           </div>
         </div>
 
-        {/* Right Column: Preset Configuration & Visual Builder */}
-        <div className="flex flex-col gap-5 bg-[#101217] border border-white/[0.06] rounded-2xl p-5 shadow-xl">
+        {/* Right Column: Configuration, Streamer Assignment, and Canvas */}
+        <div className="flex flex-col gap-4 bg-[#101217] border border-white/[0.06] rounded-2xl p-3 sm:p-5 shadow-xl">
+          
+          {/* Streamer Avatar Header & 1-Click Assignment Bar */}
+          <div className="p-3 rounded-xl bg-[#151922] border border-white/10 flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {activeChannelObj?.avatar_url ? (
+                <img
+                  src={activeChannelObj.avatar_url}
+                  alt={activeChannelObj.channel_id_or_handle}
+                  className="w-10 h-10 rounded-full object-cover border-2 border-emerald-400 shrink-0"
+                />
+              ) : (
+                <div className="w-10 h-10 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-slate-400 shrink-0">
+                  <ImageIcon size={18} />
+                </div>
+              )}
+              <div className="min-w-0">
+                <div className="font-extrabold text-white text-xs truncate flex items-center gap-1.5">
+                  <span>{activeChannelObj ? `@${activeChannelObj.channel_id_or_handle}` : 'No Streamer Selected'}</span>
+                  {activeChannelObj && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[8px] font-mono uppercase">
+                      {activeChannelObj.platform}
+                    </span>
+                  )}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5 truncate">
+                  {activeChannelObj ? `Current layout: ${activeChannelObj.template_name || 'Standard'}` : 'Select a streamer below to preview their stream frame & assign'}
+                </div>
+              </div>
+            </div>
+
+            {/* Direct 1-Click Assign Button */}
+            <div className="flex items-center gap-2 w-full md:w-auto">
+              <select
+                value={assigningStreamer}
+                onChange={(e) => {
+                  setAssigningStreamer(e.target.value);
+                  setSelectedChannel(e.target.value);
+                }}
+                className="bg-[#0E1118] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none flex-1 md:w-48"
+              >
+                <option value="">Choose Streamer...</option>
+                {channels.map(c => (
+                  <option key={c.channel_id_or_handle} value={c.channel_id_or_handle}>
+                    @{c.channel_id_or_handle} ({c.platform})
+                  </option>
+                ))}
+              </select>
+
+              <button
+                onClick={handleAssignToStreamer}
+                disabled={!assigningStreamer}
+                className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black font-extrabold text-xs shadow-md shadow-emerald-500/20 active:scale-95 transition-all disabled:opacity-40 shrink-0"
+                title="Assign this preset to the chosen streamer"
+              >
+                <UserCheck size={13} />
+                <span>Assign</span>
+              </button>
+            </div>
+          </div>
+
           {/* Preset Metadata Form */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pb-4 border-b border-white/[0.06]">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 pb-3 border-b border-white/[0.06]">
             <div>
               <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
                 Preset Name
               </label>
               <input
                 type="text"
-                value={isCreating ? presetName : (selectedPreset?.name || presetName)}
-                onChange={(e) => {
-                  setPresetName(e.target.value);
-                  if (selectedPreset) selectedPreset.name = e.target.value;
-                }}
-                className="w-full bg-[#1A1D24] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                className="w-full bg-[#1A1D24] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
                 placeholder="e.g. Center Split Top Cam"
               />
             </div>
@@ -271,7 +363,7 @@ export default function PresetStudio() {
                 <button
                   type="button"
                   onClick={() => setPresetScope('global')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
                     presetScope === 'global'
                       ? 'bg-[#8FD3FF]/20 text-[#8FD3FF] border-[#8FD3FF]'
                       : 'bg-[#1A1D24] text-slate-400 border-white/5'
@@ -282,7 +374,7 @@ export default function PresetStudio() {
                 <button
                   type="button"
                   onClick={() => setPresetScope('channel')}
-                  className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                  className={`py-1.5 rounded-xl text-xs font-bold border transition-all ${
                     presetScope === 'channel'
                       ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500'
                       : 'bg-[#1A1D24] text-slate-400 border-white/5'
@@ -293,35 +385,26 @@ export default function PresetStudio() {
               </div>
             </div>
 
-            {presetScope === 'channel' && (
-              <div>
-                <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
-                  Assign Streamer
-                </label>
-                <select
-                  value={selectedChannel}
-                  onChange={(e) => setSelectedChannel(e.target.value)}
-                  className="w-full bg-[#1A1D24] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-emerald-400"
-                >
-                  <option value="">Select Channel...</option>
-                  {channels.map(c => (
-                    <option key={c.channel_id_or_handle} value={c.channel_id_or_handle}>
-                      @{c.channel_id_or_handle} ({c.platform})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="flex items-end">
+              <button
+                onClick={handleSavePreset}
+                disabled={saving}
+                className="w-full flex items-center justify-center gap-1.5 px-4 py-1.5 rounded-xl bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] text-[#0A0B0E] font-black text-xs shadow-md shadow-[#8FD3FF]/20 active:scale-95 transition-all disabled:opacity-50"
+              >
+                <Save size={13} />
+                <span>{saving ? 'Saving...' : 'Save Preset'}</span>
+              </button>
+            </div>
           </div>
 
-          {/* Preset Visual Subtitle Customizer */}
-          <div className="p-4 rounded-xl bg-[#1A1D24]/50 border border-white/[0.06] flex flex-col gap-3">
+          {/* Subtitle Customizer */}
+          <div className="p-3 rounded-xl bg-[#1A1D24]/50 border border-white/[0.06] flex flex-col gap-2">
             <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider flex items-center gap-1.5">
-              <Type size={12} className="text-[#8FD3FF]" /> Caption Typography &amp; Styling
+              <Type size={11} className="text-[#8FD3FF]" /> Caption Typography &amp; Styling
             </label>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
               <div>
-                <label className="text-slate-400 block text-[10px] mb-1">Font Family</label>
+                <label className="text-slate-400 block text-[9px] mb-0.5">Font Family</label>
                 <select
                   value={captionsConfig.font}
                   onChange={(e) => setCaptionsConfig(prev => ({ ...prev, font: e.target.value }))}
@@ -335,7 +418,7 @@ export default function PresetStudio() {
               </div>
 
               <div>
-                <label className="text-slate-400 block text-[10px] mb-1">Animation</label>
+                <label className="text-slate-400 block text-[9px] mb-0.5">Animation</label>
                 <select
                   value={captionsConfig.animation}
                   onChange={(e) => setCaptionsConfig(prev => ({ ...prev, animation: e.target.value }))}
@@ -349,47 +432,36 @@ export default function PresetStudio() {
               </div>
 
               <div>
-                <label className="text-slate-400 block text-[10px] mb-1">Highlight Color</label>
+                <label className="text-slate-400 block text-[9px] mb-0.5">Highlight Color</label>
                 <input
                   type="color"
                   value={captionsConfig.highlight}
                   onChange={(e) => setCaptionsConfig(prev => ({ ...prev, highlight: e.target.value }))}
-                  className="w-full h-8 bg-transparent rounded cursor-pointer"
+                  className="w-full h-7 bg-transparent rounded cursor-pointer"
                 />
               </div>
 
               <div>
-                <label className="text-slate-400 block text-[10px] mb-1">Font Size ({captionsConfig.size}px)</label>
+                <label className="text-slate-400 block text-[9px] mb-0.5">Font Size ({captionsConfig.size}px)</label>
                 <input
                   type="range"
                   min="40"
                   max="110"
                   value={captionsConfig.size}
                   onChange={(e) => setCaptionsConfig(prev => ({ ...prev, size: parseInt(e.target.value) }))}
-                  className="w-full accent-[#8FD3FF]"
+                  className="w-full accent-[#8FD3FF] mt-1"
                 />
               </div>
             </div>
           </div>
 
-          {/* Interactive Layout Builder */}
-          <div className="min-h-[480px]">
+          {/* Interactive Layout Builder Canvas with live streamer frame support */}
+          <div className="w-full min-h-[380px] sm:min-h-[480px]">
             <LayoutBuilder
               layout={activeLayout}
               onChange={(nextLayout) => setActiveLayout(nextLayout)}
+              sourceMediaUrl={channelFrameUrl}
             />
-          </div>
-
-          {/* Action Footer */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-white/[0.06]">
-            <button
-              onClick={handleSavePreset}
-              disabled={saving}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-xl bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] text-[#0A0B0E] font-black text-xs shadow-lg shadow-[#8FD3FF]/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50"
-            >
-              <Save size={14} />
-              <span>{saving ? 'Saving...' : 'Save Preset'}</span>
-            </button>
           </div>
         </div>
       </div>

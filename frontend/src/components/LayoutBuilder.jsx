@@ -903,28 +903,12 @@ export default function LayoutBuilder({
                     </>
                   )}
 
+                  {/* Subtle Clean Outline & Resize Area (No obstructing text banner) */}
                   <div
                     style={{ backgroundColor: layer.color || '#00F0FF' }}
-                    className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[10px] font-black uppercase text-black flex items-center gap-1 shadow select-none z-30"
-                  >
-                    <span>{layer.name}</span>
-                    <span className="text-[9px] font-mono bg-black/70 px-1 rounded text-white border border-white/10">
-                      {Math.round(w * 100)}% x {Math.round(h * 100)}%
-                    </span>
-                    {/* Delete button right inside header pill when selected */}
-                    {isSelected && layers.length > 1 && (
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteLayer(layer.id);
-                        }}
-                        title="Delete box"
-                        className="ml-1 p-0.5 rounded bg-black/40 hover:bg-rose-600 text-white transition-colors cursor-pointer pointer-events-auto"
-                      >
-                        <Trash2 size={10} />
-                      </button>
-                    )}
-                  </div>
+                    className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
+                    title={layer.name}
+                  />
 
                   {/* 8-Point Resize Handles (Active only on selected layer) */}
                   {isSelected && !layer.locked && (
@@ -1005,51 +989,12 @@ export default function LayoutBuilder({
                         : 'border-white/30 hover:border-white/80 z-20'
                     }`}
                   >
-                    {/* Selected layer tag indicator & Aspect controls in output viewport */}
-                    {isSelected && (
-                      <div 
-                        style={{ backgroundColor: layer.color || '#00F0FF' }}
-                        className="absolute top-1 left-1 px-1.5 py-0.5 rounded text-[9px] font-black uppercase text-black flex items-center gap-1.5 shadow select-none"
-                      >
-                        <span className="pointer-events-none">{layer.name} ({Math.round(w * 100)}% x {Math.round(h * 100)}%)</span>
-                        <div className="flex items-center gap-1 border-l border-black/20 pl-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              updateLayer(layer.id, { aspect_lock: !layer.aspect_lock });
-                            }}
-                            title={layer.aspect_lock ? "Aspect ratio locked (click to unlock freeform)" : "Aspect ratio freeform (click to lock)"}
-                            className="p-0.5 rounded hover:bg-black/20 transition-colors pointer-events-auto cursor-pointer"
-                          >
-                            {layer.aspect_lock ? <LockKeyhole size={10} className="text-black" /> : <UnlockKeyhole size={10} className="text-black/60" />}
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              // Reset aspect ratio to match source crop (src.w / src.h converted to dst coordinate space)
-                              const srcW = layer.src?.w || 1;
-                              const srcH = layer.src?.h || 1;
-                              const srcAspect = (srcW * 16) / (srcH * 9);
-                              // Calculate dst height in 9:16 canvas for current dst width w
-                              const newH = Math.min(1.0 - (dstRect.y || 0), (w * 9) / (srcAspect * 16));
-                              updateLayer(layer.id, {
-                                dst: {
-                                  ...dstRect,
-                                  h: Math.round(newH * 1000) / 1000
-                                },
-                                aspect_lock: true
-                              });
-                            }}
-                            title="Reset aspect ratio to 16:9 source ratio"
-                            className="p-0.5 rounded hover:bg-black/20 transition-colors pointer-events-auto cursor-pointer font-bold text-[8px] uppercase"
-                          >
-                            <RotateCcw size={9} className="text-black" />
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                    {/* Minimal clean corner indicator instead of obstructing text badge */}
+                    <div 
+                      style={{ backgroundColor: layer.color || '#00F0FF' }}
+                      className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
+                    />
+
                     {/* Destination 8-Point Resize Handles */}
                     {isSelected && !layer.locked && (
                       <>
