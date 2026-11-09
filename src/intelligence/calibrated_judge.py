@@ -25,7 +25,7 @@ class CalibratedJudge:
 
     def __init__(self, model_name: str = GEMINI_JUDGE_MODEL):
         self.model_name = model_name
-        self.client = GeminiClient(api_keys=list(GEMINI_API_KEYS) or ([GEMINI_API_KEY] if GEMINI_API_KEY else []), model_name=model_name)
+        self.client = GeminiClient(api_key=GEMINI_API_KEY, model_name=model_name)
 
     async def evaluate_moment(
         self,
