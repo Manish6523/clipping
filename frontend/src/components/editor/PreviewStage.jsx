@@ -117,9 +117,13 @@ export default function PreviewStage({ videoRef }) {
         selectedLayerId={selection?.type === 'layer' ? selection.id : null}
         onSelectLayer={(layerId) => {
           setSelection(layerId ? { type: 'layer', id: layerId } : { type: 'none', id: null });
+          if (layerId) {
+            setActivePanel('layout');
+          }
         }}
         onSelectCaption={() => {
           setSelection({ type: 'caption', id: 'main' });
+          setActivePanel('captions');
         }}
         onTestRenderFrame={handleTestRenderFrame}
         showToolbar={false}

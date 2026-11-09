@@ -44,18 +44,18 @@ const PANEL_CONFIG = {
  */
 export default function PanelHost({ 
   mode = 'desktop', 
-  activePanel = null, 
+  activePanel: propActivePanel = null, 
   onClose,
   sheetSnap = 'closed',
   onSetSnap
 }) {
-  const { selection } = useEditorStore();
+  const { selection, activePanel: storeActivePanel, setActivePanel } = useEditorStore();
   const touchStartY = useRef(0);
   const currentSnapRef = useRef(sheetSnap);
   currentSnapRef.current = sheetSnap;
 
-  // Map contextual selection to default panel if activePanel is null
-  let resolvedPanel = activePanel;
+  // Prioritize active panel from props or store; fallback contextually based on selection
+  let resolvedPanel = propActivePanel || storeActivePanel;
   if (!resolvedPanel) {
     if (selection?.type === 'layer') resolvedPanel = 'layout';
     else if (selection?.type === 'caption') resolvedPanel = 'captions';
@@ -125,11 +125,20 @@ export default function PanelHost({
               <button
                 key={t.id}
                 onClick={() => {
-                  const { setActivePanel, setSelection } = useEditorStore.getState();
                   setActivePanel(t.id);
-                  if (t.id === 'captions') setSelection({ type: 'caption', id: 'main' });
+                  if (t.id === 'captions') {
+                    useEditorStore.getState().setSelection({ type: 'caption', id: 'main' });
+                  } else if (t.id === 'layout') {
+                    const layers = useEditorStore.getState().edl?.layers;
+                    const firstId = layers && layers.length > 0 ? layers[0].id : null;
+                    if (firstId) {
+                      useEditorStore.getState().setSelection({ type: 'layer', id: firstId });
+                    }
+                  } else {
+                    useEditorStore.getState().setSelection({ type: 'none', id: null });
+                  }
                 }}
-                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[9px] font-bold transition-all ${
+                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer ${
                   isActive
                     ? 'bg-[#1A1D24] text-[#8FD3FF] shadow-sm border border-white/[0.08]'
                     : 'text-[#8B90A0] hover:text-[#E8EAF0] hover:bg-white/[0.02]'
