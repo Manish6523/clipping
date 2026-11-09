@@ -40,6 +40,7 @@ export const getClips = (status = '', limit = 50, cursor = '') =>
      .then(r => r.data);
 
 export const getClip = (id) => api.get(`/api/clips/${id}`).then(r => r.data);
+export const getClipExplain = (id) => api.get(`/api/clips/${id}/explain`).then(r => r.data);
 export const getClipWords = (id) => api.get(`/api/clips/${id}/words`).then(r => r.data);
 export const getClipWaveform = (id) => api.get(`/api/clips/${id}/waveform`).then(r => r.data);
 export const trimClip = (id, deltaStart, deltaEnd) => 

@@ -29,11 +29,14 @@ import {
   Film,
   Eye,
   SlidersHorizontal,
-  X
+  X,
+  Info,
+  HelpCircle
 } from 'lucide-react';
 import { 
   getClips, 
   getClip, 
+  getClipExplain,
   trimClip, 
   toggleTeaser, 
   updateClip, 
@@ -78,6 +81,9 @@ export default function ReviewStation({ onStatusChange }) {
   // Multi-select state
   const [selectedClipIds, setSelectedClipIds] = useState(new Set());
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [showExplainModal, setShowExplainModal] = useState(false);
+  const [explainData, setExplainData] = useState(null);
+  const [explainLoading, setExplainLoading] = useState(false);
   const [rejectFilter, setRejectFilter] = useState('all'); // 'all' | 'untagged'
   const [retroTagClip, setRetroTagClip] = useState(null);
 
@@ -343,6 +349,20 @@ export default function ReviewStation({ onStatusChange }) {
       showFeedback(`Clip #${clipId} tagged: ${reasonCode}`);
     } catch (err) {
       alert('Tagging failed: ' + err.message);
+    }
+  };
+
+  const handleOpenExplain = async () => {
+    if (!activeClipId) return;
+    setExplainLoading(true);
+    setShowExplainModal(true);
+    try {
+      const res = await getClipExplain(activeClipId);
+      setExplainData(res);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setExplainLoading(false);
     }
   };
 
@@ -672,6 +692,15 @@ export default function ReviewStation({ onStatusChange }) {
                     ? '⚪ Score: unscored'
                     : `🔥 Score: ${activeClipSummary.virality_score}/100`}
                 </span>
+                <button
+                  type="button"
+                  onClick={handleOpenExplain}
+                  className="px-2 py-1 rounded-lg bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-500/30 text-indigo-300 font-bold text-xs flex items-center gap-1 transition-colors"
+                  title="Explain AI Virality Score & Rubric Breakdown"
+                >
+                  <Info size={12} />
+                  <span>Explain</span>
+                </button>
                 <span className="px-2.5 py-1 rounded-lg bg-[#141722] border border-white/[0.08] font-mono text-[#8FD3FF]">
                   ⏱️ {((activeClipSummary.adjusted_end || 30) - (activeClipSummary.adjusted_start || 0)).toFixed(1)}s
                 </span>
@@ -929,6 +958,121 @@ export default function ReviewStation({ onStatusChange }) {
                         className="px-4 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white hover:bg-white/20"
                       >
                         Cancel
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Explainability Score Breakdown Modal */}
+              {showExplainModal && (
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                  <div className="bg-[#0E1118] border border-white/[0.1] rounded-2xl p-5 max-w-lg w-full shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
+                    <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+                      <div className="flex items-center gap-2">
+                        <Info size={18} className="text-indigo-400" />
+                        <h3 className="font-extrabold text-sm text-white">
+                          AI Virality Breakdown • Clip #{activeClipSummary.id}
+                        </h3>
+                      </div>
+                      <button onClick={() => setShowExplainModal(false)} className="text-slate-400 hover:text-white">
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    {explainLoading ? (
+                      <div className="flex items-center justify-center py-12">
+                        <div className="w-6 h-6 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : explainData ? (
+                      <div className="space-y-4 text-xs">
+                        {/* Overall Scores Grid */}
+                        <div className="grid grid-cols-3 gap-2 bg-[#12151E] p-3 rounded-xl border border-white/[0.04]">
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-bold">Virality Score</span>
+                            <span className="text-base font-extrabold text-amber-400 font-mono">
+                              {explainData.virality_score || 0}/100
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-bold">Formula Mode</span>
+                            <span className="text-xs font-mono font-bold text-indigo-300">
+                              {explainData.formula_version || 'legacy'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] text-slate-400 block font-bold">Judge Model</span>
+                            <span className="text-xs font-mono font-bold text-white truncate block">
+                              {explainData.model || 'gemini-flash-lite'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* 1-5 Rubric Subscores */}
+                        {explainData.score_breakdown && Object.keys(explainData.score_breakdown).length > 0 && (
+                          <div className="space-y-2">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              1-5 Calibrated Rubric Sub-Scores
+                            </span>
+                            <div className="grid grid-cols-2 gap-2">
+                              {Object.entries(explainData.score_breakdown).map(([dim, val]) => (
+                                <div key={dim} className="bg-white/[0.03] p-2 rounded-lg border border-white/[0.04] flex items-center justify-between">
+                                  <span className="text-slate-300 font-mono capitalize">{dim.replace('_', ' ')}</span>
+                                  <span className="font-extrabold text-white font-mono bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
+                                    {val}/5
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Trigger Signal Telemetry */}
+                        {explainData.trigger && Object.keys(explainData.trigger).length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              Moment Detection Trigger
+                            </span>
+                            <div className="bg-[#12151E] p-2.5 rounded-xl border border-white/[0.04] font-mono text-[11px] text-slate-300">
+                              <div>Type: <b className="text-white">{explainData.trigger.type || 'stream_moment'}</b></div>
+                              {explainData.trigger.ratio && (
+                                <div>Velocity Spike: <b className="text-emerald-400">{explainData.trigger.ratio}x</b> baseline</div>
+                              )}
+                              {explainData.trigger.peak_db && (
+                                <div>Audio Peak: <b className="text-amber-400">{explainData.trigger.peak_db} dB</b></div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Flags */}
+                        {explainData.flags && explainData.flags.length > 0 && (
+                          <div className="space-y-1">
+                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                              Content Flags
+                            </span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {explainData.flags.map((f, i) => (
+                                <span key={i} className="px-2 py-0.5 bg-rose-500/15 border border-rose-500/30 text-rose-300 rounded font-mono text-[10px]">
+                                  {f.type || f.note || JSON.stringify(f)}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-center py-6 text-slate-500 text-xs">
+                        No telemetry or rubric explanation recorded for this clip.
+                      </div>
+                    )}
+
+                    <div className="flex justify-end pt-2 border-t border-white/[0.06]">
+                      <button
+                        onClick={() => setShowExplainModal(false)}
+                        className="px-4 py-1.5 rounded-lg bg-white/10 text-xs font-bold text-white hover:bg-white/20"
+                      >
+                        Close
                       </button>
                     </div>
                   </div>

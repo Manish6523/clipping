@@ -56,3 +56,4 @@ class JudgeClipEvaluation(BaseModel):
 
 class JudgeEvaluationResponse(BaseModel):
     candidates: List[JudgeClipEvaluation] = Field(default_factory=list)
+

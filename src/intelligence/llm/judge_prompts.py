@@ -58,3 +58,4 @@ Recent Chat Messages:
 Find the best clip candidate within this moment (or reject if the moment is boring/lacks a standalone hook).
 Return structured JSON matching the schema.
 """
+

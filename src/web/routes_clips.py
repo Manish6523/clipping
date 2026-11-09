@@ -482,9 +482,61 @@ async def extend_clip_source(request: web.Request) -> web.Response:
     })
 
 
+async def get_clip_explanation(request: web.Request) -> web.Response:
+    """Return AI scoring breakdown, 1-5 rubric scores, quotes, and trigger context for a clip."""
+    clip_id = int(request.match_info["id"])
+    async with get_db_connection() as db:
+        cur = await db.execute("""
+            SELECT id, channel_id, title, virality_score, final_score, score_breakdown,
+                   flags, model, trigger_json, formula_version, prompt_version, created_at
+            FROM clips WHERE id = ?
+        """, (clip_id,))
+        row = await cur.fetchone()
+        if not row:
+            return make_json_error("NOT_FOUND", "Clip not found", status=404)
+
+        d = dict(row)
+        score_breakdown = {}
+        if d.get("score_breakdown"):
+            try:
+                score_breakdown = json.loads(d["score_breakdown"]) if isinstance(d["score_breakdown"], str) else d["score_breakdown"]
+            except Exception:
+                pass
+
+        trigger_data = {}
+        if d.get("trigger_json"):
+            try:
+                trigger_data = json.loads(d["trigger_json"]) if isinstance(d["trigger_json"], str) else d["trigger_json"]
+            except Exception:
+                pass
+
+        flags_data = []
+        if d.get("flags"):
+            try:
+                flags_data = json.loads(d["flags"]) if isinstance(d["flags"], str) else d["flags"]
+            except Exception:
+                pass
+
+        return web.json_response({
+            "clip_id": d["id"],
+            "channel_id": d["channel_id"],
+            "title": d["title"],
+            "virality_score": d["virality_score"],
+            "final_score": d["final_score"],
+            "score_breakdown": score_breakdown,
+            "flags": flags_data,
+            "trigger": trigger_data,
+            "model": d["model"],
+            "formula_version": d["formula_version"],
+            "prompt_version": d["prompt_version"],
+            "created_at": d["created_at"],
+        })
+
+
 def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips", get_clips_list)
     app.router.add_get("/api/clips/{id}", get_clip_by_id)
+    app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)
     app.router.add_get("/api/clips/{id}/source", serve_clip_source)
     app.router.add_get("/api/clips/{id}/words", get_clip_words)

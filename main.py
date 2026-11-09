@@ -45,6 +45,8 @@ from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
+from src.intelligence.calibrated_judge import CalibratedJudge
+from src.intelligence.sentences import SentenceChunker
 from src.monitor.live_watcher import LiveStreamWatcher
 from src.monitor.vod_watcher import VODWatcher
 from src.monitor.storage_gc import run_storage_gc_loop
@@ -86,6 +88,7 @@ class AutoClipEngine:
         )
         self.transcriber = Transcriber(model_size="tiny")
         self.scorer = ViralScorer()
+        self.calibrated_judge = CalibratedJudge()
         self.renderer = FFmpegRenderer()
         self.scheduler = DripScheduler(on_post_published=self._on_drip_post_published)
         self.vod_watcher = VODWatcher(on_vod_clip_ready=self._on_vod_event)
@@ -328,14 +331,50 @@ class AutoClipEngine:
                 chat_spikes_list = [trigger_ctx] if trigger_ctx.get("type") in ("chat_spike", "keyword_hit") else []
                 audio_peaks_list = [trigger_ctx] if trigger_ctx.get("type") == "audio_peak" else []
 
-                candidates = await self.scorer.analyze_transcript(
-                    transcript_data=transcription,
-                    min_score=min_score,
-                    chat_spikes=chat_spikes_list,
-                    audio_peaks=audio_peaks_list,
-                )
+                from config.settings import PIPELINE_MODE
+                sentences = SentenceChunker.from_whisper_result(transcription)
 
-                if not candidates:
+                calibrated_candidates = []
+                # Execute CalibratedJudge if in 'new' or 'shadow' mode
+                if PIPELINE_MODE in ("new", "shadow"):
+                    try:
+                        calibrated_candidates = await self.calibrated_judge.evaluate_moment(
+                            channel_id=channel_id,
+                            sentences=sentences,
+                            trigger_context=trigger_ctx,
+                            chat_features=chat_features,
+                            min_score=min_score,
+                        )
+                        logger.info("CalibratedJudge evaluated %d candidates in '%s' mode.", len(calibrated_candidates), PIPELINE_MODE)
+                    except Exception as e:
+                        logger.warning("CalibratedJudge execution error: %s", e)
+
+                # Legacy Scorer execution (active in 'legacy' or 'shadow')
+                candidates = []
+                if PIPELINE_MODE in ("legacy", "shadow"):
+                    candidates = await self.scorer.analyze_transcript(
+                        transcript_data=transcription,
+                        min_score=min_score,
+                        chat_spikes=chat_spikes_list,
+                        audio_peaks=audio_peaks_list,
+                    )
+
+                # Choose best candidate based on active pipeline mode
+                best_candidate = None
+                chosen_from_new = False
+
+                if PIPELINE_MODE == "new" and calibrated_candidates:
+                    best_candidate = calibrated_candidates[0]
+                    chosen_from_new = True
+                elif candidates:
+                    candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
+                    best_candidate = candidates[0]
+                elif calibrated_candidates:
+                    # Fallback to calibrated candidate if legacy returned nothing
+                    best_candidate = calibrated_candidates[0]
+                    chosen_from_new = True
+
+                if not best_candidate:
                     logger.info("No candidates passed min_virality_score threshold (%d). Discarding.", min_score)
                     update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"No clips above score {min_score}. Returning to live watch.")
                     # Auto-reset banner after 10s
@@ -345,19 +384,43 @@ class AutoClipEngine:
                     asyncio.create_task(_clear_banner())
                     return
 
-                # Guaranteed highest-scoring candidate selection
-                candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
-                best_candidate = candidates[0]
+                # Extract candidate fields cleanly
+                if chosen_from_new:
+                    cand_score = best_candidate["virality_score"]
+                    final_score_val = best_candidate.get("final_score")
+                    clip_start = best_candidate["start_time"]
+                    clip_end = best_candidate["end_time"]
+                    teaser_ts = best_candidate.get("teaser_hook_timestamp")
+                    suggested_title = best_candidate["title"]
+                    description_text = best_candidate.get("description", "")
+                    hashtags_text = " ".join(best_candidate.get("hashtags", []))
+                    score_breakdown_json = json.dumps(best_candidate.get("scores", {}))
+                    flags_json = json.dumps(best_candidate.get("flags", []))
+                    formula_ver = "v3.0_calibrated_0.7llm_0.3sig"
+                    prompt_ver = best_candidate.get("prompt_version", "v3.0_calibrated_judge")
+                    model_used = best_candidate.get("model", "gemini-flash-lite-latest")
+                else:
+                    cand_score = getattr(best_candidate, "virality_score", 0)
+                    final_score_val = float(cand_score) if cand_score > 0 else None
+                    clip_start = best_candidate.start_time
+                    clip_end = best_candidate.end_time
+                    teaser_ts = best_candidate.teaser_hook_timestamp
+                    suggested_title = best_candidate.suggested_title
+                    description_text = best_candidate.hook_summary
+                    hashtags_text = " ".join(best_candidate.hashtags)
+                    score_breakdown_json = None
+                    flags_json = None
+                    formula_ver = "legacy_single_call"
+                    prompt_ver = "legacy"
+                    model_used = getattr(self.scorer, "model_name", "gemini-flash-lite-latest")
 
-                if getattr(best_candidate, "virality_score", 0) <= 0 and skip_unscored:
+                if cand_score <= 0 and skip_unscored:
                     logger.info("Best candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
                     update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Moment unscored (skipped).")
                     return
 
-                logger.info("Selected viral candidate: '%s' (Score: %d/100)", best_candidate.suggested_title, best_candidate.virality_score)
+                logger.info("Selected viral candidate: '%s' (Score: %d/100, Mode: %s)", suggested_title, cand_score, PIPELINE_MODE)
 
-                clip_start = best_candidate.start_time
-                clip_end = best_candidate.end_time
                 clip_dur = clip_end - clip_start
 
                 timestamp_id = int(metadata.get("timestamp", 0))
@@ -390,7 +453,7 @@ class AutoClipEngine:
                     output_path=rendered_mp4,
                     template=template,
                     ass_path=ass_path,
-                    teaser_timestamp=best_candidate.teaser_hook_timestamp,
+                    teaser_timestamp=teaser_ts,
                     include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
                 )
 
@@ -401,16 +464,21 @@ class AutoClipEngine:
                     template_name=template_name,
                     raw_start=clip_start,
                     raw_end=clip_end,
-                    virality_score=best_candidate.virality_score,
-                    title=best_candidate.suggested_title,
-                    teaser_hook_timestamp=best_candidate.teaser_hook_timestamp,
-                    description=best_candidate.hook_summary,
-                    hashtags=" ".join(best_candidate.hashtags),
+                    virality_score=cand_score,
+                    final_score=final_score_val,
+                    score_breakdown=score_breakdown_json,
+                    flags=flags_json,
+                    prompt_version=prompt_ver,
+                    formula_version=formula_ver,
+                    title=suggested_title,
+                    teaser_hook_timestamp=teaser_ts,
+                    description=description_text,
+                    hashtags=hashtags_text,
                     source_video_path=video_path,
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
                     trigger_json=json.dumps(trigger_ctx) if trigger_ctx else None,
-                    model=getattr(self.scorer, "model_name", "gemini-flash-lite-latest"),
+                    model=model_used,
                 )
 
                 update_pipeline_progress(
@@ -427,8 +495,9 @@ class AutoClipEngine:
                     "id": clip_id,
                     "clip_id": clip_id,
                     "channel_id": channel_id,
-                    "title": best_candidate.suggested_title,
-                    "virality_score": best_candidate.virality_score,
+                    "title": suggested_title,
+                    "virality_score": cand_score,
+                    "final_score": final_score_val,
                     "template_name": template_name,
                     "rendered_video_path": rendered_mp4,
                     "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),

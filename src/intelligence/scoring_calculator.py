@@ -69,3 +69,4 @@ def calculate_final_score(predicted_score: float, signal_score: Optional[float] 
     # final = 0.70 * predicted + 0.30 * signal
     final = 0.70 * predicted_score + 0.30 * float(signal_score)
     return round(max(0.0, min(100.0, final)), 1)
+
