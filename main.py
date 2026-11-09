@@ -35,6 +35,7 @@ from src.database import (
     init_db,
     get_db_connection,
     get_active_channels,
+    get_channel,
     create_clip,
     get_clip,
     update_clip_rendered_path,
