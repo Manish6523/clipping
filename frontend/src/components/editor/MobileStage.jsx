@@ -249,6 +249,21 @@ export default function MobileStage({
     onSelectLayer?.(layers[nextIdx].id);
   };
 
+  // Image reference for static snapshot when editing templates or when source is an image
+  const imgRef = useRef(null);
+  useEffect(() => {
+    if (sourceMediaUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = sourceMediaUrl;
+      img.onload = () => {
+        imgRef.current = img;
+      };
+    } else {
+      imgRef.current = null;
+    }
+  }, [sourceMediaUrl]);
+
   // 60FPS Composite 9:16 canvas loop
   useEffect(() => {
     const canvas = dstCanvasRef.current;
@@ -261,7 +276,9 @@ export default function MobileStage({
       const ch = canvas.height;
       ctx.clearRect(0, 0, cw, ch);
 
-      const media = videoRef?.current && videoRef.current.readyState >= 1 ? videoRef.current : null;
+      const media = (videoRef?.current && videoRef.current.readyState >= 1)
+        ? videoRef.current
+        : (imgRef.current && imgRef.current.complete ? imgRef.current : null);
 
       // Solid background
       ctx.fillStyle = layout?.background?.color || '#000000';
@@ -413,20 +430,27 @@ export default function MobileStage({
           className="w-full aspect-video max-h-full bg-black rounded-2xl overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
         >
           {sourceMediaUrl && (
-            <video
-              src={sourceMediaUrl}
-              crossOrigin="anonymous"
-              playsInline
-              webkit-playsinline="true"
-              preload="auto"
-              className="w-full h-full object-cover pointer-events-none"
-              ref={(el) => {
-                // Keep time in sync if rendered directly
-                if (el && videoRef?.current) {
-                  el.currentTime = videoRef.current.currentTime;
-                }
-              }}
-            />
+            sourceMediaUrl.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
+              <video
+                src={sourceMediaUrl}
+                crossOrigin="anonymous"
+                playsInline
+                webkit-playsinline="true"
+                preload="auto"
+                className="w-full h-full object-cover pointer-events-none"
+                ref={(el) => {
+                  if (el && videoRef?.current) {
+                    el.currentTime = videoRef.current.currentTime;
+                  }
+                }}
+              />
+            ) : (
+              <img
+                src={sourceMediaUrl}
+                alt="Source Frame"
+                className="w-full h-full object-cover pointer-events-none"
+              />
+            )
           )}
 
           {/* 16:9 Crop Boxes Overlay */}
@@ -579,18 +603,26 @@ export default function MobileStage({
           /* PiP displays 16:9 source with mini crop boxes */
           <div className="w-full h-full relative flex items-center justify-center">
             {sourceMediaUrl && (
-              <video
-                src={sourceMediaUrl}
-                playsInline
-                webkit-playsinline="true"
-                muted
-                className="w-full h-full object-cover pointer-events-none opacity-80"
-                ref={(el) => {
-                  if (el && videoRef?.current) {
-                    el.currentTime = videoRef.current.currentTime;
-                  }
-                }}
-              />
+              sourceMediaUrl.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
+                <video
+                  src={sourceMediaUrl}
+                  playsInline
+                  webkit-playsinline="true"
+                  muted
+                  className="w-full h-full object-cover pointer-events-none opacity-80"
+                  ref={(el) => {
+                    if (el && videoRef?.current) {
+                      el.currentTime = videoRef.current.currentTime;
+                    }
+                  }}
+                />
+              ) : (
+                <img
+                  src={sourceMediaUrl}
+                  alt="PiP Source"
+                  className="w-full h-full object-cover pointer-events-none opacity-80"
+                />
+              )
             )}
             {layers.map((l) => (
               <div

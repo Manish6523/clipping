@@ -247,11 +247,58 @@ async def get_channel_live_frame(request: web.Request) -> web.Response:
         except Exception:
             pass
 
-    # 4. Check rendered clip thumbnails
-    from config.settings import RENDER_DIR
+    # 4. Check rendered clip thumbnails in both RENDER_DIR and OUTPUT_DIR
+    from config.settings import RENDER_DIR, OUTPUT_DIR
     rendered_thumbs = sorted(glob.glob(str(Path(RENDER_DIR) / f"*{channel_handle}*thumb*.jpg")), key=os.path.getmtime)
     if rendered_thumbs and Path(rendered_thumbs[-1]).exists():
         return web.FileResponse(rendered_thumbs[-1])
+
+    output_thumbs = sorted(glob.glob(str(Path(OUTPUT_DIR) / f"*{channel_handle}*thumb*.jpg")), key=os.path.getmtime)
+    if output_thumbs and Path(output_thumbs[-1]).exists():
+        return web.FileResponse(output_thumbs[-1])
+
+    # 4b. Extract a frame snapshot from recent output clips if channel is offline
+    output_clips = sorted(glob.glob(str(Path(OUTPUT_DIR) / f"*{channel_handle}*.mp4")), key=os.path.getmtime)
+    if output_clips:
+        latest_clip = output_clips[-1]
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", "1.0",
+                "-i", str(latest_clip),
+                "-vframes", "1",
+                "-q:v", "3",
+                str(out_jpg)
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if out_jpg.exists() and out_jpg.stat().st_size > 0:
+                return web.FileResponse(out_jpg)
+        except Exception:
+            pass
+
+    # 4c. Extract from any existing mp4 clip in OUTPUT_DIR as universal fallback
+    any_clips = sorted(glob.glob(str(Path(OUTPUT_DIR) / "*.mp4")), key=os.path.getmtime)
+    if any_clips:
+        try:
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", "1.0",
+                "-i", str(any_clips[-1]),
+                "-vframes", "1",
+                "-q:v", "3",
+                str(out_jpg)
+            ]
+            proc = await asyncio.create_subprocess_exec(
+                *cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+            )
+            await asyncio.wait_for(proc.communicate(), timeout=5.0)
+            if out_jpg.exists() and out_jpg.stat().st_size > 0:
+                return web.FileResponse(out_jpg)
+        except Exception:
+            pass
 
     # 5. Last fallback: any existing latest_frame.jpg anywhere in buffer
     any_frames = sorted(glob.glob(str(Path(BUFFER_DIR) / "*" / "latest_frame.jpg")), key=os.path.getmtime)
