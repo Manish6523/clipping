@@ -31,12 +31,13 @@ export default function PresetStudio() {
   const [feedback, setFeedback] = useState(null);
 
   // Active editable layout
-  const [activeLayout, setActiveLayout] = useState(PRESET_STARTERS.facecam_top.layers ? {
+  const defaultStarter = PRESET_STARTERS.facecam_top_gameplay_bottom || Object.values(PRESET_STARTERS)[0];
+  const [activeLayout, setActiveLayout] = useState({
     schema: 2,
     canvas: { w: 1080, h: 1920 },
-    background: { ...PRESET_STARTERS.facecam_top.background },
-    layers: [...PRESET_STARTERS.facecam_top.layers]
-  } : null);
+    background: { ...(defaultStarter?.background || { type: 'solid', color: '#000000', blur: 0, dim: 0 }) },
+    layers: (defaultStarter?.layers || []).map(l => ({ ...l }))
+  });
 
   // Active editable captions
   const [captionsConfig, setCaptionsConfig] = useState({
@@ -89,8 +90,8 @@ export default function PresetStudio() {
     }
   };
 
-  const handleStartCreate = (starterKey = 'facecam_top') => {
-    const starter = PRESET_STARTERS[starterKey] || PRESET_STARTERS.facecam_top;
+  const handleStartCreate = (starterKey = 'facecam_top_gameplay_bottom') => {
+    const starter = PRESET_STARTERS[starterKey] || PRESET_STARTERS.facecam_top_gameplay_bottom || Object.values(PRESET_STARTERS)[0];
     setIsCreating(true);
     setSelectedPreset(null);
     setPresetName(`New Custom Preset ${presets.length + 1}`);
@@ -99,8 +100,8 @@ export default function PresetStudio() {
     setActiveLayout({
       schema: 2,
       canvas: { w: 1080, h: 1920 },
-      background: { ...starter.background },
-      layers: starter.layers.map(l => ({ ...l, id: `l_${Date.now()}_${l.name.toLowerCase()}` }))
+      background: { ...(starter?.background || { type: 'solid', color: '#000000', blur: 0, dim: 0 }) },
+      layers: (starter?.layers || []).map(l => ({ ...l, id: `l_${Date.now()}_${l.name.toLowerCase()}` }))
     });
   };
 
