@@ -546,13 +546,43 @@ class AutoClipEngine:
             transcription = await self.transcriber.transcribe(audio_or_url)
 
             update_pipeline_progress("processing", channel_id=channel_id, step=3, step_name="Evaluating retention peaks with Gemini AI...")
-            candidates = await self.scorer.analyze_transcript(
-                transcript_data=transcription,
-                min_score=min_score,
-                heatmap_peaks=metadata.get("heatmap_peaks", []),
-            )
+            
+            from config.settings import PIPELINE_MODE
+            sentences = SentenceChunker.from_whisper_result(transcription)
 
-            if not candidates:
+            calibrated_candidates = []
+            if PIPELINE_MODE in ("new", "shadow"):
+                try:
+                    calibrated_candidates = await self.calibrated_judge.evaluate_moment(
+                        channel_id=channel_id,
+                        sentences=sentences,
+                        trigger_context={"type": "vod_heatmap", "peaks": metadata.get("heatmap_peaks", [])},
+                        min_score=min_score,
+                    )
+                except Exception as e:
+                    logger.warning("VOD CalibratedJudge evaluation error: %s", e)
+
+            candidates = []
+            if PIPELINE_MODE in ("legacy", "shadow"):
+                candidates = await self.scorer.analyze_transcript(
+                    transcript_data=transcription,
+                    min_score=min_score,
+                    heatmap_peaks=metadata.get("heatmap_peaks", []),
+                )
+
+            best_candidate = None
+            chosen_from_new = False
+            if PIPELINE_MODE == "new" and calibrated_candidates:
+                best_candidate = calibrated_candidates[0]
+                chosen_from_new = True
+            elif candidates:
+                candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
+                best_candidate = candidates[0]
+            elif calibrated_candidates:
+                best_candidate = calibrated_candidates[0]
+                chosen_from_new = True
+
+            if not best_candidate:
                 logger.info("No candidates above threshold for VOD %s.", vod_id)
                 update_pipeline_progress("idle", step_name="VOD processed - No clips above threshold.")
                 # Update pipeline_runs to completed if this was a recorded run
@@ -561,21 +591,46 @@ class AutoClipEngine:
                     await db.commit()
                 return
 
-            candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
-            best_candidate = candidates[0]
+            if chosen_from_new:
+                cand_score = best_candidate["virality_score"]
+                final_score_val = best_candidate.get("final_score")
+                clip_start = best_candidate["start_time"]
+                clip_end = best_candidate["end_time"]
+                suggested_title = best_candidate["title"]
+                description_text = best_candidate.get("description", "")
+                hashtags_text = " ".join(best_candidate.get("hashtags", []))
+                score_breakdown_json = json.dumps(best_candidate.get("scores", {}))
+                flags_json = json.dumps(best_candidate.get("flags", []))
+                formula_ver = "v3.0_calibrated_0.7llm_0.3sig"
+                prompt_ver = best_candidate.get("prompt_version", "v3.0_calibrated_judge")
+                model_used = best_candidate.get("model", "gemini-flash-lite-latest")
+            else:
+                cand_score = getattr(best_candidate, "virality_score", 0)
+                final_score_val = float(cand_score) if cand_score > 0 else None
+                clip_start = best_candidate.start_time
+                clip_end = best_candidate.end_time
+                suggested_title = best_candidate.suggested_title
+                description_text = best_candidate.hook_summary
+                hashtags_text = " ".join(best_candidate.hashtags)
+                score_breakdown_json = None
+                flags_json = None
+                formula_ver = "legacy_single_call"
+                prompt_ver = "legacy"
+                model_used = getattr(self.scorer, "model_name", "gemini-flash-lite-latest")
 
-            if getattr(best_candidate, "virality_score", 0) <= 0 and skip_unscored:
+            if cand_score <= 0 and skip_unscored:
                 logger.info("VOD candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
                 update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Moment unscored (skipped).")
                 return
+
             work_dir = Path(metadata.get("work_dir", RENDER_DIR))
             slice_source = work_dir / f"{vod_id}_slice.mp4"
 
             update_pipeline_progress("processing", channel_id=channel_id, step=4, step_name="Downloading exact video section and rendering 9:16 layout...")
             downloaded = await self.vod_watcher.download_video_section(
                 video_url=video_url,
-                start_time=best_candidate.start_time,
-                end_time=best_candidate.end_time,
+                start_time=clip_start,
+                end_time=clip_end,
                 output_file=slice_source,
             )
 
@@ -584,14 +639,14 @@ class AutoClipEngine:
                 update_pipeline_progress("error", channel_id=channel_id, error="Section download failed")
                 return
 
-            clip_dur = best_candidate.end_time - best_candidate.start_time
+            clip_dur = clip_end - clip_start
             ass_path = str(work_dir / f"{vod_id}_sub.ass")
 
             generate_ass_subtitles(
                 word_timestamps=transcription.get("words", []),
                 output_path=ass_path,
                 template_config=template,
-                time_offset=best_candidate.start_time,
+                time_offset=clip_start,
                 max_duration=clip_dur,
             )
 
@@ -612,16 +667,23 @@ class AutoClipEngine:
                 source_id=vod_id,
                 channel_id=channel_id,
                 template_name=template_name,
-                raw_start=best_candidate.start_time,
-                raw_end=best_candidate.end_time,
-                virality_score=best_candidate.virality_score,
-                title=best_candidate.suggested_title,
+                raw_start=clip_start,
+                raw_end=clip_end,
+                virality_score=cand_score,
+                final_score=final_score_val,
+                score_breakdown=score_breakdown_json,
+                flags=flags_json,
+                prompt_version=prompt_ver,
+                formula_version=formula_ver,
+                title=suggested_title,
                 teaser_hook_timestamp=None,
-                description=best_candidate.hook_summary,
-                hashtags=" ".join(best_candidate.hashtags),
+                description=description_text,
+                hashtags=hashtags_text,
                 source_video_path=str(slice_source),
                 rendered_video_path=rendered_mp4,
                 subtitle_path=ass_path,
+                trigger_json=json.dumps({"type": "vod_heatmap"}),
+                model=model_used,
             )
 
             update_pipeline_progress("completed", channel_id=channel_id, step=5, step_name=f"VOD Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
