@@ -359,13 +359,30 @@ class WebUIServer:
         return web.json_response(templates)
 
     async def handle_get_clips(self, request: web.Request) -> web.Response:
-        """Get list of clips with optional status filter."""
+        """Get list of clips with optional status filter and feedback tag info."""
         status = request.query.get("status")
         async with get_db_connection() as db:
+            query = """
+                SELECT c.*, 
+                       (SELECT json_extract(f.payload_json, '$.reason') 
+                        FROM clip_feedback_events f 
+                        WHERE f.clip_id = c.id AND f.event IN ('rejected', 'reason_tagged') 
+                          AND json_extract(f.payload_json, '$.reason') IS NOT NULL 
+                        ORDER BY f.id DESC LIMIT 1) as rejection_reason,
+                       (SELECT f.event 
+                        FROM clip_feedback_events f 
+                        WHERE f.clip_id = c.id 
+                        ORDER BY f.id DESC LIMIT 1) as last_feedback_event
+                FROM clips c
+            """
+            params = []
             if status:
-                cursor = await db.execute("SELECT * FROM clips WHERE status = ? ORDER BY id DESC", (status,))
+                query += " WHERE c.status = ? ORDER BY c.id DESC"
+                params.append(status)
             else:
-                cursor = await db.execute("SELECT * FROM clips ORDER BY id DESC LIMIT 50")
+                query += " ORDER BY c.id DESC LIMIT 50"
+
+            cursor = await db.execute(query, tuple(params))
             rows = await cursor.fetchall()
             return web.json_response([dict(r) for r in rows])
 
@@ -1251,6 +1268,7 @@ class WebUIServer:
             cur = await db.execute(query, params)
             rows = await cur.fetchall()
 
+        from collections import Counter
         events = [dict(r) for r in rows]
         event_counts = Counter(e["event"] for e in events)
 

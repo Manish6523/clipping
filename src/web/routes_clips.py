@@ -123,26 +123,36 @@ async def get_clips_list(request: web.Request) -> web.Response:
     cursor = request.query.get("cursor")
 
     query = """
-        SELECT id, channel_id, virality_score, title, template_name,
-               raw_start, raw_end, adjusted_start, adjusted_end,
-               status, thumbnail_path, rendered_video_path, created_at
-        FROM clips
+        SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name,
+               c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end,
+               c.status, c.thumbnail_path, c.rendered_video_path, c.created_at,
+               c.ai_start, c.ai_end, c.flags,
+               (SELECT json_extract(f.payload_json, '$.reason') 
+                FROM clip_feedback_events f 
+                WHERE f.clip_id = c.id AND f.event IN ('rejected', 'reason_tagged') 
+                  AND json_extract(f.payload_json, '$.reason') IS NOT NULL 
+                ORDER BY f.id DESC LIMIT 1) as rejection_reason,
+               (SELECT f.event 
+                FROM clip_feedback_events f 
+                WHERE f.clip_id = c.id 
+                ORDER BY f.id DESC LIMIT 1) as last_feedback_event
+        FROM clips c
     """
     params = []
     where_clauses = []
 
     if status:
-        where_clauses.append("status = ?")
+        where_clauses.append("c.status = ?")
         params.append(status)
 
     if cursor:
-        where_clauses.append("id < ?")
+        where_clauses.append("c.id < ?")
         params.append(int(cursor))
 
     if where_clauses:
         query += " WHERE " + " AND ".join(where_clauses)
 
-    query += " ORDER BY id DESC LIMIT ?"
+    query += " ORDER BY c.id DESC LIMIT ?"
     params.append(limit)
 
     async with get_db_connection() as db:

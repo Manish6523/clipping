@@ -78,6 +78,7 @@ export default function ReviewStation({ onStatusChange }) {
   // Multi-select state
   const [selectedClipIds, setSelectedClipIds] = useState(new Set());
   const [showRejectModal, setShowRejectModal] = useState(false);
+  const [rejectFilter, setRejectFilter] = useState('all'); // 'all' | 'untagged'
   const [retroTagClip, setRetroTagClip] = useState(null);
 
   // Single video player ref
@@ -103,11 +104,17 @@ export default function ReviewStation({ onStatusChange }) {
     return Array.from(set);
   }, [rawClips]);
 
-  // Filter clips by selected channel if not 'all'
+  // Filter clips by selected channel if not 'all' and by reject filter if rejected tab
   const clips = useMemo(() => {
-    if (channelFilter === 'all') return rawClips;
-    return rawClips.filter(c => c.channel_id === channelFilter);
-  }, [rawClips, channelFilter]);
+    let list = rawClips;
+    if (channelFilter !== 'all') {
+      list = list.filter(c => c.channel_id === channelFilter);
+    }
+    if (statusFilter === 'rejected' && rejectFilter === 'untagged') {
+      list = list.filter(c => !c.rejection_reason);
+    }
+    return list;
+  }, [rawClips, channelFilter, statusFilter, rejectFilter]);
 
   // Set default active clip when list loads or filters change
   useEffect(() => {
@@ -369,6 +376,35 @@ export default function ReviewStation({ onStatusChange }) {
           ))}
         </div>
 
+        {/* Sub-filter for Rejected: All vs Untagged Rejects */}
+        {statusFilter === 'rejected' && (
+          <div className="flex items-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.06] shrink-0">
+            <button
+              onClick={() => setRejectFilter('all')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
+                rejectFilter === 'all'
+                  ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              All Rejected
+            </button>
+            <button
+              onClick={() => setRejectFilter('untagged')}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                rejectFilter === 'untagged'
+                  ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                  : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <span>Untagged Only</span>
+              <span className="text-[10px] px-1.5 py-0.2 bg-amber-500/30 rounded-full font-mono">
+                {rawClips.filter(c => !c.rejection_reason).length}
+              </span>
+            </button>
+          </div>
+        )}
+
         {/* Center: Multi-Select Discard Action Bar */}
         {selectedClipIds.size > 0 && (
           <div className="flex items-center gap-2 bg-rose-500/15 border border-rose-500/40 px-3 py-1 rounded-xl animate-in fade-in zoom-in-95 duration-150">
@@ -558,6 +594,21 @@ export default function ReviewStation({ onStatusChange }) {
                           <span className="truncate max-w-[130px]">{clip.template_name}</span>
                           <span>⏱️ {dur}s</span>
                         </div>
+
+                        {/* Rejection Reason Badge if rejected */}
+                        {clip.status === 'rejected' && (
+                          <div className="mt-1 pl-5 flex items-center justify-between">
+                            {clip.rejection_reason ? (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 border border-rose-500/30 text-rose-300 font-medium">
+                                🏷️ {clip.rejection_reason.replace('_', ' ')}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 border border-amber-500/30 text-amber-300 font-medium">
+                                ⚠️ Untagged Reject
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
@@ -624,6 +675,15 @@ export default function ReviewStation({ onStatusChange }) {
                 <span className="px-2.5 py-1 rounded-lg bg-[#141722] border border-white/[0.08] font-mono text-[#8FD3FF]">
                   ⏱️ {((activeClipSummary.adjusted_end || 30) - (activeClipSummary.adjusted_start || 0)).toFixed(1)}s
                 </span>
+                {activeClipSummary.status === 'rejected' && (
+                  <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs ${
+                    activeClipSummary.rejection_reason 
+                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-300' 
+                      : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
+                  }`}>
+                    {activeClipSummary.rejection_reason ? `🏷️ Reason: ${activeClipSummary.rejection_reason.replace('_', ' ')}` : '⚠️ Untagged Reject'}
+                  </span>
+                )}
               </div>
 
               {feedbackMsg && (
@@ -704,6 +764,38 @@ export default function ReviewStation({ onStatusChange }) {
                     )}
                   </div>
                 </div>
+
+                {/* Retro-Tagging Chips if clip is rejected */}
+                {activeClipSummary.status === 'rejected' && (
+                  <div className="bg-[#141722] border border-white/[0.08] rounded-xl p-3 shrink-0">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-rose-300 flex items-center gap-1.5">
+                        <Trash2 size={12} className="text-rose-400" />
+                        {activeClipSummary.rejection_reason ? 'Update Rejection Reason' : 'Tag Rejection Reason (AI Training)'}
+                      </span>
+                      {activeClipSummary.rejection_reason && (
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Current: <b className="text-white">{activeClipSummary.rejection_reason}</b>
+                        </span>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5">
+                      {REJECTION_REASONS.map((r) => (
+                        <button
+                          key={r.code}
+                          onClick={() => handleTagRejectedClip(activeClipSummary.id, r.code)}
+                          className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                            activeClipSummary.rejection_reason === r.code
+                              ? 'bg-rose-500 text-white border-rose-400 shadow-sm'
+                              : 'bg-white/[0.04] hover:bg-rose-500/20 text-slate-300 hover:text-white border-white/[0.06]'
+                          }`}
+                        >
+                          {r.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Boundary Trimmer Buttons */}
                 <div className="bg-[#141722] border border-white/[0.08] rounded-xl p-2.5 shrink-0">
