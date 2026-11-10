@@ -71,17 +71,20 @@ class WebcamDetector:
             fx, fy, fw, fh = best_face[0:4]
 
             # Streamer webcams typically show head + shoulders inside a rectangular box.
-            # Expand the raw face bounding box symmetrically by ~1.6x horizontally and 2.0x vertically
-            pad_w = fw * 0.8
-            pad_h_top = fh * 0.4
-            pad_h_bot = fh * 1.2
+            # If the face is tiny (e.g. webcam in a huge 1080p stream), ensure minimum sensible webcam dimensions:
+            # Typically a streamer webcam is between 15% and 30% of the stream width, and 20% to 35% of height.
+            target_w = max(fw * 2.8, img_w * 0.16)
+            target_h = max(fh * 3.2, img_h * 0.22)
 
-            cam_x = max(0, fx - pad_w)
-            cam_y = max(0, fy - pad_h_top)
-            cam_w = min(img_w - cam_x, fw + (pad_w * 2))
-            cam_h = min(img_h - cam_y, fh + pad_h_top + pad_h_bot)
+            # Center the crop box on the detected face with slight vertical bias downward for torso/desk
+            face_center_x = fx + (fw / 2.0)
+            face_center_y = fy + (fh / 2.0)
 
-            # Ensure minimum aspect ratio looks like a webcam (between 1:1 and 16:9)
+            cam_x = max(0, min(img_w - target_w, face_center_x - (target_w / 2.0)))
+            cam_y = max(0, min(img_h - target_h, face_center_y - (target_h * 0.35)))
+            cam_w = min(img_w - cam_x, target_w)
+            cam_h = min(img_h - cam_y, target_h)
+
             norm_box = {
                 "x": round(float(cam_x) / img_w, 3),
                 "y": round(float(cam_y) / img_h, 3),
@@ -161,3 +164,4 @@ Return ONLY valid JSON.
             "method": "fallback",
             "description": "No streamer facecam or webcam overlay detected in frame",
         }
+
