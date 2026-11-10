@@ -70,26 +70,44 @@ class WebcamDetector:
 
             fx, fy, fw, fh = best_face[0:4]
 
-            # Streamer webcams typically show head + shoulders inside a rectangular box.
-            # If the face is tiny (e.g. webcam in a huge 1080p stream), ensure minimum sensible webcam dimensions:
-            # Typically a streamer webcam is between 15% and 30% of the stream width, and 20% to 35% of height.
-            target_w = max(fw * 2.8, img_w * 0.16)
-            target_h = max(fh * 3.2, img_h * 0.22)
+            # In the 9:16 layout, the Facecam Top slot is 1080w x 730h (~1.48:1 aspect ratio).
+            # If the crop box is tall and narrow, it will stretch or zoom excessively and cut off the streamer's shoulders.
+            dest_aspect_ratio = 1080.0 / 730.0  # ~1.48
 
-            # Center the crop box on the detected face with slight vertical bias downward for torso/desk
-            face_center_x = fx + (fw / 2.0)
-            face_center_y = fy + (fh / 2.0)
+            # Calculate proper vertical span covering head + shoulders
+            # If the streamer sits anchored at the bottom (e.g. Speed, Jynxzi), extend down to the bottom
+            head_top = max(0, fy - (fh * 0.9))
+            if (fy + fh) > (img_h * 0.65):
+                box_h = img_h - head_top
+                box_y = head_top
+            else:
+                # Floating corner webcam (e.g. CaseOh, xQc)
+                box_h = max(fh * 2.2, img_h * 0.22)
+                box_y = max(0, fy - (fh * 0.6))
 
-            cam_x = max(0, min(img_w - target_w, face_center_x - (target_w / 2.0)))
-            cam_y = max(0, min(img_h - target_h, face_center_y - (target_h * 0.35)))
-            cam_w = min(img_w - cam_x, target_w)
-            cam_h = min(img_h - cam_y, target_h)
+            # Derive width from destination aspect ratio so there is ZERO distortion
+            box_w = min(img_w, box_h * dest_aspect_ratio * (img_h / img_w))
+            face_cx = fx + (fw / 2.0)
+
+            # Anchor intelligently based on corner position
+            if face_cx < (img_w * 0.35):
+                # Streamer is on the left
+                box_x = max(0, face_cx - (box_w * 0.45))
+                if box_x < (img_w * 0.08):
+                    box_x = 0
+            elif face_cx > (img_w * 0.65):
+                # Streamer is on the right
+                box_x = max(0, min(img_w - box_w, face_cx - (box_w * 0.55)))
+                if box_x > (img_w - box_w - (img_w * 0.08)):
+                    box_x = img_w - box_w
+            else:
+                box_x = max(0, min(img_w - box_w, face_cx - (box_w / 2.0)))
 
             norm_box = {
-                "x": round(float(cam_x) / img_w, 3),
-                "y": round(float(cam_y) / img_h, 3),
-                "w": round(float(cam_w) / img_w, 3),
-                "h": round(float(cam_h) / img_h, 3),
+                "x": round(float(box_x) / img_w, 3),
+                "y": round(float(box_y) / img_h, 3),
+                "w": round(float(box_w) / img_w, 3),
+                "h": round(float(box_h) / img_h, 3),
             }
 
             return {
