@@ -686,7 +686,7 @@ export default function MobileStage({
 
           {/* Aspect Ratio Lock / Unlock */}
           <button
-            onClick={() => handleUpdateLayer(selectedLayer.id, { aspect_lock: !selectedLayer.aspect_lock })}
+            onClick={() => updateLayer(selectedLayer.id, { aspect_lock: !selectedLayer.aspect_lock })}
             title={selectedLayer.aspect_lock ? "Unlock aspect ratio" : "Lock aspect ratio"}
             className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
           >
@@ -701,7 +701,7 @@ export default function MobileStage({
               const srcH = selectedLayer.src?.h || 1;
               const srcAspect = (srcW * 16) / (srcH * 9);
               const newH = Math.min(1.0 - curDst.y, (curDst.w * 9) / (srcAspect * 16));
-              handleUpdateLayer(selectedLayer.id, {
+              updateLayer(selectedLayer.id, {
                 dst: {
                   ...curDst,
                   h: Math.round(newH * 1000) / 1000
