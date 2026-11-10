@@ -44,6 +44,7 @@ export default function MobileStage({
   const srcCanvasRef = useRef(null);
   const dstCanvasRef = useRef(null);
   const [dragState, setDragState] = useState(null);
+  const [captionDragState, setCaptionDragState] = useState(null);
   const lastSnapVibrate = useRef(0);
 
   const triggerHaptic = useCallback(() => {
@@ -239,6 +240,69 @@ export default function MobileStage({
       window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [dragState, updateLayer, triggerHaptic]);
+
+  // Caption drag handling for Mobile Stage (Top z-index interactive hit box)
+  const handleCaptionPointerDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+    onSelectCaption?.();
+
+    const canvasElem = dstCanvasRef.current;
+    if (!canvasElem) return;
+    const rect = canvasElem.getBoundingClientRect();
+    const curPos = captionsConfig?.position || { x: 0.5, y: 0.76, max_width: 0.85 };
+
+    setCaptionDragState({
+      startX: e.clientX,
+      startY: e.clientY,
+      canvasW: rect.width,
+      canvasH: rect.height,
+      origX: curPos.x,
+      origY: curPos.y,
+    });
+  };
+
+  useEffect(() => {
+    const handleCaptionMove = (e) => {
+      if (!captionDragState) return;
+      const deltaXNorm = (e.clientX - captionDragState.startX) / captionDragState.canvasW;
+      const deltaYNorm = (e.clientY - captionDragState.startY) / captionDragState.canvasH;
+
+      let newX = Math.max(0.1, Math.min(0.9, captionDragState.origX + deltaXNorm));
+      let newY = Math.max(0.08, Math.min(0.92, captionDragState.origY + deltaYNorm));
+
+      if (Math.abs(newX - 0.5) < 0.02) {
+        newX = 0.5;
+        triggerHaptic();
+      }
+      if (Math.abs(newY - 0.76) < 0.02) {
+        newY = 0.76;
+        triggerHaptic();
+      }
+
+      if (captionsConfig?.onChangePos) {
+        captionsConfig.onChangePos({
+          x: Math.round(newX * 1000) / 1000,
+          y: Math.round(newY * 1000) / 1000,
+        });
+      }
+    };
+
+    const handleCaptionUp = () => {
+      if (captionDragState) setCaptionDragState(null);
+    };
+
+    if (captionDragState) {
+      window.addEventListener('pointermove', handleCaptionMove, { passive: false });
+      window.addEventListener('pointerup', handleCaptionUp);
+      window.addEventListener('pointercancel', handleCaptionUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handleCaptionMove);
+      window.removeEventListener('pointerup', handleCaptionUp);
+      window.removeEventListener('pointercancel', handleCaptionUp);
+    };
+  }, [captionDragState, captionsConfig, triggerHaptic]);
 
   // Layer quick operations for floating mini-toolbar
   const handleToggleLock = (layerId) => {
@@ -557,6 +621,24 @@ export default function MobileStage({
               </div>
             );
           })}
+
+          {/* Top-Z-Index Interactive Draggable Caption Hit Box for Mobile Stage */}
+          {captionsConfig && (
+            <div
+              style={{
+                top: `${((captionsConfig.position?.y ?? 0.76)) * 100}%`,
+                left: `${((captionsConfig.position?.x ?? 0.5)) * 100}%`,
+                width: `${((captionsConfig.position?.max_width ?? 0.85)) * 100}%`,
+              }}
+              onPointerDown={handleCaptionPointerDown}
+              className="absolute -translate-x-1/2 -translate-y-1/2 z-50 h-12 border border-dashed border-[#8FD3FF]/70 active:border-[#8FD3FF] active:bg-[#8FD3FF]/15 cursor-move rounded-lg flex items-center justify-center transition-all touch-none shadow-lg"
+              title="Drag directly on mobile to reposition subtitles"
+            >
+              <span className="text-[10px] font-mono font-bold text-[#8FD3FF] bg-black/85 px-2 py-0.5 rounded border border-white/20 pointer-events-none shadow">
+                Subtitles ({Math.round((captionsConfig.position?.y ?? 0.76) * 100)}%)
+              </span>
+            </div>
+          )}
         </div>
       ) : (
         /* MAIN VIEW = 16:9 SOURCE CROP SELECTOR */

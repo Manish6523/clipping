@@ -18,6 +18,9 @@ import {
   Play,
   Loader2,
   Upload,
+  Download,
+  FileDown,
+  FileUp,
   X,
   Lock,
   Unlock
@@ -239,6 +242,65 @@ export default function TemplateStudio() {
     }
   };
 
+  // Export current template as a portable .json file
+  const handleExportTemplate = () => {
+    const payload = buildTemplatePayload();
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(payload, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `${templateName.trim() || 'template'}.autoclip.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast(`Exported "${templateName}.autoclip.json"`);
+  };
+
+  // Import a template .json file and automatically register it
+  const handleImportTemplate = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const imported = JSON.parse(event.target.result);
+        if (!imported || !imported.name) {
+          throw new Error('Invalid template file: missing name property.');
+        }
+
+        // Save imported template to server
+        await saveTemplate(imported);
+
+        // Apply imported template parameters to the studio canvas
+        setTemplateName(imported.name);
+        setDescription(imported.description || '');
+        setMinScore(imported.min_score || 65);
+
+        if (imported.layout) {
+          setLayoutState(imported.layout);
+        }
+
+        if (imported.subtitles) {
+          if (imported.subtitles.font_name) setFontFamily(imported.subtitles.font_name);
+          if (imported.subtitles.font_size) setFontSize(imported.subtitles.font_size);
+          if (imported.subtitles.animation) setAnimationPreset(imported.subtitles.animation);
+          if (imported.subtitles.position && typeof imported.subtitles.position.y === 'number') {
+            setCaptionPositionY(Math.round(imported.subtitles.position.y * 100));
+          } else if (imported.subtitles.margin_v) {
+            setCaptionPositionY(Math.round((1 - imported.subtitles.margin_v / 1920) * 100));
+          }
+        }
+
+        await loadExistingTemplates();
+        setIsDirty(false);
+        showToast(`Template "${imported.name}" successfully imported & loaded!`);
+      } catch (err) {
+        alert('Failed to import template: ' + (err.message || 'Invalid JSON format'));
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = ''; // Reset input to allow re-uploading same file if edited
+  };
+
   const handleCustomImageUpload = (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -396,6 +458,31 @@ export default function TemplateStudio() {
             {testingSample ? <Loader2 size={11} className="animate-spin text-amber-400" /> : <Play size={11} className="text-amber-400" />}
             <span className="hidden sm:inline">Test Render</span>
           </button>
+
+          {/* Export Template Button */}
+          <button
+            onClick={handleExportTemplate}
+            title="Export template as .json file"
+            className="flex items-center gap-1 bg-[#0E1118] hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08]"
+          >
+            <FileDown size={11} className="text-[#8FD3FF]" />
+            <span className="hidden sm:inline">Export</span>
+          </button>
+
+          {/* Import Template Button */}
+          <label
+            title="Import template from .json file"
+            className="flex items-center gap-1 bg-[#0E1118] hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08] cursor-pointer"
+          >
+            <FileUp size={11} className="text-[#8FD3FF]" />
+            <span className="hidden sm:inline">Import</span>
+            <input
+              type="file"
+              accept=".json,application/json"
+              onChange={handleImportTemplate}
+              className="hidden"
+            />
+          </label>
 
           <button
             onClick={handleNewTemplate}
