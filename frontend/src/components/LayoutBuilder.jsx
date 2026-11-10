@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { calculateLayerGeometry } from '../utils/layoutMath';
 import { renderCaptionsToCanvas } from '../utils/captionRenderer';
+import { getPresets } from '../api';
 
 const LAYER_COLORS = [
   '#FFB020', '#00F0FF', '#A855F7', '#EC4899', 
@@ -191,6 +192,23 @@ export default function LayoutBuilder({
   const [dragState, setDragState] = useState(null);
   const [captionDragState, setCaptionDragState] = useState(null);
 
+  // Dynamic user presets from /api/presets
+  const [dynamicPresets, setDynamicPresets] = useState([]);
+
+  useEffect(() => {
+    let isMounted = true;
+    getPresets()
+      .then((data) => {
+        if (isMounted && Array.isArray(data)) {
+          setDynamicPresets(data);
+        }
+      })
+      .catch((err) => console.debug('Failed to fetch dynamic presets for LayoutBuilder:', err));
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // References
   const srcCanvasRef = useRef(null);
   const dstCanvasRef = useRef(null);
@@ -324,6 +342,27 @@ export default function LayoutBuilder({
   };
 
   const handleSelectPreset = (presetKey) => {
+    // 1. Check if dynamic saved preset from /api/presets
+    if (presetKey.startsWith('db_')) {
+      const presetId = parseInt(presetKey.replace('db_', ''), 10);
+      const found = dynamicPresets.find((p) => p.id === presetId);
+      if (found && found.data) {
+        const pData = found.data;
+        const targetLayout = pData.layout || (pData.layers ? pData : null);
+        if (targetLayout && targetLayout.layers) {
+          updateLayout({
+            schema: 2,
+            canvas: targetLayout.canvas || { w: 1080, h: 1920 },
+            background: targetLayout.background ? { ...targetLayout.background } : { type: 'solid', color: '#000000', blur: 0, dim: 0 },
+            layers: targetLayout.layers.map((l) => ({ ...l, id: l.id || `l_${Date.now()}_${(l.name || 'layer').toLowerCase()}` }))
+          });
+          setSelectedLayerId(null);
+          return;
+        }
+      }
+    }
+
+    // 2. Check static starter presets
     const starter = PRESET_STARTERS[presetKey];
     if (!starter) return;
     updateLayout({
@@ -697,7 +736,7 @@ export default function LayoutBuilder({
               <Layers size={14} className="text-[#8FD3FF]" /> Layout Builder (Schema v2)
             </span>
 
-            {/* Preset Starters */}
+            {/* Preset Starters & Saved Studio Presets */}
             <div className="flex items-center gap-1 bg-[#13151A] px-2 py-0.5 rounded-lg border border-white/10">
               <span className="text-[10px] text-slate-400 font-semibold uppercase">Preset:</span>
               <select
@@ -705,16 +744,29 @@ export default function LayoutBuilder({
                   if (e.target.value) handleSelectPreset(e.target.value);
                 }}
                 value=""
-                className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer"
+                className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[260px] truncate"
               >
                 <option value="" disabled className="bg-slate-900 text-slate-400">
                   Choose Preset...
                 </option>
-                {Object.values(PRESET_STARTERS).map((p) => (
-                  <option key={p.id} value={p.id} className="bg-slate-900 text-white">
-                    {p.label}
-                  </option>
-                ))}
+                {/* 1. Custom Presets from Preset Studio */}
+                {dynamicPresets.length > 0 && (
+                  <optgroup label="Saved Presets" className="bg-slate-900 text-[#8FD3FF] font-bold">
+                    {dynamicPresets.map((p) => (
+                      <option key={`db_${p.id}`} value={`db_${p.id}`} className="bg-slate-900 text-white font-normal">
+                        {p.name} {p.channel_id ? `(@${p.channel_id})` : ''}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {/* 2. Built-in Starters */}
+                <optgroup label="Starter Layouts" className="bg-slate-900 text-slate-400 font-bold">
+                  {Object.values(PRESET_STARTERS).map((p) => (
+                    <option key={p.id} value={p.id} className="bg-slate-900 text-white font-normal">
+                      {p.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           </div>

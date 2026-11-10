@@ -125,7 +125,7 @@ async def get_clips_list(request: web.Request) -> web.Response:
     query = """
         SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name,
                c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end,
-               c.status, c.thumbnail_path, c.rendered_video_path, c.created_at,
+               c.status, c.thumbnail_path, c.source_video_path, c.rendered_video_path, c.created_at,
                c.ai_start, c.ai_end, c.flags,
                (SELECT json_extract(f.payload_json, '$.reason') 
                 FROM clip_feedback_events f 
@@ -181,7 +181,10 @@ async def get_clips_list(request: web.Request) -> web.Response:
             else:
                 d["video_url"] = None
 
-            # Strip full path to keep JSON payload minimal
+            # Strip full path to keep JSON payload minimal, but expose boolean flag whether raw source video exists
+            svp = d.get("source_video_path")
+            d["has_raw_video"] = bool(svp and Path(svp).exists())
+            d.pop("source_video_path", None)
             d.pop("thumbnail_path", None)
             clips.append(d)
 
@@ -219,6 +222,8 @@ async def get_clip_by_id(request: web.Request) -> web.Response:
         clip["video_url"] = None
 
     clip["source_url"] = f"/api/clips/{clip_id}/source"
+    svp = clip.get("source_video_path")
+    clip["has_raw_video"] = bool(svp and Path(svp).exists())
     return web.json_response(clip)
 
 

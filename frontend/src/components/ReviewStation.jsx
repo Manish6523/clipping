@@ -873,12 +873,15 @@ export default function ReviewStation({ onStatusChange }) {
 
               {/* Bottom Action Buttons (Fixed Footer) */}
               <div className="grid grid-cols-2 sm:grid-cols-6 gap-2 pt-2 border-t border-white/[0.06] shrink-0">
-                <a
-                  href={`/clips/${activeClipSummary.id}/editor`}
-                  className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-[#8FD3FF]/20"
-                >
-                  <Maximize2 size={13} /> Full Editor
-                </a>
+                {/* Full Editor button: Only displayed when original raw source video exists on disk */}
+                {Boolean(clipData?.has_raw_video ?? activeClipSummary?.has_raw_video) && (
+                  <a
+                    href={`/clips/${activeClipSummary.id}/editor`}
+                    className="col-span-2 sm:col-span-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] hover:from-[#A9B8FF] hover:to-[#8FD3FF] text-[#0A0B0E] font-extrabold py-2 px-2 rounded-xl text-xs transition-all shadow-md shadow-[#8FD3FF]/20"
+                  >
+                    <Maximize2 size={13} /> Full Editor
+                  </a>
+                )}
                 <button
                   onClick={handleMarkGreat}
                   disabled={loading}
