@@ -19,6 +19,7 @@ const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
 const PresetStudio = lazy(() => import('./components/PresetStudio'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
+const WebcamLab = lazy(() => import('./components/WebcamLab'));
 
 function AppLayout() {
   const [status, setStatus] = useState({});
@@ -175,6 +176,7 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="logs" element={<LogStreamer />} />
         <Route path="quickclip" element={<QuickClip />} />
+        <Route path="webcam-lab" element={<WebcamLab />} />
       </Route>
 
       {/* Dedicated Full-Screen Clip Editor Route */}

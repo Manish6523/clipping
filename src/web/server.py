@@ -161,6 +161,7 @@ class WebUIServer:
         if dist_assets.exists():
             self.app.router.add_static("/assets", path=str(dist_assets), name="frontend_assets", show_index=False)
 
+        self.app.router.add_post("/api/detect/webcam", self.handle_detect_webcam)
         self.app.router.add_get("/api/pipeline/runs", self.handle_get_pipeline_runs)
         self.app.router.add_get("/api/pipeline/live-hypes", self.handle_get_live_hypes)
         self.app.router.add_post("/api/pipeline/live-hypes/{id}/force-render", self.handle_force_render_hype)
@@ -724,6 +725,41 @@ class WebUIServer:
         }
         return web.json_response({"suggested_person": norm_box})
 
+    async def handle_detect_webcam(self, request: web.Request) -> web.Response:
+        """Run webcam / facecam detection on an uploaded stream frame or base64 image."""
+        try:
+            reader = await request.multipart() if request.content_type.startswith("multipart/") else None
+            image_bytes = None
+
+            if reader:
+                field = await reader.next()
+                if field and field.name == "image":
+                    image_bytes = await field.read()
+            else:
+                data = await request.json()
+                if data.get("image_base64"):
+                    import base64
+                    raw_b64 = data["image_base64"]
+                    if "," in raw_b64:
+                        raw_b64 = raw_b64.split(",", 1)[1]
+                    image_bytes = base64.b64decode(raw_b64)
+                elif data.get("image_url"):
+                    import urllib.request
+                    req = urllib.request.Request(data["image_url"], headers={"User-Agent": "AutoClip/2.0"})
+                    with urllib.request.urlopen(req, timeout=10) as resp:
+                        image_bytes = resp.read()
+
+            if not image_bytes:
+                return web.json_response({"error": "No image data provided"}, status=400)
+
+            from src.compositor.webcam_detector import WebcamDetector
+            detector = WebcamDetector()
+            result = await detector.detect(image_bytes)
+            return web.json_response(result)
+        except Exception as e:
+            logger.error("Webcam detection endpoint error: %s", e)
+            return web.json_response({"has_webcam": False, "box": None, "error": str(e)}, status=500)
+
     async def handle_render_from_edl(self, request: web.Request) -> web.Response:
         """Execute full FFmpeg render directly from EDL specifications."""
         clip_id = int(request.match_info["id"])
@@ -895,8 +931,14 @@ class WebUIServer:
         yt_results = []
         ig_res = {"success": False, "error": "Not configured"}
 
+        # Gather results
+        all_errors = []
         for (kind, key), res in zip(task_types, results):
             formatted_res = res if not isinstance(res, Exception) else {"success": False, "error": str(res), "account_key": key}
+            if not formatted_res.get("success"):
+                err_text = formatted_res.get("error") or "Upload rejected"
+                all_errors.append(f"{kind.upper()} ({key}): {err_text}")
+
             if kind == "youtube":
                 yt_results.append(formatted_res)
             elif kind == "instagram":
@@ -904,6 +946,7 @@ class WebUIServer:
 
         has_yt_success = any(r.get("success") for r in yt_results)
         overall_success = has_yt_success or ig_res.get("success", False)
+
         if overall_success:
             await update_clip_status(clip_id, "published")
             try:
@@ -918,8 +961,16 @@ class WebUIServer:
             except Exception as fb_err:
                 logger.warning("Feedback logging failed on publish: %s", fb_err)
 
+        # Return realistic success/failure and clear error message
+        primary_error = None
+        if not overall_success and all_errors:
+            primary_error = " | ".join(all_errors)
+        elif not overall_success:
+            primary_error = "No publishing destinations succeeded."
+
         return web.json_response({
             "success": overall_success,
+            "error": primary_error,
             "youtube": yt_results if yt_results else {"success": False, "error": "No mapped YouTube account"},
             "instagram": ig_res,
         })
