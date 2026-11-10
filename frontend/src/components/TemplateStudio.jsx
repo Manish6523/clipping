@@ -425,7 +425,13 @@ export default function TemplateStudio() {
                   fontSize,
                   color: primaryColor,
                   highlight: highlightColor,
-                  position: { y: captionPositionY / 100 }
+                  position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
+                  onChangePos: (newPos) => {
+                    if (newPos && typeof newPos.y === 'number') {
+                      setCaptionPositionY(Math.round(newPos.y * 100));
+                      setIsDirty(true);
+                    }
+                  }
                 }}
                 selectedLayerId={selectedLayerId}
                 onSelectLayer={setSelectedLayerId}
@@ -465,14 +471,48 @@ export default function TemplateStudio() {
                 fontSize,
                 color: primaryColor,
                 highlight: highlightColor,
-                position: { y: captionPositionY / 100 }
+                position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
+                onChangePos: (newPos) => {
+                  if (newPos && typeof newPos.y === 'number') {
+                    setCaptionPositionY(Math.round(newPos.y * 100));
+                    setIsDirty(true);
+                  }
+                }
               }}
+              selectedLayerId={selectedLayerId}
+              onSelectLayer={setSelectedLayerId}
               mode="template"
               showToolbar={false}
               showBottomPanel={false}
             />
           </div>
         )}
+      </div>
+
+      {/* Quick Frame Selector Chips Bar (Works for both desktop and mobile) */}
+      <div className="h-8 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          <span className="text-[9px] uppercase font-bold text-slate-500 mr-1 flex items-center gap-1">
+            <Layers size={11} className="text-[#8FD3FF]" /> Frames / Layers:
+          </span>
+          {(layoutState.layers || []).map((l) => (
+            <button
+              key={l.id}
+              onClick={() => setSelectedLayerId(l.id)}
+              className={`h-5 px-2 rounded text-[10px] font-bold flex items-center gap-1 shrink-0 border transition-all ${
+                selectedLayerId === l.id
+                  ? 'bg-white/20 border-white text-white shadow-sm'
+                  : 'bg-white/[0.04] border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+              }`}
+            >
+              <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
+              <span>{l.name}</span>
+            </button>
+          ))}
+        </div>
+        <span className="text-[9px] text-slate-500 hidden sm:inline">
+          Click frame chip to select boxes nested inside
+        </span>
       </div>
 
       {/* Slim Responsive Bottom Form Strip */}
@@ -549,6 +589,34 @@ export default function TemplateStudio() {
               className="w-16 accent-[#8FD3FF] cursor-pointer"
             />
             <span className="font-mono text-slate-400 text-[10px] w-6">{captionPositionY}%</span>
+          </div>
+
+          {/* Background Mode Toggle: Solid Black vs Blurred 9:16 */}
+          <div className="flex items-center gap-1 pl-2 border-l border-white/10">
+            <span className="text-[9px] font-bold uppercase text-[#8B90A0]">BG:</span>
+            <button
+              type="button"
+              onClick={() => {
+                const currentType = layoutState.background?.type || 'solid';
+                const nextType = currentType === 'blur' ? 'solid' : 'blur';
+                setLayoutState((prev) => ({
+                  ...prev,
+                  background: nextType === 'blur'
+                    ? { type: 'blur', color: '#000000', blur: 35, dim: 0.35 }
+                    : { type: 'solid', color: '#000000', blur: 0, dim: 0.0 }
+                }));
+                setIsDirty(true);
+                showToast(`Background set to ${nextType === 'blur' ? 'Blurred 9:16' : 'Solid Black'}`);
+              }}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border ${
+                layoutState.background?.type === 'blur'
+                  ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF] shadow-sm'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
+              title="Toggle between Blurred video backdrop and Solid black background"
+            >
+              {layoutState.background?.type === 'blur' ? '💧 Blur BG' : '⬛ Black BG'}
+            </button>
           </div>
 
           <div className="hidden lg:flex items-center gap-1 pl-2 border-l border-white/10">
