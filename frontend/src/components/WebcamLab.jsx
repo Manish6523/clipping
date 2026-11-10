@@ -13,6 +13,7 @@ import {
   Eye
 } from 'lucide-react';
 import axios from 'axios';
+import { api } from '../api';
 
 export default function WebcamLab() {
   const [imageSrc, setImageSrc] = useState(null);
@@ -69,7 +70,7 @@ export default function WebcamLab() {
     setStatusMessage('Analyzing frame with hybrid vision detector...');
     try {
       const payload = isUrl ? { image_url: imgSource } : { image_base64: imgSource };
-      const res = await axios.post('/api/detect/webcam', payload);
+      const res = await api.post('/api/detect/webcam', payload);
       setDetectionResult(res.data);
 
       if (res.data.has_webcam && res.data.box) {
