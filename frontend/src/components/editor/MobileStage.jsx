@@ -34,6 +34,7 @@ export default function MobileStage({
   onSelectCaption,
   showSafeArea = false,
   isPhone = true,
+  mode = 'clip',
 }) {
   // 'output' means 9:16 is main stage, 16:9 is PiP thumbnail
   // 'source' means 16:9 is main stage, 9:16 is PiP thumbnail
@@ -296,7 +297,86 @@ export default function MobileStage({
     }
   }, [sourceMediaUrl]);
 
-  // 60FPS Composite 9:16 canvas loop
+  const pipDstCanvasRef = useRef(null);
+
+  // Keep PiP 9:16 mini preview synced when mainView === 'source'
+  useEffect(() => {
+    if (mainView !== 'source') return;
+    const canvas = pipDstCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    let animId = null;
+
+    const renderPip = () => {
+      const cw = canvas.width;
+      const ch = canvas.height;
+      ctx.clearRect(0, 0, cw, ch);
+
+      const media = (videoRef?.current && videoRef.current.readyState >= 1)
+        ? videoRef.current
+        : (imgRef.current && imgRef.current.complete ? imgRef.current : null);
+
+      // Background
+      const bg = layout?.background || { type: 'solid', color: '#000000' };
+      if (bg.type === 'solid' || !media) {
+        ctx.fillStyle = bg.color || '#000000';
+        ctx.fillRect(0, 0, cw, ch);
+      } else if (bg.type === 'blur' && media) {
+        ctx.save();
+        ctx.filter = `blur(${bg.blur || 30}px)`;
+        ctx.drawImage(media, -cw * 0.5, 0, cw * 2.0, ch);
+        ctx.restore();
+        if (bg.dim > 0) {
+          ctx.fillStyle = `rgba(0,0,0,${bg.dim || 0.35})`;
+          ctx.fillRect(0, 0, cw, ch);
+        }
+      }
+
+      // Render layers
+      for (const layer of layers) {
+        if (!layer.visible) continue;
+        const geo = calculateLayerGeometry(layer, 1920, 1080, cw, ch);
+        const dr = geo.dst_rect;
+        const sc = geo.src_crop || geo.src_rect;
+        const sz = geo.scale_size || geo.scaled_size;
+
+        if (media && sc && dr && sz) {
+          ctx.save();
+          ctx.globalAlpha = layer.style?.opacity ?? 1.0;
+          if (layer.style?.shape === 'circle') {
+            ctx.beginPath();
+            ctx.arc(dr.x + dr.w / 2, dr.y + dr.h / 2, Math.min(dr.w, dr.h) / 2, 0, Math.PI * 2);
+            ctx.clip();
+          }
+          if (geo.fit === 'cover' && geo.inner_crop) {
+            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
+          } else {
+            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x, dr.y, dr.w, dr.h);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Render captions on PiP
+      const curTime = videoRef?.current && !videoRef.current.paused ? videoRef.current.currentTime : (currentTime || 0);
+      renderCaptionsToCanvas({
+        ctx,
+        canvasW: cw,
+        canvasH: ch,
+        words,
+        currentTime: curTime,
+        captionsConfig,
+        isTemplateStudio: mode === 'template',
+      });
+
+      animId = requestAnimationFrame(renderPip);
+    };
+
+    renderPip();
+    return () => {
+      if (animId) cancelAnimationFrame(animId);
+    };
+  }, [mainView, layout, layers, videoRef, captionsConfig, words, currentTime, mode]);
   useEffect(() => {
     const canvas = dstCanvasRef.current;
     if (!canvas) return;
@@ -312,9 +392,21 @@ export default function MobileStage({
         ? videoRef.current
         : (imgRef.current && imgRef.current.complete ? imgRef.current : null);
 
-      // Solid background
-      ctx.fillStyle = layout?.background?.color || '#000000';
-      ctx.fillRect(0, 0, cw, ch);
+      // Background
+      const bg = layout?.background || { type: 'solid', color: '#000000' };
+      if (bg.type === 'solid' || !media) {
+        ctx.fillStyle = bg.color || '#000000';
+        ctx.fillRect(0, 0, cw, ch);
+      } else if (bg.type === 'blur' && media) {
+        ctx.save();
+        ctx.filter = `blur(${bg.blur || 30}px)`;
+        ctx.drawImage(media, -cw * 0.5, 0, cw * 2.0, ch);
+        ctx.restore();
+        if (bg.dim > 0) {
+          ctx.fillStyle = `rgba(0,0,0,${bg.dim || 0.35})`;
+          ctx.fillRect(0, 0, cw, ch);
+        }
+      }
 
       // Render layers
       for (const layer of layers) {
@@ -350,6 +442,7 @@ export default function MobileStage({
         words,
         currentTime: curTime,
         captionsConfig,
+        isTemplateStudio: mode === 'template',
       });
 
       // Safe areas overlay
@@ -704,8 +797,14 @@ export default function MobileStage({
           </div>
         ) : (
           /* PiP displays 9:16 output thumbnail */
-          <div className="w-full h-full relative flex items-center justify-center">
-            <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+          <div className="w-full h-full relative flex items-center justify-center bg-black">
+            <canvas
+              ref={pipDstCanvasRef}
+              width={270}
+              height={480}
+              className="w-full h-full object-contain pointer-events-none"
+            />
+            <div className="absolute inset-0 bg-black/15 group-hover:bg-transparent flex items-center justify-center">
               <span className="p-1 rounded-full bg-black/60 text-white shadow">
                 <Repeat size={12} />
               </span>

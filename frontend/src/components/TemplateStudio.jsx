@@ -438,24 +438,8 @@ export default function TemplateStudio() {
                 selectedLayerId={selectedLayerId}
                 onSelectLayer={setSelectedLayerId}
                 isPhone={true}
+                mode="template"
               />
-            </div>
-
-            {/* Quick Frame Selector Chips */}
-            <div className="h-9 px-2 bg-[#0A0B0E] border-t border-white/[0.06] flex items-center gap-1.5 overflow-x-auto shrink-0">
-              <span className="text-[9px] uppercase font-bold text-slate-500 mr-1">Frames:</span>
-              {(layoutState.layers || []).map((l) => (
-                <button
-                  key={l.id}
-                  onClick={() => setSelectedLayerId(l.id)}
-                  className={`h-6 px-2 rounded-md text-[10px] font-bold flex items-center gap-1 shrink-0 border ${
-                    selectedLayerId === l.id ? 'bg-white/15 border-white text-white' : 'bg-white/[0.04] border-white/5 text-slate-400'
-                  }`}
-                >
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
-                  <span>{l.name}</span>
-                </button>
-              ))}
             </div>
           </div>
         ) : (
