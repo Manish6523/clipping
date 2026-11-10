@@ -745,7 +745,12 @@ class WebUIServer:
                     image_bytes = base64.b64decode(raw_b64)
                 elif data.get("image_url"):
                     import urllib.request
-                    req = urllib.request.Request(data["image_url"], headers={"User-Agent": "AutoClip/2.0"})
+                    target_url = data["image_url"]
+                    if target_url.startswith("/"):
+                        # Relative URL, resolve to localhost
+                        host_header = request.headers.get("Host", "127.0.0.1:8080")
+                        target_url = f"http://{host_header}{target_url}"
+                    req = urllib.request.Request(target_url, headers={"User-Agent": "AutoClip/2.0"})
                     with urllib.request.urlopen(req, timeout=10) as resp:
                         image_bytes = resp.read()
 

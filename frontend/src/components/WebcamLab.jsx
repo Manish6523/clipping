@@ -50,7 +50,18 @@ export default function WebcamLab() {
     setImageSrc(url);
     setDetectionResult(null);
     setWebcamBox(null);
-    runDetection(url, true);
+    try {
+      // Fetch image locally and convert to Base64 to ensure 100% reliable detection without CORS or relative URL issues
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        runDetection(reader.result, false);
+      };
+      reader.readAsDataURL(blob);
+    } catch {
+      runDetection(url, true);
+    }
   };
 
   const runDetection = async (imgSource, isUrl = false) => {
@@ -323,3 +334,4 @@ export default function WebcamLab() {
     </div>
   );
 }
+
