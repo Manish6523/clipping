@@ -1,20 +1,20 @@
 import React, { useRef, useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  Plus, 
-  Trash2, 
-  Eye, 
-  EyeOff, 
-  Lock, 
-  Unlock, 
-  Copy, 
-  Move, 
-  ArrowUp, 
-  ArrowDown, 
-  Maximize2, 
-  RotateCcw, 
+import {
+  Plus,
+  Trash2,
+  Eye,
+  EyeOff,
+  Lock,
+  Unlock,
+  Copy,
+  Move,
+  ArrowUp,
+  ArrowDown,
+  Maximize2,
+  RotateCcw,
   RotateCw,
-  ShieldAlert, 
-  Check, 
+  ShieldAlert,
+  Check,
   Sparkles,
   Layers,
   Settings,
@@ -31,7 +31,7 @@ import { renderCaptionsToCanvas } from '../utils/captionRenderer';
 import { getPresets } from '../api';
 
 const LAYER_COLORS = [
-  '#FFB020', '#00F0FF', '#A855F7', '#EC4899', 
+  '#FFB020', '#00F0FF', '#A855F7', '#EC4899',
   '#10B981', '#F59E0B', '#3B82F6', '#EF4444'
 ];
 
@@ -547,7 +547,7 @@ export default function LayoutBuilder({
     if (e.target.setPointerCapture && e.pointerId) {
       try {
         e.target.setPointerCapture(e.pointerId);
-      } catch (err) {}
+      } catch (err) { }
     }
 
     setDragState({
@@ -778,9 +778,8 @@ export default function LayoutBuilder({
                 onClick={handleUndo}
                 disabled={history.length === 0}
                 title="Undo (Ctrl+Z)"
-                className={`p-1.5 rounded text-xs transition-all ${
-                  history.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
-                }`}
+                className={`p-1.5 rounded text-xs transition-all ${history.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+                  }`}
               >
                 <RotateCcw size={13} />
               </button>
@@ -788,9 +787,8 @@ export default function LayoutBuilder({
                 onClick={handleRedo}
                 disabled={redoStack.length === 0}
                 title="Redo (Ctrl+Shift+Z)"
-                className={`p-1.5 rounded text-xs transition-all ${
-                  redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
-                }`}
+                className={`p-1.5 rounded text-xs transition-all ${redoStack.length > 0 ? 'text-slate-200 hover:text-white hover:bg-white/10 cursor-pointer' : 'text-slate-600 cursor-not-allowed opacity-40'
+                  }`}
               >
                 <RotateCw size={13} />
               </button>
@@ -818,18 +816,16 @@ export default function LayoutBuilder({
 
             <button
               onClick={() => setShowSafeArea(!showSafeArea)}
-              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
-                showSafeArea ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-              }`}
+              className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${showSafeArea ? 'bg-amber-500/20 border-amber-500/40 text-amber-300' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
             >
               <Smartphone size={12} /> Safe Areas
             </button>
 
             <button
               onClick={() => setEnableSnapping(!enableSnapping)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${
-                enableSnapping ? 'bg-[#8FD3FF]/15 border-[#8FD3FF]/40 text-[#8FD3FF]' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-              }`}
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${enableSnapping ? 'bg-[#8FD3FF]/15 border-[#8FD3FF]/40 text-[#8FD3FF]' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
             >
               Snap: {enableSnapping ? 'ON' : 'OFF'}
             </button>
@@ -887,123 +883,121 @@ export default function LayoutBuilder({
                 <div className="text-slate-600 text-xs">No media loaded</div>
               )}
 
-            {/* Source Crop Boxes Overlay */}
-            {layers.map((layer) => {
-              if (!layer.visible) return null;
-              const isSelected = selectedLayerId === layer.id;
-              const srcRect = layer.src || { x: 0, y: 0, w: 1, h: 1 };
-              const dstRect = layer.dst || { x: 0, y: 0, w: 1, h: 1 };
-              const { x, y, w, h } = srcRect;
+              {/* Source Crop Boxes Overlay */}
+              {layers.map((layer) => {
+                if (!layer.visible) return null;
+                const isSelected = selectedLayerId === layer.id;
+                const srcRect = layer.src || { x: 0, y: 0, w: 1, h: 1 };
+                const dstRect = layer.dst || { x: 0, y: 0, w: 1, h: 1 };
+                const { x, y, w, h } = srcRect;
 
-              // Calculate cut-off shading for cover fit
-              const cropAspect = ((w || 1) * 1920) / ((h || 1) * 1080);
-              const dstAspect = ((dstRect.w || 1) * 1080) / ((dstRect.h || 1) * 1920);
-              const fit = (layer.fit || 'cover').toLowerCase();
-              
-              let cutLeftPct = 0;
-              let cutRightPct = 0;
-              let cutTopPct = 0;
-              let cutBottomPct = 0;
+                // Calculate cut-off shading for cover fit
+                const cropAspect = ((w || 1) * 1920) / ((h || 1) * 1080);
+                const dstAspect = ((dstRect.w || 1) * 1080) / ((dstRect.h || 1) * 1920);
+                const fit = (layer.fit || 'cover').toLowerCase();
 
-              if (fit === 'cover') {
-                if (cropAspect > dstAspect) {
-                  const cutFraction = Math.max(0, (1 - dstAspect / cropAspect) / 2);
-                  cutLeftPct = cutFraction * 100;
-                  cutRightPct = cutFraction * 100;
-                } else if (cropAspect < dstAspect) {
-                  const cutFraction = Math.max(0, (1 - cropAspect / dstAspect) / 2);
-                  cutTopPct = cutFraction * 100;
-                  cutBottomPct = cutFraction * 100;
+                let cutLeftPct = 0;
+                let cutRightPct = 0;
+                let cutTopPct = 0;
+                let cutBottomPct = 0;
+
+                if (fit === 'cover') {
+                  if (cropAspect > dstAspect) {
+                    const cutFraction = Math.max(0, (1 - dstAspect / cropAspect) / 2);
+                    cutLeftPct = cutFraction * 100;
+                    cutRightPct = cutFraction * 100;
+                  } else if (cropAspect < dstAspect) {
+                    const cutFraction = Math.max(0, (1 - cropAspect / dstAspect) / 2);
+                    cutTopPct = cutFraction * 100;
+                    cutBottomPct = cutFraction * 100;
+                  }
                 }
-              }
 
-              return (
-                <div
-                  key={layer.id}
-                  style={{
-                    left: `${(x ?? 0) * 100}%`,
-                    top: `${(y ?? 0) * 100}%`,
-                    width: `${(w ?? 1) * 100}%`,
-                    height: `${(h ?? 1) * 100}%`,
-                    borderColor: layer.color || '#00F0FF',
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedLayerId(layer.id);
-                  }}
-                  onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
-                  className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
-                    isSelected 
-                      ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
-                      : 'border-white/40 hover:border-white/80 z-20'
-                  }`}
-                >
-                  {/* Shaded indicator showing what portions get trimmed by destination aspect ratio */}
-                  {fit === 'cover' && (cutLeftPct > 0 || cutTopPct > 0) && (
-                    <>
-                      {cutLeftPct > 0 && (
-                        <>
-                          <div 
-                            style={{ width: `${cutLeftPct}%` }}
-                            className="absolute left-0 top-0 bottom-0 bg-black/60 border-r border-dashed border-red-400/70 pointer-events-none"
-                            title="Trimmed from 9:16 output"
-                          />
-                          <div 
-                            style={{ width: `${cutRightPct}%` }}
-                            className="absolute right-0 top-0 bottom-0 bg-black/60 border-l border-dashed border-red-400/70 pointer-events-none"
-                            title="Trimmed from 9:16 output"
-                          />
-                        </>
-                      )}
-                      {cutTopPct > 0 && (
-                        <>
-                          <div 
-                            style={{ height: `${cutTopPct}%` }}
-                            className="absolute top-0 left-0 right-0 bg-black/60 border-b border-dashed border-red-400/70 pointer-events-none"
-                            title="Trimmed from 9:16 output"
-                          />
-                          <div 
-                            style={{ height: `${cutBottomPct}%` }}
-                            className="absolute bottom-0 left-0 right-0 bg-black/60 border-t border-dashed border-red-400/70 pointer-events-none"
-                            title="Trimmed from 9:16 output"
-                          />
-                        </>
-                      )}
-                    </>
-                  )}
-
-                  {/* Subtle Clean Outline & Resize Area (No obstructing text banner) */}
+                return (
                   <div
-                    style={{ backgroundColor: layer.color || '#00F0FF' }}
-                    className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
-                    title={layer.name}
-                  />
+                    key={layer.id}
+                    style={{
+                      left: `${(x ?? 0) * 100}%`,
+                      top: `${(y ?? 0) * 100}%`,
+                      width: `${(w ?? 1) * 100}%`,
+                      height: `${(h ?? 1) * 100}%`,
+                      borderColor: layer.color || '#00F0FF',
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedLayerId(layer.id);
+                    }}
+                    onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'move')}
+                    className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${isSelected
+                        ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
+                        : 'border-white/40 hover:border-white/80 z-20'
+                      }`}
+                  >
+                    {/* Shaded indicator showing what portions get trimmed by destination aspect ratio */}
+                    {fit === 'cover' && (cutLeftPct > 0 || cutTopPct > 0) && (
+                      <>
+                        {cutLeftPct > 0 && (
+                          <>
+                            <div
+                              style={{ width: `${cutLeftPct}%` }}
+                              className="absolute left-0 top-0 bottom-0 bg-black/60 border-r border-dashed border-red-400/70 pointer-events-none"
+                              title="Trimmed from 9:16 output"
+                            />
+                            <div
+                              style={{ width: `${cutRightPct}%` }}
+                              className="absolute right-0 top-0 bottom-0 bg-black/60 border-l border-dashed border-red-400/70 pointer-events-none"
+                              title="Trimmed from 9:16 output"
+                            />
+                          </>
+                        )}
+                        {cutTopPct > 0 && (
+                          <>
+                            <div
+                              style={{ height: `${cutTopPct}%` }}
+                              className="absolute top-0 left-0 right-0 bg-black/60 border-b border-dashed border-red-400/70 pointer-events-none"
+                              title="Trimmed from 9:16 output"
+                            />
+                            <div
+                              style={{ height: `${cutBottomPct}%` }}
+                              className="absolute bottom-0 left-0 right-0 bg-black/60 border-t border-dashed border-red-400/70 pointer-events-none"
+                              title="Trimmed from 9:16 output"
+                            />
+                          </>
+                        )}
+                      </>
+                    )}
 
-                  {/* 8-Point Resize Handles (Active only on selected layer) */}
-                  {isSelected && !layer.locked && (
-                    <>
-                      {['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'].map((hnd) => (
-                        <div
-                          key={hnd}
-                          onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'resize', hnd)}
-                          style={{ borderColor: layer.color || '#00F0FF' }}
-                          className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-white border-2 rounded-full cursor-${hnd}-resize z-30 shadow hover:scale-125 transition-transform touch-none ${
-                            hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
-                            hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
-                            hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
-                            hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
-                            hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
-                            hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
-                            hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
-                            'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
-                          }`}
-                        />
-                      ))}
-                    </>
-                  )}
-                </div>
-              );
-            })}
+                    {/* Subtle Clean Outline & Resize Area (No obstructing text banner) */}
+                    <div
+                      style={{ backgroundColor: layer.color || '#00F0FF' }}
+                      className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
+                      title={layer.name}
+                    />
+
+                    {/* 8-Point Resize Handles (Active only on selected layer) */}
+                    {isSelected && !layer.locked && (
+                      <>
+                        {['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'].map((hnd) => (
+                          <div
+                            key={hnd}
+                            onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'resize', hnd)}
+                            style={{ borderColor: layer.color || '#00F0FF' }}
+                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-white border-2 rounded-full cursor-${hnd}-resize z-30 shadow hover:scale-125 transition-transform touch-none ${hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
+                                hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
+                                  hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
+                                    hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
+                                      hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
+                                        hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
+                                          hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
+                                            'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
+                              }`}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
@@ -1019,7 +1013,7 @@ export default function LayoutBuilder({
 
           {/* Interactive 9:16 Composite Viewport */}
           <div className="w-full flex-1 flex justify-center items-center min-h-0 touch-none">
-            <div 
+            <div
               onClick={() => setSelectedLayerId(null)}
               className="h-full aspect-[9/16] bg-black rounded-lg overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center touch-none"
             >
@@ -1052,14 +1046,13 @@ export default function LayoutBuilder({
                       setSelectedLayerId(layer.id);
                     }}
                     onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'move')}
-                    className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${
-                      isSelected
+                    className={`absolute border sm:border-2 rounded-none cursor-grab active:cursor-grabbing transition-shadow touch-none ${isSelected
                         ? 'border-white shadow-[0_0_15px_rgba(255,255,255,0.7)] z-30'
                         : 'border-white/30 hover:border-white/80 z-20'
-                    }`}
+                      }`}
                   >
                     {/* Minimal clean corner indicator instead of obstructing text badge */}
-                    <div 
+                    <div
                       style={{ backgroundColor: layer.color || '#00F0FF' }}
                       className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
                     />
@@ -1071,16 +1064,15 @@ export default function LayoutBuilder({
                           <div
                             key={hnd}
                             onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'resize', hnd)}
-                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-[#8FD3FF] border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform touch-none ${
-                              hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
-                              hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
-                              hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
-                              hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
-                              hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
-                              hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
-                              hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
-                              'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
-                            }`}
+                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-[#8FD3FF] border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform touch-none ${hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
+                                hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
+                                  hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
+                                    hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
+                                      hnd === 'n' ? '-top-2 left-1/2 -translate-x-1/2 sm:-top-1.5' :
+                                        hnd === 's' ? '-bottom-2 left-1/2 -translate-x-1/2 sm:-bottom-1.5' :
+                                          hnd === 'e' ? 'top-1/2 -right-2 -translate-y-1/2 sm:-right-1.5' :
+                                            'top-1/2 -left-2 -translate-y-1/2 sm:-left-1.5'
+                              }`}
                           />
                         ))}
                       </>
@@ -1123,9 +1115,8 @@ export default function LayoutBuilder({
                 <div
                   key={layer.id}
                   onClick={() => setSelectedLayerId(layer.id)}
-                  className={`p-2 rounded-lg border flex items-center justify-between text-xs ${
-                    selectedLayerId === layer.id ? 'bg-[#1A1D24] border-[#8FD3FF]' : 'bg-[#13151A] border-white/5'
-                  }`}
+                  className={`p-2 rounded-lg border flex items-center justify-between text-xs ${selectedLayerId === layer.id ? 'bg-[#1A1D24] border-[#8FD3FF]' : 'bg-[#13151A] border-white/5'
+                    }`}
                 >
                   <span className="font-bold text-white">{layer.name}</span>
                 </div>

@@ -13,14 +13,20 @@ import {
   FolderOpen,
   Sliders,
   ChevronDown,
-  LayoutTemplate
+  LayoutTemplate,
+  UserCheck,
+  Play,
+  Loader2,
+  Upload,
+  X
 } from 'lucide-react';
 import { 
   getTemplates, 
   saveTemplate, 
   deleteTemplate, 
   getChannels, 
-  patchChannelSettings 
+  patchChannelSettings,
+  testTemplateSample
 } from '../api';
 import LayoutBuilder, { PRESET_STARTERS } from './LayoutBuilder';
 import { useLayoutMode } from '../hooks/useLayoutMode';
@@ -38,8 +44,13 @@ export default function TemplateStudio() {
   const [feedback, setFeedback] = useState(null);
   const [selectedLayerId, setSelectedLayerId] = useState(null);
 
-  // Background frame
+  // Background frame & custom uploads
   const [channelFrameUrl, setChannelFrameUrl] = useState(null);
+  const [customImage, setCustomImage] = useState(null);
+
+  // Real render test preview modal
+  const [testingSample, setTestingSample] = useState(false);
+  const [sampleVideoUrl, setSampleVideoUrl] = useState(null);
 
   // Typography & Subtitles
   const [fontFamily, setFontFamily] = useState('Montserrat ExtraBold');
@@ -49,6 +60,9 @@ export default function TemplateStudio() {
   const [outlineWidth, setOutlineWidth] = useState(4);
   const [animationPreset, setAnimationPreset] = useState('pop');
   const [captionPositionY, setCaptionPositionY] = useState(76);
+
+  // Direct channel assignment
+  const [assigningStreamer, setAssigningStreamer] = useState('');
 
   // Schema v2 Multi-Layer Layout State
   const [layoutState, setLayoutState] = useState(PRESET_STARTERS.facecam_top_gameplay_bottom);
@@ -207,14 +221,48 @@ export default function TemplateStudio() {
     }
   };
 
-  const handleApplyToChannel = async () => {
-    if (!selectedChannel) return;
+  const handleApplyToChannel = async (targetChannel) => {
+    const ch = targetChannel || selectedChannel;
+    if (!ch) return;
     try {
-      await patchChannelSettings(selectedChannel, { template_name: templateName.trim() });
-      showToast(`Mapped "${templateName}" to ${selectedChannel}!`);
+      await patchChannelSettings(ch, { template_name: templateName.trim() });
+      showToast(`Mapped "${templateName}" to ${ch}!`);
       loadChannelList();
     } catch (err) {
       alert('Failed to apply: ' + err.message);
+    }
+  };
+
+  const handleCustomImageUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      setCustomImage(event.target.result);
+      showToast('Loaded custom reference frame');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleTestRenderSample = async () => {
+    setTestingSample(true);
+    setSampleVideoUrl(null);
+    try {
+      const payload = {
+        template: buildTemplatePayload(),
+        channel_id: selectedChannel || channels[0]?.channel_id_or_handle || 'general'
+      };
+      const res = await testTemplateSample(payload);
+      if (res && res.video_url) {
+        setSampleVideoUrl(res.video_url);
+        showToast('Sample render complete!');
+      } else {
+        alert('Sample render finished without video URL.');
+      }
+    } catch (err) {
+      alert('Test render failed: ' + (err.response?.data?.error?.message || err.message));
+    } finally {
+      setTestingSample(false);
     }
   };
 
@@ -268,13 +316,16 @@ export default function TemplateStudio() {
             </button>
           </div>
 
-          {/* Sample Streamer Picker */}
+          {/* Sample Streamer Picker & Custom Upload */}
           <div className="flex items-center gap-1 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2 py-1">
-            <span className="text-[9px] text-slate-400 font-bold uppercase">Sample:</span>
+            <span className="text-[9px] text-slate-400 font-bold uppercase">Frame:</span>
             <select
               value={selectedChannel}
-              onChange={(e) => handleChannelSelect(e.target.value)}
-              className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[90px] truncate"
+              onChange={(e) => {
+                setCustomImage(null);
+                handleChannelSelect(e.target.value);
+              }}
+              className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[95px] truncate"
             >
               {channels.map((c) => (
                 <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
@@ -283,13 +334,62 @@ export default function TemplateStudio() {
               ))}
             </select>
             <button
-              onClick={() => fetchChannelFrame(selectedChannel)}
-              title="Refresh snapshot"
+              onClick={() => {
+                setCustomImage(null);
+                fetchChannelFrame(selectedChannel);
+              }}
+              title="Refresh streamer snapshot"
               className="p-0.5 rounded text-slate-400 hover:text-white"
             >
               <RefreshCw size={10} />
             </button>
+            <label
+              title="Upload custom reference image"
+              className="p-0.5 rounded text-slate-400 hover:text-[#8FD3FF] cursor-pointer"
+            >
+              <Upload size={11} />
+              <input type="file" accept="image/*" onChange={handleCustomImageUpload} className="hidden" />
+            </label>
+            {customImage && (
+              <span className="text-[9px] font-bold text-cyan-400 bg-cyan-500/10 px-1 rounded">Custom</span>
+            )}
           </div>
+
+          {/* Quick Assign to Streamer */}
+          <div className="hidden md:flex items-center gap-1 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2 py-1">
+            <span className="text-[9px] text-slate-400 font-bold uppercase">Assign:</span>
+            <select
+              value={assigningStreamer}
+              onChange={(e) => setAssigningStreamer(e.target.value)}
+              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[90px] truncate"
+            >
+              <option value="" className="bg-slate-900 text-slate-400">Streamer...</option>
+              {channels.map((c) => (
+                <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                  @{c.display_name || c.channel_id_or_handle}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => handleApplyToChannel(assigningStreamer)}
+              disabled={!assigningStreamer}
+              title="Map active template to this streamer"
+              className="p-1 rounded text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <UserCheck size={12} />
+            </button>
+          </div>
+
+          {/* Test Render Button */}
+          <button
+            onClick={handleTestRenderSample}
+            disabled={testingSample}
+            title="Render real 3-second FFmpeg test short"
+            className="flex items-center gap-1 bg-[#0E1118] hover:bg-white/[0.06] text-amber-300 font-bold py-1 px-2 rounded-xl text-xs border border-amber-500/30"
+          >
+            {testingSample ? <Loader2 size={11} className="animate-spin text-amber-400" /> : <Play size={11} className="text-amber-400" />}
+            <span className="hidden sm:inline">Test Render</span>
+          </button>
 
           <button
             onClick={handleNewTemplate}
@@ -319,7 +419,7 @@ export default function TemplateStudio() {
                   setLayoutState(next);
                   setIsDirty(true);
                 }}
-                sourceMediaUrl={channelFrameUrl}
+                sourceMediaUrl={customImage || channelFrameUrl}
                 captionsConfig={{
                   font: fontFamily,
                   fontSize,
@@ -359,7 +459,7 @@ export default function TemplateStudio() {
                 setLayoutState(next);
                 setIsDirty(true);
               }}
-              sourceMediaUrl={channelFrameUrl}
+              sourceMediaUrl={customImage || channelFrameUrl}
               captionsConfig={{
                 font: fontFamily,
                 fontSize,
@@ -396,8 +496,8 @@ export default function TemplateStudio() {
           />
         </div>
 
-        {/* Subtitle Typography Quick Controls */}
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Subtitle Typography Quick Controls & Virality Filter */}
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
           <div className="flex items-center gap-1">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Font:</span>
             <select
@@ -405,11 +505,36 @@ export default function TemplateStudio() {
               onChange={(e) => { setFontFamily(e.target.value); setIsDirty(true); }}
               className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-1 text-[11px] text-white focus:outline-none"
             >
-              <option value="Montserrat ExtraBold">Montserrat</option>
+              <option value="Montserrat ExtraBold">Montserrat Ext</option>
               <option value="Anton">Anton</option>
               <option value="Bangers">Bangers</option>
               <option value="Poppins Black">Poppins</option>
               <option value="Inter Black">Inter</option>
+            </select>
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Size:</span>
+            <input
+              type="number"
+              min="30"
+              max="120"
+              value={fontSize}
+              onChange={(e) => { setFontSize(Number(e.target.value)); setIsDirty(true); }}
+              className="w-12 bg-[#141722] border border-white/10 rounded-lg px-1 py-1 text-[11px] text-white text-center font-mono focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1">
+            <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Anim:</span>
+            <select
+              value={animationPreset}
+              onChange={(e) => { setAnimationPreset(e.target.value); setIsDirty(true); }}
+              className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-1 text-[11px] text-white focus:outline-none"
+            >
+              <option value="pop">Pop (Punch)</option>
+              <option value="bounce">Bounce</option>
+              <option value="typewriter">Karaoke</option>
             </select>
           </div>
 
@@ -425,8 +550,56 @@ export default function TemplateStudio() {
             />
             <span className="font-mono text-slate-400 text-[10px] w-6">{captionPositionY}%</span>
           </div>
+
+          <div className="hidden lg:flex items-center gap-1 pl-2 border-l border-white/10">
+            <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Min Score:</span>
+            <input
+              type="number"
+              min="30"
+              max="95"
+              value={minScore}
+              onChange={(e) => { setMinScore(Number(e.target.value)); setIsDirty(true); }}
+              className="w-11 bg-[#141722] border border-white/10 rounded-lg px-1 py-1 text-[11px] text-white text-center font-mono focus:outline-none"
+            />
+          </div>
         </div>
       </div>
+
+      {/* Render Test Sample Video Modal */}
+      {sampleVideoUrl && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0E1118] border border-white/[0.12] rounded-2xl max-w-sm w-full p-4 flex flex-col gap-3 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                <Play size={13} className="text-emerald-400" /> Real Render Preview
+              </span>
+              <button
+                onClick={() => setSampleVideoUrl(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X size={15} />
+              </button>
+            </div>
+            <div className="relative aspect-[9/16] w-full rounded-xl overflow-hidden bg-black border border-white/10">
+              <video
+                src={sampleVideoUrl}
+                controls
+                autoPlay
+                loop
+                className="w-full h-full object-contain"
+              />
+            </div>
+            <div className="flex justify-end">
+              <button
+                onClick={() => setSampleVideoUrl(null)}
+                className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-1.5 px-3 rounded-lg"
+              >
+                Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,16 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { 
-  Play, 
-  Pause, 
-  RotateCcw, 
-  Clock, 
-  Flame, 
-  Trash2, 
-  Send, 
-  Calendar, 
-  Save, 
+import {
+  Play,
+  Pause,
+  RotateCcw,
+  Clock,
+  Flame,
+  Trash2,
+  Send,
+  Calendar,
+  Save,
   Sparkles,
   Scissors,
   CheckCircle2,
@@ -33,15 +33,15 @@ import {
   Info,
   HelpCircle
 } from 'lucide-react';
-import { 
-  getClips, 
-  getClip, 
+import {
+  getClips,
+  getClip,
   getClipExplain,
-  trimClip, 
-  toggleTeaser, 
-  updateClip, 
-  postClipNow, 
-  queueClip, 
+  trimClip,
+  toggleTeaser,
+  updateClip,
+  postClipNow,
+  queueClip,
   discardClip,
   batchDiscardClips,
   sendClipFeedback
@@ -385,11 +385,10 @@ export default function ReviewStation({ onStatusChange }) {
             <button
               key={s.id}
               onClick={() => setStatusFilter(s.id)}
-              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${
-                statusFilter === s.id
+              className={`px-2.5 sm:px-3 py-1 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 ${statusFilter === s.id
                   ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
                   : 'text-[#8B90A0] hover:text-white'
-              }`}
+                }`}
             >
               {s.label}
             </button>
@@ -401,21 +400,19 @@ export default function ReviewStation({ onStatusChange }) {
           <div className="flex items-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.06] shrink-0">
             <button
               onClick={() => setRejectFilter('all')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${
-                rejectFilter === 'all'
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all ${rejectFilter === 'all'
                   ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               All Rejected
             </button>
             <button
               onClick={() => setRejectFilter('untagged')}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
-                rejectFilter === 'untagged'
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${rejectFilter === 'untagged'
                   ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
                   : 'text-slate-400 hover:text-white'
-              }`}
+                }`}
             >
               <span>Untagged Only</span>
               <span className="text-[10px] px-1.5 py-0.2 bg-amber-500/30 rounded-full font-mono">
@@ -476,31 +473,28 @@ export default function ReviewStation({ onStatusChange }) {
       <div className="lg:hidden flex items-center justify-center gap-1 bg-[#0E1118] p-1 rounded-xl border border-white/[0.08] my-2 shrink-0">
         <button
           onClick={() => setMobileTab('queue')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
-            mobileTab === 'queue'
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${mobileTab === 'queue'
               ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
               : 'text-slate-400 hover:text-white'
-          }`}
+            }`}
         >
           Queue ({clips.length})
         </button>
         <button
           onClick={() => setMobileTab('player')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
-            mobileTab === 'player'
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${mobileTab === 'player'
               ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
               : 'text-slate-400 hover:text-white'
-          }`}
+            }`}
         >
           Player
         </button>
         <button
           onClick={() => setMobileTab('details')}
-          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${
-            mobileTab === 'details'
+          className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center ${mobileTab === 'details'
               ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-sm'
               : 'text-slate-400 hover:text-white'
-          }`}
+            }`}
         >
           Details & Actions
         </button>
@@ -509,9 +503,8 @@ export default function ReviewStation({ onStatusChange }) {
       {/* Main Studio Grid: Responsive 3-Column on Desktop (lg:), Tabs/Stacked on Mobile */}
       <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 pt-1 lg:pt-2 lg:overflow-hidden">
         {/* Left Column: Virtualized Review Queue Feed */}
-        <div className={`col-span-12 lg:col-span-3 xl:col-span-3 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col gap-2 shadow-xl min-h-[300px] lg:min-h-0 overflow-hidden ${
-          mobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'
-        }`}>
+        <div className={`col-span-12 lg:col-span-3 xl:col-span-3 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-2.5 flex flex-col gap-2 shadow-xl min-h-[300px] lg:min-h-0 overflow-hidden ${mobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'
+          }`}>
           {/* Header Row with Select All */}
           <div className="flex items-center justify-between px-2 py-1 border-b border-white/[0.04] shrink-0">
             <button
@@ -576,11 +569,10 @@ export default function ReviewStation({ onStatusChange }) {
                     >
                       <div
                         onClick={() => setMobileTab('player')}
-                        className={`p-2.5 h-full rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${
-                          isActive
+                        className={`p-2.5 h-full rounded-xl border cursor-pointer transition-all flex flex-col justify-between ${isActive
                             ? 'border-[#8FD3FF] bg-[#181C26] shadow-lg shadow-[#8FD3FF]/15 ring-1 ring-[#8FD3FF]/30'
                             : 'border-white/[0.04] bg-[#12151D]/80 hover:bg-[#161A24] hover:border-white/10'
-                        }`}
+                          }`}
                       >
                         <div className="flex items-center justify-between text-xs">
                           <div className="flex items-center gap-2 truncate max-w-[170px]">
@@ -639,9 +631,8 @@ export default function ReviewStation({ onStatusChange }) {
         </div>
 
         {/* Center Column: SINGLE 9:16 VIDEO PLAYER */}
-        <div className={`col-span-12 lg:col-span-4 xl:col-span-4 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-[420px] lg:min-h-0 overflow-hidden ${
-          mobileTab !== 'player' ? 'hidden lg:flex' : 'flex'
-        }`}>
+        <div className={`col-span-12 lg:col-span-4 xl:col-span-4 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3 flex flex-col items-center justify-center shadow-xl min-h-[420px] lg:min-h-0 overflow-hidden ${mobileTab !== 'player' ? 'hidden lg:flex' : 'flex'
+          }`}>
           <div className="h-full aspect-[9/16] bg-black rounded-xl overflow-hidden border-2 border-white/[0.12] relative shadow-2xl flex items-center justify-center max-w-full">
             {videoSrc ? (
               <div key={videoSrc} className="w-full h-full">
@@ -674,9 +665,8 @@ export default function ReviewStation({ onStatusChange }) {
         </div>
 
         {/* Right Column: Full Inspector & Production Controls */}
-        <div className={`col-span-12 lg:col-span-5 xl:col-span-5 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden ${
-          mobileTab !== 'details' ? 'hidden lg:flex' : 'flex'
-        }`}>
+        <div className={`col-span-12 lg:col-span-5 xl:col-span-5 bg-[#0E1118] border border-white/[0.08] rounded-2xl p-3.5 flex flex-col gap-3 shadow-xl min-h-0 overflow-hidden ${mobileTab !== 'details' ? 'hidden lg:flex' : 'flex'
+          }`}>
           {activeClipSummary ? (
             <>
               {/* Meta Chips */}
@@ -705,11 +695,10 @@ export default function ReviewStation({ onStatusChange }) {
                   ⏱️ {((activeClipSummary.adjusted_end || 30) - (activeClipSummary.adjusted_start || 0)).toFixed(1)}s
                 </span>
                 {activeClipSummary.status === 'rejected' && (
-                  <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs ${
-                    activeClipSummary.rejection_reason 
-                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-300' 
+                  <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs ${activeClipSummary.rejection_reason
+                      ? 'bg-rose-500/15 border-rose-500/30 text-rose-300'
                       : 'bg-amber-500/15 border-amber-500/30 text-amber-300'
-                  }`}>
+                    }`}>
                     {activeClipSummary.rejection_reason ? `🏷️ Reason: ${activeClipSummary.rejection_reason.replace('_', ' ')}` : '⚠️ Untagged Reject'}
                   </span>
                 )}
@@ -768,11 +757,10 @@ export default function ReviewStation({ onStatusChange }) {
                           key={idx}
                           onClick={() => handleSeek(item.start)}
                           onDoubleClick={() => handleWordDoubleClick(idx, item.word)}
-                          className={`inline-block px-2 py-0.5 rounded-lg text-xs cursor-pointer transition-all ${
-                            editingWordIdx === idx
+                          className={`inline-block px-2 py-0.5 rounded-lg text-xs cursor-pointer transition-all ${editingWordIdx === idx
                               ? 'bg-[#8FD3FF] text-[#0A0B0E] font-bold'
                               : 'bg-white/[0.04] hover:bg-[#8FD3FF]/20 text-slate-300 hover:text-white border border-white/[0.04]'
-                          }`}
+                            }`}
                           title={`Click to seek to ${item.start?.toFixed(1)}s`}
                         >
                           {editingWordIdx === idx ? (
@@ -813,11 +801,10 @@ export default function ReviewStation({ onStatusChange }) {
                         <button
                           key={r.code}
                           onClick={() => handleTagRejectedClip(activeClipSummary.id, r.code)}
-                          className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                            activeClipSummary.rejection_reason === r.code
+                          className={`px-2 py-1.5 rounded-lg text-xs font-semibold transition-all border ${activeClipSummary.rejection_reason === r.code
                               ? 'bg-rose-500 text-white border-rose-400 shadow-sm'
                               : 'bg-white/[0.04] hover:bg-rose-500/20 text-slate-300 hover:text-white border-white/[0.06]'
-                          }`}
+                            }`}
                         >
                           {r.label}
                         </button>
