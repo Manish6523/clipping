@@ -64,8 +64,11 @@ class WebUIServer:
         self.port = port
         self.on_manual_clip = on_manual_clip
         self.trimmer = ClipTrimmer()
-        # Enable timing & auth middleware
-        self.app = web.Application(middlewares=[request_timing_middleware, self.auth_middleware])
+        # Enable timing & auth middleware with 50MB payload limit for high-res stream screenshot uploads
+        self.app = web.Application(
+            client_max_size=50 * 1024 * 1024,
+            middlewares=[request_timing_middleware, self.auth_middleware]
+        )
         self._setup_routes()
 
     @web.middleware

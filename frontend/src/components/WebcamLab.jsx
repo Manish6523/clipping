@@ -38,11 +38,33 @@ export default function WebcamLab() {
 
     const reader = new FileReader();
     reader.onload = (ev) => {
-      const dataUrl = ev.target.result;
-      setImageSrc(dataUrl);
-      setDetectionResult(null);
-      setWebcamBox(null);
-      runDetection(dataUrl);
+      const img = new Image();
+      img.onload = () => {
+        // Downscale large 4K / huge PNG screenshots to max 1920x1080 JPEG for lightning fast upload
+        const maxW = 1920;
+        const maxH = 1080;
+        let w = img.width;
+        let h = img.height;
+
+        if (w > maxW || h > maxH) {
+          const ratio = Math.min(maxW / w, maxH / h);
+          w = Math.round(w * ratio);
+          h = Math.round(h * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+
+        const optimizedDataUrl = canvas.toDataURL('image/jpeg', 0.85);
+        setImageSrc(optimizedDataUrl);
+        setDetectionResult(null);
+        setWebcamBox(null);
+        runDetection(optimizedDataUrl);
+      };
+      img.src = ev.target.result;
     };
     reader.readAsDataURL(file);
   };
