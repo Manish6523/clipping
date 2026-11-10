@@ -123,13 +123,23 @@ function ReviewStationWrapper() {
 }
 
 export default function App() {
+  const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
   const [authRequired, setAuthRequired] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    if (isLocalhost) return true;
     return Boolean(localStorage.getItem('autoclip_session_token'));
   });
 
   useEffect(() => {
+    // If running on localhost, bypass lock screen completely
+    if (isLocalhost) {
+      setAuthRequired(false);
+      setIsAuthenticated(true);
+      setAuthChecked(true);
+      return;
+    }
+
     // Check with server if auth lock is enabled
     getAuthConfig()
       .then((cfg) => {
@@ -149,6 +159,7 @@ export default function App() {
       });
 
     const handleAuthRequired = () => {
+      if (isLocalhost) return;
       localStorage.removeItem('autoclip_session_token');
       localStorage.removeItem('autoclip_session_expires');
       setIsAuthenticated(false);
@@ -156,9 +167,9 @@ export default function App() {
 
     window.addEventListener('autoclip_auth_required', handleAuthRequired);
     return () => window.removeEventListener('autoclip_auth_required', handleAuthRequired);
-  }, []);
+  }, [isLocalhost]);
 
-  if (authChecked && authRequired && !isAuthenticated) {
+  if (!isLocalhost && authChecked && authRequired && !isAuthenticated) {
     return <PinLockScreen onAuthenticated={() => setIsAuthenticated(true)} />;
   }
 
