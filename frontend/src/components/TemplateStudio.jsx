@@ -23,7 +23,9 @@ import {
   FileUp,
   X,
   Lock,
-  Unlock
+  Unlock,
+  Undo2,
+  Redo2
 } from 'lucide-react';
 import { 
   getTemplates, 
@@ -75,6 +77,33 @@ export default function TemplateStudio() {
 
   // Schema v2 Multi-Layer Layout State
   const [layoutState, setLayoutState] = useState(PRESET_STARTERS.facecam_top_gameplay_bottom);
+  const [history, setHistory] = useState([]);
+  const [redoStack, setRedoStack] = useState([]);
+
+  const pushHistory = (prevState) => {
+    setHistory((h) => [...h.slice(-30), JSON.parse(JSON.stringify(prevState))]);
+    setRedoStack([]);
+  };
+
+  const handleUndo = () => {
+    if (!history.length) return;
+    const prev = history[history.length - 1];
+    setHistory((h) => h.slice(0, h.length - 1));
+    setRedoStack((r) => [...r, JSON.parse(JSON.stringify(layoutState))]);
+    setLayoutState(prev);
+    setIsDirty(true);
+    showToast('Undo');
+  };
+
+  const handleRedo = () => {
+    if (!redoStack.length) return;
+    const next = redoStack[redoStack.length - 1];
+    setRedoStack((r) => r.slice(0, r.length - 1));
+    setHistory((h) => [...h, JSON.parse(JSON.stringify(layoutState))]);
+    setLayoutState(next);
+    setIsDirty(true);
+    showToast('Redo');
+  };
 
   useEffect(() => {
     loadExistingTemplates();
@@ -459,6 +488,26 @@ export default function TemplateStudio() {
             <span className="hidden sm:inline">Test Render</span>
           </button>
 
+          {/* Undo and Redo Controls */}
+          <div className="flex items-center gap-0.5 bg-[#0E1118] border border-white/[0.08] rounded-xl p-0.5">
+            <button
+              onClick={handleUndo}
+              disabled={history.length === 0}
+              title="Undo (Ctrl+Z)"
+              className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <Undo2 size={13} />
+            </button>
+            <button
+              onClick={handleRedo}
+              disabled={redoStack.length === 0}
+              title="Redo (Ctrl+Y)"
+              className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
+            >
+              <Redo2 size={13} />
+            </button>
+          </div>
+
           {/* Export Template Button */}
           <button
             onClick={handleExportTemplate}
@@ -508,6 +557,7 @@ export default function TemplateStudio() {
             <div className="flex-1 min-h-0 overflow-hidden">
               <MobileStage
                 layout={layoutState}
+                onPointerActionStart={() => pushHistory(layoutState)}
                 onChange={(next) => {
                   setLayoutState(next);
                   setIsDirty(true);
@@ -543,6 +593,7 @@ export default function TemplateStudio() {
           <div className="w-full h-full flex flex-col overflow-hidden">
             <LayoutBuilder
               layout={layoutState}
+              onPointerActionStart={() => pushHistory(layoutState)}
               onChange={(next) => {
                 setLayoutState(next);
                 setIsDirty(true);
@@ -577,8 +628,8 @@ export default function TemplateStudio() {
       </div>
 
       {/* Quick Frame Selector Chips Bar & Add/Delete Frame Actions */}
-      <div className="min-h-8 py-1 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-1.5 shrink-0">
-        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
+      <div className="min-h-9 py-1 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex items-center justify-between gap-2 shrink-0 overflow-x-auto no-scrollbar">
+        <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[9px] uppercase font-bold text-slate-500 mr-1 flex items-center gap-1 shrink-0">
             <Layers size={11} className="text-[#8FD3FF]" /> Frames / Layers:
           </span>
@@ -599,7 +650,7 @@ export default function TemplateStudio() {
         </div>
 
         {/* Add and Delete Box Action Controls */}
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             type="button"
             onClick={() => {
@@ -608,6 +659,7 @@ export default function TemplateStudio() {
                 alert('Maximum 8 frames per layout.');
                 return;
               }
+              pushHistory(layoutState);
               const layerColors = ['#FFB020', '#00F0FF', '#A855F7', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#EF4444'];
               const color = layerColors[currentLayers.length % layerColors.length];
               const newId = `l_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -633,7 +685,7 @@ export default function TemplateStudio() {
               showToast(`Added Frame ${currentLayers.length + 1}`);
             }}
             disabled={(layoutState.layers || []).length >= 8}
-            className="flex items-center gap-1 h-6 px-2 rounded-md bg-[#8FD3FF]/15 hover:bg-[#8FD3FF]/25 border border-[#8FD3FF]/40 text-[#8FD3FF] text-[10px] font-bold transition-all shadow-sm disabled:opacity-40"
+            className="flex items-center gap-1 h-6 px-2 rounded-md bg-[#8FD3FF]/15 hover:bg-[#8FD3FF]/25 border border-[#8FD3FF]/40 text-[#8FD3FF] text-[10px] font-bold transition-all shadow-sm disabled:opacity-40 shrink-0"
             title="Add a new crop frame box"
           >
             <Plus size={11} /> Add Box ({(layoutState.layers || []).length}/8)
@@ -647,6 +699,7 @@ export default function TemplateStudio() {
                 onClick={() => {
                   const target = (layoutState.layers || []).find((l) => l.id === selectedLayerId);
                   if (!target) return;
+                  pushHistory(layoutState);
                   const newLockState = !target.aspect_lock;
                   setLayoutState((prev) => ({
                     ...prev,
@@ -657,7 +710,7 @@ export default function TemplateStudio() {
                   setIsDirty(true);
                   showToast(`Aspect ratio ${newLockState ? 'Locked' : 'Unlocked (Freeform)'}`);
                 }}
-                className={`flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-bold border transition-all ${
+                className={`flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-bold border transition-all shrink-0 ${
                   (layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock
                     ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
                     : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
@@ -683,6 +736,7 @@ export default function TemplateStudio() {
                     alert('You must have at least 1 frame in the layout.');
                     return;
                   }
+                  pushHistory(layoutState);
                   setLayoutState((prev) => ({
                     ...prev,
                     layers: (prev.layers || []).filter((l) => l.id !== selectedLayerId)
@@ -692,7 +746,7 @@ export default function TemplateStudio() {
                   showToast('Deleted selected frame');
                 }}
                 disabled={(layoutState.layers || []).length <= 1}
-                className="flex items-center gap-1 h-6 px-2 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold transition-all shadow-sm"
+                className="flex items-center gap-1 h-6 px-2 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold transition-all shadow-sm shrink-0"
                 title="Delete the currently selected frame box"
               >
                 <Trash2 size={11} /> Delete Box
@@ -703,34 +757,34 @@ export default function TemplateStudio() {
       </div>
 
       {/* Slim Responsive Bottom Form Strip */}
-      <div className="mt-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-3 py-2 flex flex-wrap items-center justify-between gap-2 shrink-0 shadow-lg text-xs">
-        {/* Template metadata input */}
-        <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+      <div className="mt-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2.5 py-1.5 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shrink-0 shadow-lg text-xs overflow-x-auto no-scrollbar">
+        {/* Row 1 / Left on desktop: Template metadata */}
+        <div className="flex items-center gap-1.5 shrink-0 min-w-max">
           <span className="text-[9px] font-bold uppercase tracking-wider text-[#8B90A0] shrink-0">Template:</span>
           <input
             type="text"
             value={templateName}
             onChange={(e) => { setTemplateName(e.target.value); setIsDirty(true); }}
             placeholder="Template name"
-            className="bg-[#141722] border border-white/10 rounded-lg px-2 py-1 text-xs text-white font-mono flex-1 max-w-[160px] focus:outline-none focus:border-[#8FD3FF]"
+            className="bg-[#141722] border border-white/10 rounded-lg px-2 py-0.5 text-xs text-white font-mono w-32 focus:outline-none focus:border-[#8FD3FF]"
           />
           <input
             type="text"
             value={description}
             onChange={(e) => { setDescription(e.target.value); setIsDirty(true); }}
             placeholder="Description"
-            className="hidden sm:inline bg-[#141722] border border-white/10 rounded-lg px-2 py-1 text-xs text-slate-300 flex-1 max-w-[200px] focus:outline-none focus:border-[#8FD3FF]"
+            className="hidden sm:inline bg-[#141722] border border-white/10 rounded-lg px-2 py-0.5 text-xs text-slate-300 w-36 focus:outline-none focus:border-[#8FD3FF]"
           />
         </div>
 
-        {/* Subtitle Typography Quick Controls & Virality Filter */}
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-          <div className="flex items-center gap-1">
+        {/* Row 2 / Right on desktop: Subtitle Typography Quick Controls */}
+        <div className="flex items-center gap-1.5 shrink-0 overflow-x-auto no-scrollbar py-0.5">
+          <div className="flex items-center gap-1 shrink-0">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Font:</span>
             <select
               value={fontFamily}
               onChange={(e) => { setFontFamily(e.target.value); setIsDirty(true); }}
-              className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-1 text-[11px] text-white focus:outline-none"
+              className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-0.5 text-[11px] text-white focus:outline-none max-w-[100px]"
             >
               <option value="Montserrat">Montserrat</option>
               <option value="Anton">Anton (Bold)</option>
@@ -746,7 +800,7 @@ export default function TemplateStudio() {
             </select>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Size:</span>
             <input
               type="number"
@@ -754,16 +808,16 @@ export default function TemplateStudio() {
               max="140"
               value={fontSize}
               onChange={(e) => { setFontSize(Number(e.target.value)); setIsDirty(true); }}
-              className="w-12 bg-[#141722] border border-white/10 rounded-lg px-1 py-1 text-[11px] text-white text-center font-mono focus:outline-none"
+              className="w-11 bg-[#141722] border border-white/10 rounded-lg px-1 py-0.5 text-[11px] text-white text-center font-mono focus:outline-none"
             />
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Anim:</span>
             <select
               value={animationPreset}
               onChange={(e) => { setAnimationPreset(e.target.value); setIsDirty(true); }}
-              className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-1 text-[11px] text-white focus:outline-none"
+              className="bg-[#141722] border border-white/10 rounded-lg px-1 py-0.5 text-[11px] text-white focus:outline-none max-w-[95px]"
             >
               <option value="pop">Pop (Punch)</option>
               <option value="bounce">Bounce</option>
@@ -772,7 +826,7 @@ export default function TemplateStudio() {
             </select>
           </div>
 
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1 shrink-0">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Y:</span>
             <input
               type="range"
@@ -780,54 +834,52 @@ export default function TemplateStudio() {
               max="90"
               value={captionPositionY}
               onChange={(e) => { setCaptionPositionY(Number(e.target.value)); setIsDirty(true); }}
-              className="w-16 accent-[#8FD3FF] cursor-pointer"
+              className="w-14 accent-[#8FD3FF] cursor-pointer"
             />
-            <span className="font-mono text-slate-400 text-[10px] w-6">{captionPositionY}%</span>
+            <span className="font-mono text-slate-400 text-[10px] w-5">{captionPositionY}%</span>
           </div>
 
           {/* Advanced Typography Modal / Drawer Toggle */}
           <button
             type="button"
             onClick={() => setShowAdvancedTypography(!showAdvancedTypography)}
-            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all shrink-0 ${
               showAdvancedTypography 
                 ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF]' 
                 : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
             }`}
             title="Open Advanced Subtitle Styling (Colors, Outline, Shadow, Case)"
           >
-            <Sliders size={11} /> Advanced Text
+            <Sliders size={11} /> Advanced
           </button>
 
           {/* Background Mode Toggle: Solid Black vs Blurred 9:16 */}
-          <div className="flex items-center gap-1 pl-2 border-l border-white/10">
-            <span className="text-[9px] font-bold uppercase text-[#8B90A0]">BG:</span>
-            <button
-              type="button"
-              onClick={() => {
-                const currentType = layoutState.background?.type || 'solid';
-                const nextType = currentType === 'blur' ? 'solid' : 'blur';
-                setLayoutState((prev) => ({
-                  ...prev,
-                  background: nextType === 'blur'
-                    ? { type: 'blur', color: '#000000', blur: 35, dim: 0.35 }
-                    : { type: 'solid', color: '#000000', blur: 0, dim: 0.0 }
-                }));
-                setIsDirty(true);
-                showToast(`Background set to ${nextType === 'blur' ? 'Blurred 9:16' : 'Solid Black'}`);
-              }}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border ${
-                layoutState.background?.type === 'blur'
-                  ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF] shadow-sm'
-                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-              }`}
-              title="Toggle between Blurred video backdrop and Solid black background"
-            >
-              {layoutState.background?.type === 'blur' ? '💧 Blur BG' : '⬛ Black BG'}
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              pushHistory(layoutState);
+              const currentType = layoutState.background?.type || 'solid';
+              const nextType = currentType === 'blur' ? 'solid' : 'blur';
+              setLayoutState((prev) => ({
+                ...prev,
+                background: nextType === 'blur'
+                  ? { type: 'blur', color: '#000000', blur: 35, dim: 0.35 }
+                  : { type: 'solid', color: '#000000', blur: 0, dim: 0.0 }
+              }));
+              setIsDirty(true);
+              showToast(`Background set to ${nextType === 'blur' ? 'Blurred 9:16' : 'Solid Black'}`);
+            }}
+            className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all border shrink-0 ${
+              layoutState.background?.type === 'blur'
+                ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF] shadow-sm'
+                : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+            }`}
+            title="Toggle between Blurred video backdrop and Solid black background"
+          >
+            {layoutState.background?.type === 'blur' ? '💧 Blur' : '⬛ Black'}
+          </button>
 
-          <div className="hidden lg:flex items-center gap-1 pl-2 border-l border-white/10">
+          <div className="hidden lg:flex items-center gap-1 pl-2 border-l border-white/10 shrink-0">
             <span className="text-[9px] font-bold uppercase text-[#8B90A0]">Min Score:</span>
             <input
               type="number"
@@ -835,7 +887,7 @@ export default function TemplateStudio() {
               max="95"
               value={minScore}
               onChange={(e) => { setMinScore(Number(e.target.value)); setIsDirty(true); }}
-              className="w-11 bg-[#141722] border border-white/10 rounded-lg px-1 py-1 text-[11px] text-white text-center font-mono focus:outline-none"
+              className="w-11 bg-[#141722] border border-white/10 rounded-lg px-1 py-0.5 text-[11px] text-white text-center font-mono focus:outline-none"
             />
           </div>
         </div>

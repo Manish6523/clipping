@@ -24,6 +24,7 @@ import { renderCaptionsToCanvas } from '../../utils/captionRenderer';
 export default function MobileStage({
   layout,
   onChange,
+  onPointerActionStart,
   sourceMediaUrl,
   videoRef,
   captionsConfig,
@@ -77,6 +78,7 @@ export default function MobileStage({
     e.stopPropagation();
     e.preventDefault();
     onSelectLayer?.(layerId);
+    onPointerActionStart?.();
 
     const layer = layers.find((l) => l.id === layerId);
     if (!layer || layer.locked) return;
@@ -246,6 +248,7 @@ export default function MobileStage({
     e.stopPropagation();
     e.preventDefault();
     onSelectCaption?.();
+    onPointerActionStart?.();
 
     const canvasElem = dstCanvasRef.current;
     if (!canvasElem) return;
@@ -757,22 +760,17 @@ export default function MobileStage({
             </button>
           )}
 
-          {/* Lock / Unlock */}
-          <button
-            onClick={() => handleToggleLock(selectedLayer.id)}
-            title={selectedLayer.locked ? 'Unlock frame' : 'Lock frame'}
-            className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
-          >
-            {selectedLayer.locked ? <Lock size={14} className="text-amber-400" /> : <Unlock size={14} className="text-slate-400" />}
-          </button>
-
-          {/* Aspect Ratio Lock / Unlock */}
+          {/* Aspect Ratio Lock / Unlock (Freeform vs Locked) */}
           <button
             onClick={() => updateLayer(selectedLayer.id, { aspect_lock: !selectedLayer.aspect_lock })}
-            title={selectedLayer.aspect_lock ? "Unlock aspect ratio" : "Lock aspect ratio"}
-            className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
+            title={selectedLayer.aspect_lock ? "Unlock aspect ratio (Freeform resize)" : "Lock aspect ratio (Keep proportions)"}
+            className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all ${
+              selectedLayer.aspect_lock
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-sm'
+                : 'bg-white/[0.06] active:bg-white/15 text-slate-400'
+            }`}
           >
-            {selectedLayer.aspect_lock ? <LockKeyhole size={14} className="text-[#8FD3FF]" /> : <UnlockKeyhole size={14} className="text-slate-400" />}
+            {selectedLayer.aspect_lock ? <LockKeyhole size={14} className="text-amber-300" /> : <UnlockKeyhole size={14} className="text-slate-400" />}
           </button>
 
           {/* Reset Aspect Ratio */}
