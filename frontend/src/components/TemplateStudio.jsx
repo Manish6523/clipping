@@ -368,6 +368,7 @@ export default function TemplateStudio() {
                 position: { y: captionPositionY / 100 }
               }}
               mode="template"
+              showToolbar={false}
               showBottomPanel={false}
             />
           </div>

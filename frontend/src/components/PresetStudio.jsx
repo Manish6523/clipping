@@ -461,6 +461,7 @@ export default function PresetStudio() {
               layout={activeLayout}
               onChange={(nextLayout) => setActiveLayout(nextLayout)}
               sourceMediaUrl={channelFrameUrl}
+              showToolbar={false}
             />
           </div>
         </div>
