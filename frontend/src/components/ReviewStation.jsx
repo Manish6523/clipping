@@ -293,18 +293,12 @@ export default function ReviewStation({ onStatusChange }) {
     if (!activeClipId) return;
     setLoading(true);
     try {
-      const res = await postClipNow(activeClipId);
+      await postClipNow(activeClipId);
       queryClient.invalidateQueries({ queryKey: ['clips'] });
       if (onStatusChange) onStatusChange();
-
-      if (res?.success) {
-        showFeedback(`Clip #${activeClipId} published successfully!`);
-      } else {
-        const errMsg = res?.error || 'Publishing failed. Check channel quota or account configuration.';
-        alert(`❌ Publishing Failed for Clip #${activeClipId}:\n\n${errMsg}`);
-      }
+      showFeedback(`Clip #${activeClipId} dispatched for immediate publishing!`);
     } catch (err) {
-      alert('Failed to post clip: ' + (err.response?.data?.error || err.message));
+      alert('Failed to post clip: ' + err.message);
     } finally {
       setLoading(false);
     }

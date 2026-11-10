@@ -25,15 +25,10 @@ export default function PublishPanel({ isCompact = false }) {
     setLoading(true);
     try {
       await saveEDL();
-      const res = await postClipNow(clipId);
-      if (res?.success) {
-        setStatusMsg('Posted successfully!');
-      } else {
-        const errMsg = res?.error || 'Publishing failed. Check channel quota or account configuration.';
-        alert(`❌ Publishing Failed:\n\n${errMsg}`);
-      }
+      await postClipNow(clipId);
+      setStatusMsg('Posted successfully!');
     } catch (e) {
-      alert('Posting failed: ' + (e.response?.data?.error || e.message));
+      alert('Posting failed: ' + e.message);
     } finally {
       setLoading(false);
     }

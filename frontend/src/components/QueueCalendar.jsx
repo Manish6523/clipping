@@ -25,16 +25,11 @@ export default function QueueCalendar() {
     if (!confirm(`Force publish scheduled clip #${clipId} right now?`)) return;
     setLoading(true);
     try {
-      const res = await postClipNow(clipId);
-      if (res?.success) {
-        alert(`Clip #${clipId} published successfully!`);
-      } else {
-        const errMsg = res?.error || 'Publishing failed. Check channel quota or account configuration.';
-        alert(`❌ Publishing Failed for Clip #${clipId}:\n\n${errMsg}`);
-      }
+      await postClipNow(clipId);
+      alert('Published!');
       fetchQueue();
     } catch (err) {
-      alert('Publish failed: ' + (err.response?.data?.error || err.message));
+      alert('Publish failed: ' + err.message);
     } finally {
       setLoading(false);
     }
