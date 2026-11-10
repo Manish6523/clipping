@@ -395,7 +395,7 @@ export default function MobileStage({
         /* MAIN VIEW = 9:16 LIVE OUTPUT */
         <div 
           onClick={() => onSelectLayer?.(null)}
-          className="h-full aspect-[9/16] max-w-full bg-black rounded-2xl overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
+          className="h-full aspect-[9/16] max-w-full bg-black rounded-none overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
         >
           <canvas
             ref={dstCanvasRef}
@@ -457,7 +457,7 @@ export default function MobileStage({
         <div 
           ref={srcCanvasRef}
           onClick={() => onSelectLayer?.(null)}
-          className="w-full aspect-video max-h-full bg-black rounded-2xl overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
+          className="w-full aspect-video max-h-full bg-black rounded-none overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
         >
           {sourceMediaUrl && (
             sourceMediaUrl.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
@@ -653,7 +653,7 @@ export default function MobileStage({
       {/* 2. PICTURE-IN-PICTURE (PiP) THUMBNAIL (Pinned Top-Right) */}
       <div 
         onClick={() => setMainView(mainView === 'output' ? 'source' : 'output')}
-        className={`absolute top-3 right-3 z-30 rounded-xl overflow-hidden border-2 border-white/20 shadow-2xl bg-black/90 cursor-pointer active:scale-95 transition-all group ${
+        className={`absolute top-3 right-3 z-30 rounded-none overflow-hidden border-2 border-white/20 shadow-2xl bg-black/90 cursor-pointer active:scale-95 transition-all group ${
           mainView === 'output' ? 'w-28 aspect-video' : 'w-16 aspect-[9/16]'
         }`}
         title="Tap to swap main and thumbnail view"

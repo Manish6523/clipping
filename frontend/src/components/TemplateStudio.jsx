@@ -489,7 +489,7 @@ export default function TemplateStudio() {
         )}
       </div>
 
-      {/* Quick Frame Selector Chips Bar (Works for both desktop and mobile) */}
+      {/* Quick Frame Selector Chips Bar & Add/Delete Frame Actions */}
       <div className="h-8 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-1.5 overflow-x-auto">
           <span className="text-[9px] uppercase font-bold text-slate-500 mr-1 flex items-center gap-1">
@@ -510,9 +510,73 @@ export default function TemplateStudio() {
             </button>
           ))}
         </div>
-        <span className="text-[9px] text-slate-500 hidden sm:inline">
-          Click frame chip to select boxes nested inside
-        </span>
+
+        {/* Add and Delete Box Action Controls */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              const currentLayers = layoutState.layers || [];
+              if (currentLayers.length >= 8) {
+                alert('Maximum 8 frames per layout.');
+                return;
+              }
+              const layerColors = ['#FFB020', '#00F0FF', '#A855F7', '#EC4899', '#10B981', '#F59E0B', '#3B82F6', '#EF4444'];
+              const color = layerColors[currentLayers.length % layerColors.length];
+              const newId = `l_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+              const newLayer = {
+                id: newId,
+                name: `Frame ${currentLayers.length + 1}`,
+                color,
+                visible: true,
+                locked: false,
+                src: { x: 0.1, y: 0.1, w: 0.4, h: 0.4 },
+                dst: { x: 0.05, y: 0.05, w: 0.9, h: 0.35 },
+                fit: 'cover',
+                aspect_lock: true,
+                style: { radius: 0, shape: 'rect', border: { w: 0, color: '#FFFFFF' }, shadow: { blur: 0, opacity: 0 }, opacity: 1.0, mirror: false },
+                tracking: { mode: 'off', smooth: 0.8 }
+              };
+              setLayoutState((prev) => ({
+                ...prev,
+                layers: [...(prev.layers || []), newLayer]
+              }));
+              setSelectedLayerId(newId);
+              setIsDirty(true);
+              showToast(`Added Frame ${currentLayers.length + 1}`);
+            }}
+            disabled={(layoutState.layers || []).length >= 8}
+            className="flex items-center gap-1 h-6 px-2 rounded-md bg-[#8FD3FF]/15 hover:bg-[#8FD3FF]/25 border border-[#8FD3FF]/40 text-[#8FD3FF] text-[10px] font-bold transition-all shadow-sm disabled:opacity-40"
+            title="Add a new crop frame box"
+          >
+            <Plus size={11} /> Add Box ({(layoutState.layers || []).length}/8)
+          </button>
+
+          {selectedLayerId && (
+            <button
+              type="button"
+              onClick={() => {
+                const currentLayers = layoutState.layers || [];
+                if (currentLayers.length <= 1) {
+                  alert('You must have at least 1 frame in the layout.');
+                  return;
+                }
+                setLayoutState((prev) => ({
+                  ...prev,
+                  layers: (prev.layers || []).filter((l) => l.id !== selectedLayerId)
+                }));
+                setSelectedLayerId(null);
+                setIsDirty(true);
+                showToast('Deleted selected frame');
+              }}
+              disabled={(layoutState.layers || []).length <= 1}
+              className="flex items-center gap-1 h-6 px-2 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold transition-all shadow-sm"
+              title="Delete the currently selected frame box"
+            >
+              <Trash2 size={11} /> Delete Box
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Slim Responsive Bottom Form Strip */}
