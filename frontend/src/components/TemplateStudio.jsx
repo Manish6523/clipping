@@ -18,7 +18,9 @@ import {
   Play,
   Loader2,
   Upload,
-  X
+  X,
+  Lock,
+  Unlock
 } from 'lucide-react';
 import { 
   getTemplates, 
@@ -553,28 +555,64 @@ export default function TemplateStudio() {
           </button>
 
           {selectedLayerId && (
-            <button
-              type="button"
-              onClick={() => {
-                const currentLayers = layoutState.layers || [];
-                if (currentLayers.length <= 1) {
-                  alert('You must have at least 1 frame in the layout.');
-                  return;
-                }
-                setLayoutState((prev) => ({
-                  ...prev,
-                  layers: (prev.layers || []).filter((l) => l.id !== selectedLayerId)
-                }));
-                setSelectedLayerId(null);
-                setIsDirty(true);
-                showToast('Deleted selected frame');
-              }}
-              disabled={(layoutState.layers || []).length <= 1}
-              className="flex items-center gap-1 h-6 px-2 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold transition-all shadow-sm"
-              title="Delete the currently selected frame box"
-            >
-              <Trash2 size={11} /> Delete Box
-            </button>
+            <>
+              {/* Aspect Ratio Lock Toggle for Selected Frame */}
+              <button
+                type="button"
+                onClick={() => {
+                  const target = (layoutState.layers || []).find((l) => l.id === selectedLayerId);
+                  if (!target) return;
+                  const newLockState = !target.aspect_lock;
+                  setLayoutState((prev) => ({
+                    ...prev,
+                    layers: (prev.layers || []).map((l) =>
+                      l.id === selectedLayerId ? { ...l, aspect_lock: newLockState } : l
+                    )
+                  }));
+                  setIsDirty(true);
+                  showToast(`Aspect ratio ${newLockState ? 'Locked' : 'Unlocked (Freeform)'}`);
+                }}
+                className={`flex items-center gap-1 h-6 px-2 rounded-md text-[10px] font-bold border transition-all ${
+                  (layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock
+                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                }`}
+                title="Toggle Aspect Ratio Lock (Locked keeps shape, Unlocked allows freeform stretch/resize)"
+              >
+                {(layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock ? (
+                  <>
+                    <Lock size={10} className="text-amber-400" /> Lock Aspect: ON
+                  </>
+                ) : (
+                  <>
+                    <Unlock size={10} /> Lock Aspect: OFF
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const currentLayers = layoutState.layers || [];
+                  if (currentLayers.length <= 1) {
+                    alert('You must have at least 1 frame in the layout.');
+                    return;
+                  }
+                  setLayoutState((prev) => ({
+                    ...prev,
+                    layers: (prev.layers || []).filter((l) => l.id !== selectedLayerId)
+                  }));
+                  setSelectedLayerId(null);
+                  setIsDirty(true);
+                  showToast('Deleted selected frame');
+                }}
+                disabled={(layoutState.layers || []).length <= 1}
+                className="flex items-center gap-1 h-6 px-2 rounded-md bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 text-[10px] font-bold transition-all shadow-sm"
+                title="Delete the currently selected frame box"
+              >
+                <Trash2 size={11} /> Delete Box
+              </button>
+            </>
           )}
         </div>
       </div>
