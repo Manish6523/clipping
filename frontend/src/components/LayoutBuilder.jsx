@@ -279,17 +279,19 @@ export default function LayoutBuilder({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleUndo, handleRedo, selectedLayerId, layers]);
 
-  const updateLayout = useCallback((updater) => {
-    pushHistory(currentLayout);
+  const updateLayout = useCallback((updater, recordHistory = true) => {
+    if (recordHistory) {
+      pushHistory(currentLayout);
+    }
     const nextLayout = typeof updater === 'function' ? updater(currentLayout) : { ...currentLayout, ...updater };
     onChange?.(nextLayout);
   }, [currentLayout, onChange, pushHistory]);
 
-  const updateLayer = useCallback((layerId, partial) => {
+  const updateLayer = useCallback((layerId, partial, recordHistory = true) => {
     updateLayout((prev) => ({
       ...prev,
       layers: prev.layers.map((l) => (l.id === layerId ? { ...l, ...partial } : l))
-    }));
+    }), recordHistory);
   }, [updateLayout]);
 
   const handleAddLayer = () => {
@@ -505,7 +507,7 @@ export default function LayoutBuilder({
         ctx.setLineDash([]);
       }
 
-      if (mode === 'clip' && videoRef?.current) {
+      if ((mode === 'clip' && videoRef?.current) || mode === 'template') {
         animId = requestAnimationFrame(renderDst);
       }
     };
@@ -539,6 +541,9 @@ export default function LayoutBuilder({
 
     const layer = layers.find((l) => l.id === layerId);
     if (!layer || layer.locked) return;
+
+    // Record snapshot once at pointer down so intermediate drag frames don't flood history
+    pushHistory(currentLayout);
 
     const canvasElem = target === 'src' ? srcCanvasRef.current : dstCanvasRef.current;
     if (!canvasElem) return;
@@ -590,7 +595,7 @@ export default function LayoutBuilder({
             x: Math.round(newX * 1000) / 1000,
             y: Math.round(newY * 1000) / 1000,
           }
-        });
+        }, false);
       } else if (dragState.actionType === 'resize') {
         const handle = dragState.handle;
         let { x, y, w, h } = curRect;
@@ -644,7 +649,7 @@ export default function LayoutBuilder({
             w: Math.round(w * 1000) / 1000,
             h: Math.round(h * 1000) / 1000,
           }
-        });
+        }, false);
       }
     };
 

@@ -99,6 +99,7 @@ export default function MobileStage({
       canvasW: rect.width,
       canvasH: rect.height,
       origRect: { ...(target === 'src' ? layer.src : layer.dst) },
+      layer: { ...layer }
     });
   };
 
@@ -185,6 +186,14 @@ export default function MobileStage({
             } else {
               h = 1.0 - y;
               w = (h * dragState.canvasH * targetRatio) / dragState.canvasW;
+            }
+          } else if (hnd === 'n' || hnd === 's') {
+            const desiredW = (h * dragState.canvasH * targetRatio) / dragState.canvasW;
+            if (x + desiredW <= 1.0) {
+              w = desiredW;
+            } else {
+              w = 1.0 - x;
+              h = (w * dragState.canvasW) / targetRatio / dragState.canvasH;
             }
           }
         }
@@ -526,19 +535,23 @@ export default function MobileStage({
                   className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
                 />
 
-                {/* 4 Touch Corner Handles with 44x44dp hit area */}
-                {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se'].map((hnd) => (
+                {/* 8 Touch Handles: 4 corners + 4 edge centers with 44x44dp touch area */}
+                {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'].map((hnd) => (
                   <div
                     key={hnd}
                     onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'resize', hnd)}
-                    className={`absolute w-10 h-10 -m-3.5 flex items-center justify-center z-40 touch-none active:scale-110 transition-transform ${
+                    className={`absolute w-10 h-10 -m-5 flex items-center justify-center z-40 touch-none active:scale-110 transition-transform ${
                       hnd === 'nw' ? 'top-0 left-0' :
                       hnd === 'ne' ? 'top-0 right-0' :
                       hnd === 'sw' ? 'bottom-0 left-0' :
-                      'bottom-0 right-0'
+                      hnd === 'se' ? 'bottom-0 right-0' :
+                      hnd === 'n' ? 'top-0 left-1/2 -translate-x-1/2' :
+                      hnd === 's' ? 'bottom-0 left-1/2 -translate-x-1/2' :
+                      hnd === 'e' ? 'top-1/2 right-0 -translate-y-1/2' :
+                      'top-1/2 left-0 -translate-y-1/2'
                     }`}
                   >
-                    <div className="w-4 h-4 bg-[#8FD3FF] border-2 border-black rounded-full shadow-lg" />
+                    <div className="w-3.5 h-3.5 bg-[#8FD3FF] border-2 border-black rounded-full shadow-lg" />
                   </div>
                 ))}
               </div>
@@ -605,19 +618,23 @@ export default function MobileStage({
                   className="absolute top-0 left-0 w-2 h-2 rounded-br pointer-events-none"
                 />
 
-                {/* 4 Touch Corner Handles with 44x44dp hit area */}
-                {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se'].map((hnd) => (
+                {/* 8 Touch Handles: 4 corners + 4 edge centers with 44x44dp touch area */}
+                {isSelected && !layer.locked && ['nw', 'ne', 'sw', 'se', 'n', 's', 'e', 'w'].map((hnd) => (
                   <div
                     key={hnd}
                     onPointerDown={(e) => handlePointerDown(e, 'src', layer.id, 'resize', hnd)}
-                    className={`absolute w-10 h-10 -m-3.5 flex items-center justify-center z-40 touch-none active:scale-110 transition-transform ${
+                    className={`absolute w-10 h-10 -m-5 flex items-center justify-center z-40 touch-none active:scale-110 transition-transform ${
                       hnd === 'nw' ? 'top-0 left-0' :
                       hnd === 'ne' ? 'top-0 right-0' :
                       hnd === 'sw' ? 'bottom-0 left-0' :
-                      'bottom-0 right-0'
+                      hnd === 'se' ? 'bottom-0 right-0' :
+                      hnd === 'n' ? 'top-0 left-1/2 -translate-x-1/2' :
+                      hnd === 's' ? 'bottom-0 left-1/2 -translate-x-1/2' :
+                      hnd === 'e' ? 'top-1/2 right-0 -translate-y-1/2' :
+                      'top-1/2 left-0 -translate-y-1/2'
                     }`}
                   >
-                    <div className="w-4 h-4 bg-white border-2 border-black rounded-full shadow-lg" />
+                    <div className="w-3.5 h-3.5 bg-white border-2 border-black rounded-full shadow-lg" />
                   </div>
                 ))}
               </div>

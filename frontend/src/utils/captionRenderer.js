@@ -63,14 +63,17 @@ export function renderCaptionsToCanvas({
 
   let chunkData = null;
   if (isTemplateStudio) {
-    // Only in template studio: render sample words clearly labeled
+    // Only in template studio: render sample words clearly labeled with animated word cycle
+    // Cycle word highlights every ~0.8s so user can see their selected animation in action
+    const previewTime = Date.now() / 1000;
+    const cycleIndex = Math.floor(previewTime / 0.8) % 3;
     chunkData = {
       chunk: [
-        { word: 'THIS', start: 0, end: 1 },
-        { word: 'IS', start: 1, end: 2 },
-        { word: 'INSANE!', start: 2, end: 3, highlight: true }
+        { word: 'THIS', start: 0, end: 1, highlight: cycleIndex === 0 },
+        { word: 'IS', start: 1, end: 2, highlight: cycleIndex === 1 },
+        { word: 'INSANE!', start: 2, end: 3, highlight: cycleIndex === 2 }
       ],
-      activeIndex: 2,
+      activeIndex: cycleIndex,
       chunkStart: 0,
       chunkEnd: 3,
     };
@@ -136,7 +139,10 @@ export function renderCaptionsToCanvas({
   // Draw words
   let curX = targetX - totalTextWidth / 2;
   const activeWordItem = chunk[activeIndex];
-  const timeSinceStart = activeWordItem ? Math.max(0, currentTime - activeWordItem.start) : 0;
+  // In template studio, simulate continuous progress so scale/bounce animates smoothly
+  const timeSinceStart = isTemplateStudio 
+    ? ((Date.now() / 1000) % 0.8) 
+    : (activeWordItem ? Math.max(0, currentTime - activeWordItem.start) : 0);
 
   wordMetrics.forEach((m) => {
     const wordCenterX = curX + m.width / 2;

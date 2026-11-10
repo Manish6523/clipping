@@ -55,13 +55,17 @@ export default function TemplateStudio() {
   const [sampleVideoUrl, setSampleVideoUrl] = useState(null);
 
   // Typography & Subtitles
-  const [fontFamily, setFontFamily] = useState('Montserrat ExtraBold');
+  const [fontFamily, setFontFamily] = useState('Montserrat');
   const [fontSize, setFontSize] = useState(72);
   const [primaryColor, setPrimaryColor] = useState('#FFFFFF');
   const [highlightColor, setHighlightColor] = useState('#FACC15');
-  const [outlineWidth, setOutlineWidth] = useState(4);
+  const [outlineColor, setOutlineColor] = useState('#000000');
+  const [outlineWidth, setOutlineWidth] = useState(8);
+  const [shadowBlur, setShadowBlur] = useState(8);
   const [animationPreset, setAnimationPreset] = useState('pop');
   const [captionPositionY, setCaptionPositionY] = useState(76);
+  const [uppercase, setUppercase] = useState(true);
+  const [showAdvancedTypography, setShowAdvancedTypography] = useState(false);
 
   // Direct channel assignment
   const [assigningStreamer, setAssigningStreamer] = useState('');
@@ -427,6 +431,11 @@ export default function TemplateStudio() {
                   fontSize,
                   color: primaryColor,
                   highlight: highlightColor,
+                  outline_color: outlineColor,
+                  outline_width: outlineWidth,
+                  shadow_blur: shadowBlur,
+                  animation: animationPreset,
+                  uppercase,
                   position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
                   onChangePos: (newPos) => {
                     if (newPos && typeof newPos.y === 'number') {
@@ -457,6 +466,11 @@ export default function TemplateStudio() {
                 fontSize,
                 color: primaryColor,
                 highlight: highlightColor,
+                outline_color: outlineColor,
+                outline_width: outlineWidth,
+                shadow_blur: shadowBlur,
+                animation: animationPreset,
+                uppercase,
                 position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
                 onChangePos: (newPos) => {
                   if (newPos && typeof newPos.y === 'number') {
@@ -476,9 +490,9 @@ export default function TemplateStudio() {
       </div>
 
       {/* Quick Frame Selector Chips Bar & Add/Delete Frame Actions */}
-      <div className="h-8 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-1.5 overflow-x-auto">
-          <span className="text-[9px] uppercase font-bold text-slate-500 mr-1 flex items-center gap-1">
+      <div className="min-h-8 py-1 px-2 bg-[#0A0D14] border-t border-white/[0.06] flex flex-wrap items-center justify-between gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 overflow-x-auto max-w-full">
+          <span className="text-[9px] uppercase font-bold text-slate-500 mr-1 flex items-center gap-1 shrink-0">
             <Layers size={11} className="text-[#8FD3FF]" /> Frames / Layers:
           </span>
           {(layoutState.layers || []).map((l) => (
@@ -498,7 +512,7 @@ export default function TemplateStudio() {
         </div>
 
         {/* Add and Delete Box Action Controls */}
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
           <button
             type="button"
             onClick={() => {
@@ -631,11 +645,17 @@ export default function TemplateStudio() {
               onChange={(e) => { setFontFamily(e.target.value); setIsDirty(true); }}
               className="bg-[#141722] border border-white/10 rounded-lg px-1.5 py-1 text-[11px] text-white focus:outline-none"
             >
-              <option value="Montserrat ExtraBold">Montserrat Ext</option>
-              <option value="Anton">Anton</option>
-              <option value="Bangers">Bangers</option>
-              <option value="Poppins Black">Poppins</option>
-              <option value="Inter Black">Inter</option>
+              <option value="Montserrat">Montserrat</option>
+              <option value="Anton">Anton (Bold)</option>
+              <option value="Bangers">Bangers (Comic)</option>
+              <option value="Poppins">Poppins</option>
+              <option value="Inter">Inter</option>
+              <option value="Oswald">Oswald (Tall)</option>
+              <option value="Russo One">Russo One</option>
+              <option value="Teko">Teko (Ultra Cond)</option>
+              <option value="Permanent Marker">Marker (Graffiti)</option>
+              <option value="Black Ops One">Black Ops (Army)</option>
+              <option value="Bungee">Bungee (Punchy)</option>
             </select>
           </div>
 
@@ -644,7 +664,7 @@ export default function TemplateStudio() {
             <input
               type="number"
               min="30"
-              max="120"
+              max="140"
               value={fontSize}
               onChange={(e) => { setFontSize(Number(e.target.value)); setIsDirty(true); }}
               className="w-12 bg-[#141722] border border-white/10 rounded-lg px-1 py-1 text-[11px] text-white text-center font-mono focus:outline-none"
@@ -661,6 +681,7 @@ export default function TemplateStudio() {
               <option value="pop">Pop (Punch)</option>
               <option value="bounce">Bounce</option>
               <option value="typewriter">Karaoke</option>
+              <option value="none">None (Static)</option>
             </select>
           </div>
 
@@ -676,6 +697,20 @@ export default function TemplateStudio() {
             />
             <span className="font-mono text-slate-400 text-[10px] w-6">{captionPositionY}%</span>
           </div>
+
+          {/* Advanced Typography Modal / Drawer Toggle */}
+          <button
+            type="button"
+            onClick={() => setShowAdvancedTypography(!showAdvancedTypography)}
+            className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-bold border transition-all ${
+              showAdvancedTypography 
+                ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF]' 
+                : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+            }`}
+            title="Open Advanced Subtitle Styling (Colors, Outline, Shadow, Case)"
+          >
+            <Sliders size={11} /> Advanced Text
+          </button>
 
           {/* Background Mode Toggle: Solid Black vs Blurred 9:16 */}
           <div className="flex items-center gap-1 pl-2 border-l border-white/10">
@@ -749,6 +784,127 @@ export default function TemplateStudio() {
                 className="bg-white/10 hover:bg-white/20 text-white text-xs font-bold py-1.5 px-3 rounded-lg"
               >
                 Close Preview
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Advanced Typography Settings Modal */}
+      {showAdvancedTypography && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#0E1118] border border-white/[0.15] rounded-2xl max-w-md w-full p-5 flex flex-col gap-4 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Sliders size={16} className="text-[#8FD3FF]" />
+                <h3 className="text-sm font-bold text-white">Advanced Caption Typography</h3>
+              </div>
+              <button
+                onClick={() => setShowAdvancedTypography(false)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 text-xs">
+              {/* Primary Color */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Main Text Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={primaryColor}
+                    onChange={(e) => { setPrimaryColor(e.target.value); setIsDirty(true); }}
+                    className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer"
+                  />
+                  <span className="font-mono text-white text-[11px]">{primaryColor}</span>
+                </div>
+              </div>
+
+              {/* Highlight Color */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Word Pop Highlight</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={highlightColor}
+                    onChange={(e) => { setHighlightColor(e.target.value); setIsDirty(true); }}
+                    className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer"
+                  />
+                  <span className="font-mono text-white text-[11px]">{highlightColor}</span>
+                </div>
+              </div>
+
+              {/* Outline Color */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Outline Stroke Color</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="color"
+                    value={outlineColor}
+                    onChange={(e) => { setOutlineColor(e.target.value); setIsDirty(true); }}
+                    className="w-7 h-7 rounded border-0 bg-transparent cursor-pointer"
+                  />
+                  <span className="font-mono text-white text-[11px]">{outlineColor}</span>
+                </div>
+              </div>
+
+              {/* Outline Width */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Outline Width</label>
+                  <span className="font-mono text-slate-400 text-[10px]">{outlineWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="20"
+                  value={outlineWidth}
+                  onChange={(e) => { setOutlineWidth(Number(e.target.value)); setIsDirty(true); }}
+                  className="accent-[#8FD3FF] cursor-pointer"
+                />
+              </div>
+
+              {/* Shadow Blur */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[10px] uppercase font-bold text-slate-400">Drop Shadow</label>
+                  <span className="font-mono text-slate-400 text-[10px]">{shadowBlur}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="30"
+                  value={shadowBlur}
+                  onChange={(e) => { setShadowBlur(Number(e.target.value)); setIsDirty(true); }}
+                  className="accent-[#8FD3FF] cursor-pointer"
+                />
+              </div>
+
+              {/* Uppercase Toggle */}
+              <div className="flex flex-col gap-1.5 bg-[#141722] p-2.5 rounded-xl border border-white/5 justify-between">
+                <label className="text-[10px] uppercase font-bold text-slate-400">Letter Casing</label>
+                <button
+                  type="button"
+                  onClick={() => { setUppercase(!uppercase); setIsDirty(true); }}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border ${
+                    uppercase
+                      ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF]'
+                      : 'bg-white/5 border-white/10 text-slate-400'
+                  }`}
+                >
+                  {uppercase ? 'ALL CAPS (ON)' : 'Original Case'}
+                </button>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                onClick={() => setShowAdvancedTypography(false)}
+                className="bg-[#8FD3FF] text-black font-bold px-4 py-2 rounded-xl text-xs hover:bg-[#A9B8FF] transition-all shadow"
+              >
+                Apply & Close
               </button>
             </div>
           </div>
