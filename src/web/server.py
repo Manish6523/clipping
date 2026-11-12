@@ -1026,6 +1026,14 @@ class WebUIServer:
         if isinstance(data.get("focus"), str) and data["focus"].strip():
             options["focus"] = data["focus"].strip()[:200]
 
+        # Auto edit (Quick Clip only): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
+        ae = data.get("auto_edit")
+        if isinstance(ae, dict) and ae.get("enabled", True):
+            from src.compositor.auto_edit import FEATURE_KEYS, STYLES
+            clean = {"enabled": True, "style": ae.get("style") if ae.get("style") in STYLES else "punchy"}
+            clean.update({k: ae[k] for k in FEATURE_KEYS if isinstance(ae.get(k), bool)})
+            options["auto_edit"] = clean
+
         if self.on_manual_clip:
             asyncio.create_task(self.on_manual_clip(url, template, time_range, options))
 

@@ -123,10 +123,11 @@ def build_filter_graph(
         )
         current_base = next_base
 
-    # 3. Speed & Color Grading (anti-shadowban / visual grading)
+    # 3. Color Grading (anti-shadowban). The speed change is applied LAST, after captions are
+    # burned: caption times are in source time, so burning after setpts made them drift late.
     graded_tag = "[graded]"
     filters.append(
-        f"{current_base}setpts=PTS/{speed_multiplier:.4f},eq=contrast={contrast:.2f}:saturation={saturation:.2f}{graded_tag}"
+        f"{current_base}eq=contrast={contrast:.2f}:saturation={saturation:.2f}{graded_tag}"
     )
     last_v = graded_tag
 
@@ -139,9 +140,11 @@ def build_filter_graph(
     # 5. Burn Subtitles (ASS)
     if ass_path and os.path.exists(ass_path):
         escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
-        filters.append(f"{last_v}subtitles='{escaped_ass}'[vout]")
-    else:
-        filters.append(f"{last_v}null[vout]")
+        filters.append(f"{last_v}subtitles='{escaped_ass}'[subbed]")
+        last_v = "[subbed]"
+
+    # 6. Anti-shadowban speed change (audio gets the matching atempo)
+    filters.append(f"{last_v}setpts=PTS/{speed_multiplier:.4f}[vout]")
 
     return {
         "filter_complex": ";".join(filters),

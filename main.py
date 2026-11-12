@@ -45,6 +45,7 @@ from src.bot.trimmer import load_template
 from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 from src.compositor.profanity import prepare_censor, censor_text, summarize as summarize_censor, merge_flags
+from src.compositor.auto_edit import auto_edit_clip, resolve_config as resolve_auto_edit, summary_flag, pick_hook_text
 from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
 from src.intelligence.calibrated_judge import CalibratedJudge
@@ -217,36 +218,53 @@ class AutoClipEngine:
                 ass_path = str(work_dir / f"{fake_vod_id}_sub.ass")
 
                 words, censor_cfg = await prepare_censor(transcription.get("words", []), template)
+                rendered_mp4 = str(Path(OUTPUT_DIR) / f"{fake_vod_id}_vertical.mp4")
+                auto_cfg = resolve_auto_edit((options or {}).get("auto_edit"))
+                clip_source, clip_len = str(slice_source), clip_dur
+                manual_title = f"Manual Highlight ({template_name})"
+                flag_list = [{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]
+
+                if auto_cfg:
+                    update_pipeline_progress("processing", channel_id="manual", step=4,
+                                             step_name=f"Auto editing ({auto_cfg['style']}): cuts, zooms, hook card...")
+                    hook = pick_hook_text(words)
+                    edited = await auto_edit_clip(
+                        self.renderer, slice_source, words, clip_dur, template, auto_cfg, censor_cfg,
+                        rendered_mp4, work_dir, fake_vod_id, hook_text=hook,
+                    )
+                    clip_source, clip_len, words = edited["source"], edited["duration"], edited["words"]
+                    if hook:
+                        manual_title = censor_text(hook, censor_cfg)
+                    flag_list.append(summary_flag(edited["summary"]))
+
+                # Captions file + word cache in the (possibly tightened) source timeline, so the
+                # editor and Telegram trims keep working on auto-edited clips too.
                 self._cache_words(ass_path, words)
                 generate_ass_subtitles(
                     word_timestamps=words,
                     output_path=ass_path,
                     template_config=template,
                     time_offset=0.0,
-                    max_duration=clip_dur,
+                    max_duration=clip_len,
                     censor_cfg=censor_cfg,
                 )
 
-                update_pipeline_progress("processing", channel_id="manual", step=4, step_name=f"Compositing 9:16 vertical layout ({template_name})...")
-                rendered_mp4 = str(Path(OUTPUT_DIR) / f"{fake_vod_id}_vertical.mp4")
-                await self.renderer.render_clip(
-                    source_path=str(slice_source),
-                    start_time=0.0,
-                    end_time=clip_dur,
-                    output_path=rendered_mp4,
-                    template=template,
-                    ass_path=ass_path,
-                    teaser_timestamp=None,
-                    include_teaser=False,
-                    censor_words=words,
-                    censor_cfg=censor_cfg,
-                    words_time_offset=0.0,
-                )
-                manual_flags = merge_flags(
-                    json.dumps([{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]),
-                    summarize_censor(words, 0.0, clip_dur),
-                    censor_cfg,
-                )
+                if not auto_cfg:
+                    update_pipeline_progress("processing", channel_id="manual", step=4, step_name=f"Compositing 9:16 vertical layout ({template_name})...")
+                    await self.renderer.render_clip(
+                        source_path=str(slice_source),
+                        start_time=0.0,
+                        end_time=clip_dur,
+                        output_path=rendered_mp4,
+                        template=template,
+                        ass_path=ass_path,
+                        teaser_timestamp=None,
+                        include_teaser=False,
+                        censor_words=words,
+                        censor_cfg=censor_cfg,
+                        words_time_offset=0.0,
+                    )
+                manual_flags = merge_flags(json.dumps(flag_list), summarize_censor(words, 0.0, clip_len), censor_cfg)
 
                 clip_id = await create_clip(
                     source_type="vod",
@@ -255,16 +273,17 @@ class AutoClipEngine:
                     template_name=template_name,
                     # Times are relative to the downloaded slice (source_video_path), which starts at start_sec.
                     raw_start=0.0,
-                    raw_end=clip_dur,
-                    trigger_json=json.dumps({"type": "manual", "source_url": url, "source_start": start_sec, "source_end": end_sec}),
+                    raw_end=clip_len,
+                    trigger_json=json.dumps({"type": "manual", "source_url": url, "source_start": start_sec, "source_end": end_sec,
+                                             "auto_edit": auto_cfg.get("style") if auto_cfg else None}),
                     virality_score=0,
                     final_score=None,
                     flags=manual_flags,
-                    title=f"Manual Highlight ({template_name})",
+                    title=manual_title,
                     teaser_hook_timestamp=None,
                     description=censor_text(transcription.get("text", "")[:100], censor_cfg),
                     hashtags="#Shorts #Reels #Viral",
-                    source_video_path=str(slice_source),
+                    source_video_path=clip_source,
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
                 )
@@ -299,8 +318,11 @@ class AutoClipEngine:
                 })
 
                 clip_record = await get_clip(clip_id)
-                if clip_record:
-                    await self.bot.send_clip_card(clip_record)
+                if clip_record and self.bot:
+                    try:
+                        await self.bot.send_clip_card(clip_record)
+                    except Exception as bot_err:
+                        logger.warning("Telegram notification failed (clip is safe in Web UI): %s", bot_err)
 
                 async def _reset():
                     await asyncio.sleep(20)
@@ -725,6 +747,7 @@ class AutoClipEngine:
     async def _render_vod_candidate(
         self, cand: Dict[str, Any], idx: int, vod_id: str, channel_id: str, template_name: str,
         template: Dict[str, Any], video_url: str, work_dir: Path, words_all: list, censor_cfg: Dict[str, Any],
+        auto_cfg: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         """Download, caption, render and register ONE candidate of a VOD."""
         clip_start, clip_end = cand["start"], cand["end"]
@@ -740,30 +763,49 @@ class AutoClipEngine:
             return None
 
         ass_path = str(work_dir / f"{tag}_sub.ass")
-        # Cache words in clip-relative time: the stored source video is the slice, not the full VOD.
-        self._cache_words(ass_path, words_all, shift=clip_start)
-        generate_ass_subtitles(
-            word_timestamps=words_all, output_path=ass_path, template_config=template,
-            time_offset=clip_start, max_duration=clip_dur, censor_cfg=censor_cfg,
-        )
-
         rendered_mp4 = str(Path(OUTPUT_DIR) / f"{tag}_vertical.mp4")
-        await self.renderer.render_clip(
-            source_path=str(slice_source), start_time=0.0, end_time=clip_dur, output_path=rendered_mp4,
-            template=template, ass_path=ass_path, teaser_timestamp=None, include_teaser=False,
-            censor_words=words_all, censor_cfg=censor_cfg, words_time_offset=clip_start,
-        )
-        flags_json = merge_flags(cand["flags"], summarize_censor(words_all, clip_start, clip_dur), censor_cfg)
         title = censor_text(cand["title"], censor_cfg)
+        # words of this clip in slice-relative time
+        clip_words = [
+            {**w, "start": round(float(w.get("start", 0.0)) - clip_start, 3), "end": round(float(w.get("end", 0.0)) - clip_start, 3)}
+            for w in words_all
+            if float(w.get("end", 0.0)) > clip_start and float(w.get("start", 0.0)) < clip_end
+        ]
+        clip_source, clip_len = str(slice_source), clip_dur
+        extra_flags: list = []
+
+        if auto_cfg:
+            edited = await auto_edit_clip(
+                self.renderer, slice_source, clip_words, clip_dur, template, auto_cfg, censor_cfg,
+                rendered_mp4, work_dir, tag, hook_text=cand["title"],
+            )
+            clip_source, clip_len, clip_words = edited["source"], edited["duration"], edited["words"]
+            extra_flags.append(summary_flag(edited["summary"]))
+
+        # Captions + word cache in the (possibly tightened) clip timeline for editor/trims.
+        self._cache_words(ass_path, clip_words)
+        generate_ass_subtitles(
+            word_timestamps=clip_words, output_path=ass_path, template_config=template,
+            time_offset=0.0, max_duration=clip_len, censor_cfg=censor_cfg,
+        )
+        if not auto_cfg:
+            await self.renderer.render_clip(
+                source_path=clip_source, start_time=0.0, end_time=clip_len, output_path=rendered_mp4,
+                template=template, ass_path=ass_path, teaser_timestamp=None, include_teaser=False,
+                censor_words=clip_words, censor_cfg=censor_cfg, words_time_offset=0.0,
+            )
+        base_flags = json.loads(cand["flags"]) if cand.get("flags") else []
+        flags_json = merge_flags(json.dumps(base_flags + extra_flags) if (base_flags or extra_flags) else None,
+                                 summarize_censor(clip_words, 0.0, clip_len), censor_cfg)
 
         clip_id = await create_clip(
             source_type="vod", source_id=vod_id, channel_id=channel_id, template_name=template_name,
-            raw_start=0.0, raw_end=clip_dur,  # relative to the downloaded slice (source_video_path)
+            raw_start=0.0, raw_end=clip_len,  # relative to the (tightened) clip source
             virality_score=cand["score"], final_score=cand["final_score"],
             score_breakdown=cand["score_breakdown"], flags=flags_json,
             prompt_version=cand["prompt"], formula_version=cand["formula"],
             title=title, teaser_hook_timestamp=None, description=censor_text(cand["description"], censor_cfg),
-            hashtags=cand["hashtags"], source_video_path=str(slice_source), rendered_video_path=rendered_mp4,
+            hashtags=cand["hashtags"], source_video_path=clip_source, rendered_video_path=rendered_mp4,
             subtitle_path=ass_path,
             trigger_json=json.dumps({"type": "vod_heatmap", "vod_start": clip_start, "vod_end": clip_end, "rank": idx}),
             model=cand["model"],
@@ -859,6 +901,7 @@ class AutoClipEngine:
             work_dir = Path(metadata.get("work_dir", RENDER_DIR))
             words_all, censor_cfg = await prepare_censor(transcription.get("words", []), template)
             made: List[int] = []
+            auto_cfg = resolve_auto_edit(metadata.get("auto_edit"))  # only Quick Clip sends this
             for idx, cand in enumerate(picked, start=1):
                 update_pipeline_progress(
                     "processing", channel_id=channel_id, step=4,
@@ -867,7 +910,7 @@ class AutoClipEngine:
                 try:
                     clip_id = await self._render_vod_candidate(
                         cand, idx, vod_id, channel_id, template_name, template, video_url,
-                        work_dir, words_all, censor_cfg,
+                        work_dir, words_all, censor_cfg, auto_cfg=auto_cfg,
                     )
                 except Exception as clip_err:
                     logger.error("Clip %d/%d of VOD %s failed: %s", idx, len(picked), vod_id, clip_err, exc_info=True)

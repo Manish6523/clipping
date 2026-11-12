@@ -215,9 +215,9 @@ class FFmpegRenderer:
             filters.append("[0:v]crop=608:1080:656:0,scale=1080:1920[stacked]")
             last_v = "[stacked]"
 
-        # Anti-shadowban video adjustments (speed + color grading)
+        # Anti-shadowban color grading (speed is applied last, after captions — see below)
         filters.append(
-            f"{last_v}setpts=PTS/{speed},eq=contrast={contrast}:saturation={saturation}[graded]"
+            f"{last_v}eq=contrast={contrast}:saturation={saturation}[graded]"
         )
         last_v = "[graded]"
 
@@ -231,9 +231,12 @@ class FFmpegRenderer:
         # Subtitle burning (.ass)
         if ass_path and os.path.exists(ass_path):
             escaped_ass = escape_ffmpeg_path(ass_path)
-            filters.append(f"{last_v}subtitles='{escaped_ass}'[vout]")
-        else:
-            filters.append(f"{last_v}null[vout]")
+            filters.append(f"{last_v}subtitles='{escaped_ass}'[subbed]")
+            last_v = "[subbed]"
+
+        # Speed change LAST: caption times are source times, so burning them after setpts
+        # made captions drift progressively late (~1s by 50s at 1.02x).
+        filters.append(f"{last_v}setpts=PTS/{speed}[vout]")
 
         return ";".join(filters)
 
@@ -250,9 +253,12 @@ class FFmpegRenderer:
         censor_words: Optional[List[Dict[str, Any]]] = None,
         censor_cfg: Optional[Dict[str, Any]] = None,
         words_time_offset: Optional[float] = None,
+        intermediate: bool = False,
     ) -> str:
         """
         Execute full FFmpeg render pipeline for vertical clip.
+
+        ``intermediate=True`` encodes near-lossless (the auto-edit finishing pass re-encodes it).
 
         ``censor_words`` are word dicts annotated by ``profanity.annotate_words``; their
         timestamps are in the same time base as ``words_time_offset`` (defaults to
@@ -333,7 +339,10 @@ class FFmpegRenderer:
             cmd.extend(["-c:v", "h264_vaapi", "-qp", "24"])
         else:
             # -preset veryfast with -threads 2 prevents maxing out 100% CPU on 2-vCPU instances
-            cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25", "-maxrate", "4M", "-bufsize", "8M"])
+            if intermediate:
+                cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-threads", "2", "-crf", "14"])
+            else:
+                cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25", "-maxrate", "4M", "-bufsize", "8M"])
 
         cmd.extend([
             "-c:a", "aac",

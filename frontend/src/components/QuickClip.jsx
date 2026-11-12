@@ -4,6 +4,7 @@ import axios from 'axios';
 import { Zap, Link as LinkIcon, Sparkles, Loader2, CheckCircle2, AlertTriangle, Info, Scissors, ClipboardPaste } from 'lucide-react';
 import { clipManual } from '../api';
 import YouTubeRangePicker, { youtubeId, youtubeStartParam } from './YouTubeRangePicker';
+import AutoEditOptions, { loadAutoEdit, autoEditPayload } from './AutoEditOptions';
 
 // Shared text from other apps often looks like "Check this out https://youtu.be/xyz"
 const firstUrl = (...vals) => {
@@ -58,6 +59,7 @@ export default function QuickClip() {
   const [maxClips, setMaxClips] = useState(5);
   const [lengthId, setLengthId] = useState('auto');
   const [focus, setFocus] = useState('');
+  const [autoEdit, setAutoEdit] = useState(loadAutoEdit);
 
   // Android share sheet / PWA share_target: /quickclip?url=…&text=…&title=…
   useEffect(() => {
@@ -138,6 +140,7 @@ export default function QuickClip() {
         url: url.trim(),
         template,
         time_range: hasRange ? `${start}-${end}` : null,
+        auto_edit: autoEditPayload(autoEdit),
         ...(!hasRange ? (() => {
           const len = LENGTHS.find((l) => l.id === lengthId) || LENGTHS[0];
           return { max_clips: maxClips, min_len: len.min, max_len: len.max, focus: focus.trim() || undefined };
@@ -302,6 +305,8 @@ export default function QuickClip() {
               </div>
             </div>
           )}
+
+          <AutoEditOptions value={autoEdit} onChange={setAutoEdit} />
 
           <button
             type="submit"
