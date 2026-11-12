@@ -20,59 +20,12 @@
       "h": 1920
     },
     "background": {
-      "type": "solid",
-      "source_layer": null,
-      "blur": 0,
-      "dim": 0,
-      "color": "#000000"
+      "type": "blur",
+      "color": "#000000",
+      "blur": 35,
+      "dim": 0.35
     },
     "layers": [
-      {
-        "id": "l_game",
-        "name": "Gameplay",
-        "color": "#00F0FF",
-        "visible": true,
-        "locked": false,
-        "src": {
-          "x": 0.813,
-          "y": 0,
-          "w": 0.187,
-          "h": 0.307
-        },
-        "dst": {
-          "x": 0,
-          "y": 0.526,
-          "w": 1,
-          "h": 0.474
-        },
-        "fit": "cover",
-        "aspect_lock": true,
-        "style": {
-          "radius": 0,
-          "shape": "rect",
-          "border": {
-            "w": 0,
-            "color": "#FFFFFF"
-          },
-          "shadow": {
-            "blur": 0,
-            "opacity": 0,
-            "dx": 0,
-            "dy": 0
-          },
-          "opacity": 1,
-          "mirror": false
-        },
-        "tracking": {
-          "mode": "off",
-          "smooth": 0.8
-        },
-        "keyframes": {
-          "src": [],
-          "dst": []
-        },
-        "visible_range": null
-      },
       {
         "id": "l_face",
         "name": "Facecam",
@@ -80,16 +33,16 @@
         "visible": true,
         "locked": false,
         "src": {
-          "x": 0.006,
-          "y": 0,
-          "w": 0.994,
+          "x": 0.126,
+          "y": 0.005,
+          "w": 0.748,
           "h": 0.99
         },
         "dst": {
           "x": 0,
-          "y": 0,
+          "y": 0.182,
           "w": 1,
-          "h": 1
+          "h": 0.637
         },
         "fit": "cover",
         "aspect_lock": true,
@@ -159,11 +112,11 @@
     "outline": 4,
     "shadow": 2,
     "alignment": 2,
-    "margin_v": 998,
+    "margin_v": 883,
     "animation": "pop",
     "position": {
       "x": 0.5,
-      "y": 0.48,
+      "y": 0.54,
       "max_width": 0.85
     }
   },

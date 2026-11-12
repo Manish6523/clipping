@@ -90,6 +90,8 @@ class InstagramReelsPublisher:
 
         tag_list = hashtags or ["#Reels", "#Viral", "#Trending"]
         tags_str = " ".join(t if t.startswith("#") else f"#{t}" for t in tag_list)
+        from src.compositor.profanity import load_censor_config, censor_text
+        caption = censor_text(caption, await load_censor_config())
         full_caption = f"{caption}\n.\n.\n{tags_str}"
 
         try:

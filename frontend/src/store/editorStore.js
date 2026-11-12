@@ -310,6 +310,45 @@ export const useEditorStore = create((set, get) => ({
     }));
   },
 
+  // Toggle the bleep on a single word (explicit user override of auto-detection)
+  toggleWordCensor: (wordIdx) => {
+    const { edl, updateEDL } = get();
+    if (!edl || !edl.words) return;
+    updateEDL((prev) => ({
+      ...prev,
+      words: prev.words.map((w, idx) => {
+        if (idx !== wordIdx) return w;
+        const current = typeof w.censor === 'boolean' ? w.censor : Boolean(w.censored);
+        return { ...w, censor: !current };
+      }),
+    }));
+  },
+
+  // Clear manual bleep overrides so auto-detection decides again
+  resetWordCensors: () => {
+    const { edl, updateEDL } = get();
+    if (!edl || !edl.words) return;
+    updateEDL((prev) => ({
+      ...prev,
+      words: prev.words.map((w) => {
+        if (typeof w.censor !== 'boolean') return w;
+        const rest = { ...w };
+        delete rest.censor;
+        return rest;
+      }),
+    }));
+  },
+
+  // Per-clip censor override, e.g. { audio_mode: 'sfx' } (merged over global settings at render)
+  setClipCensor: (patch) => {
+    const { updateEDL } = get();
+    updateEDL((prev) => {
+      const next = { ...(prev.censor || {}), ...patch };
+      Object.keys(next).forEach((k) => { if (next[k] === null || next[k] === undefined) delete next[k]; });
+      return { ...prev, censor: next };
+    });
+  },
+
   // Edit word text typo
   editWordText: (wordId, newText) => {
     const { edl, updateEDL } = get();

@@ -167,6 +167,10 @@ class WebUIServer:
         self.app.router.add_get("/api/settings", self.handle_get_settings)
         self.app.router.add_post("/api/settings", self.handle_save_settings)
         self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
+        self.app.router.add_get("/api/censor/sfx", self.handle_list_censor_sfx)
+        self.app.router.add_post("/api/censor/sfx", self.handle_upload_censor_sfx)
+        self.app.router.add_get("/api/censor/sfx/{name}", self.handle_get_censor_sfx)
+        self.app.router.add_post("/api/censor/preview", self.handle_censor_preview)
         self.app.router.add_get("/api/clips/{id}/explain", self.handle_get_clip_explain)
         self.app.router.add_post("/api/clips/{id}/feedback", self.handle_post_clip_feedback)
         self.app.router.add_get("/api/analytics/feedback", self.handle_get_feedback_analytics)
@@ -242,8 +246,21 @@ class WebUIServer:
             status=503
         )
 
-    async def handle_spa_fallback(self, request: web.Request) -> web.Response:
-        """Fallback non-API routes to index.html for client-side React Router (/clips/:id/edit)."""
+    async def handle_spa_fallback(self, request: web.Request) -> web.StreamResponse:
+        """Serve real files from frontend/dist (PWA manifest, service worker, icons);
+        otherwise fall back to index.html for client-side React Router (/clips/:id/editor)."""
+        dist_root = (Path(__file__).resolve().parent.parent.parent / "frontend" / "dist").resolve()
+        rel = request.match_info.get("tail", "").lstrip("/")
+        if rel and "." in rel.rsplit("/", 1)[-1]:
+            candidate = (dist_root / rel).resolve()
+            if candidate.is_file() and dist_root in candidate.parents:
+                headers = {}
+                if candidate.name == "sw.js":
+                    headers["Cache-Control"] = "no-cache"
+                    headers["Service-Worker-Allowed"] = "/"
+                if candidate.suffix == ".webmanifest":
+                    headers["Content-Type"] = "application/manifest+json"
+                return web.FileResponse(candidate, headers=headers)
         return await self.handle_index(request)
 
     async def handle_admin_reset(self, request: web.Request) -> web.Response:
@@ -584,6 +601,14 @@ class WebUIServer:
             }
             await save_clip_edl(clip_id, edl)
 
+        # Mark profanity so the editor can show which words will be bleeped, and send the
+        # effective censor settings for the live caption preview (recomputed on every load).
+        from src.compositor.profanity import load_censor_config, annotate_words
+        from src.bot.trimmer import load_template
+        censor_cfg = await load_censor_config(load_template(clip.get("template_name") or ""))
+        edl = {**edl, "_censor_cfg": censor_cfg}
+        if edl.get("words"):
+            edl["words"] = annotate_words(edl["words"], {**censor_cfg, **(edl.get("censor") or {})})
         return web.json_response(edl)
 
     async def handle_save_clip_edl(self, request: web.Request) -> web.Response:
@@ -623,7 +648,7 @@ class WebUIServer:
             return web.json_response({"error": "Source video file not found"}, status=400)
 
         from src.intelligence.transcriber import Transcriber
-        transcriber = Transcriber(model_size="base")
+        transcriber = Transcriber()
         transcription = await transcriber.transcribe(source_file)
         words = transcription.get("words", [])
 
@@ -642,10 +667,12 @@ class WebUIServer:
             edl["words"] = words
             await save_clip_edl(clip_id, edl)
 
-        return web.json_response({"success": True, "words": words})
+        from src.compositor.profanity import prepare_censor
+        annotated, _ = await prepare_censor(words)
+        return web.json_response({"success": True, "words": annotated})
 
     async def handle_serve_clip_source(self, request: web.Request) -> web.StreamResponse:
-        """Stream original 16:9 source video with full HTTP 206 Range support for smooth scrubber seeking."""
+        """Stream the original 16:9 source (HTTP 206 range requests handled by FileResponse)."""
         clip_id = int(request.match_info["id"])
         clip = await get_clip(clip_id)
         if not clip:
@@ -655,45 +682,9 @@ class WebUIServer:
         if not v_path.exists():
             return web.Response(text="Source video file not found on disk", status=404)
 
-        file_size = v_path.stat().st_size
-        range_header = request.headers.get("Range")
-
-        if not range_header:
-            return web.FileResponse(v_path)
-
-        # Parse Byte Range: "bytes=start-end"
-        try:
-            byte_range = range_header.replace("bytes=", "").split("-")
-            start = int(byte_range[0])
-            end = int(byte_range[1]) if byte_range[1] else file_size - 1
-            length = (end - start) + 1
-        except Exception:
-            return web.FileResponse(v_path)
-
-        headers = {
-            "Content-Range": f"bytes {start}-{end}/{file_size}",
-            "Accept-Ranges": "bytes",
-            "Content-Length": str(length),
-            "Content-Type": "video/mp4",
-        }
-
-        resp = web.StreamResponse(status=206, headers=headers)
-        await resp.prepare(request)
-
-        chunk_size = 64 * 1024
-        with open(v_path, "rb") as f:
-            f.seek(start)
-            remaining = length
-            while remaining > 0:
-                read_amount = min(chunk_size, remaining)
-                chunk = f.read(read_amount)
-                if not chunk:
-                    break
-                await resp.write(chunk)
-                remaining -= len(chunk)
-
-        await resp.write_eof()
-        return resp
+        from src.web.media_preview import browser_playable
+        playable = await browser_playable(v_path)
+        return web.FileResponse(playable, headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"})
 
     async def handle_get_clip_waveform(self, request: web.Request) -> web.Response:
         """Generate or return simulated audio peaks array (100 normalized float points) for timeline waveform."""
@@ -767,11 +758,15 @@ class WebUIServer:
                 if captions.get("words_per_line"):
                     active_template["subtitles"]["words_per_line"] = captions["words_per_line"]
 
+            if isinstance(data.get("censor"), dict):
+                active_template["censor"] = {**(active_template.get("censor") or {}), **data["censor"]}
+
             updated = await self.trimmer.trim_and_rerender(
                 clip_id=clip_id,
                 delta_start=delta_start,
                 delta_end=delta_end,
-                custom_template=active_template
+                custom_template=active_template,
+                words_override=data.get("words") or None,
             )
             return web.json_response({"success": True, "clip": updated})
 
@@ -928,8 +923,7 @@ class WebUIServer:
         """Enqueue clip to Drip Queue."""
         clip_id = int(request.match_info["id"])
         next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-        qid = await enqueue_clip(clip_id, next_slot)
-        await update_clip_status(clip_id, "approved")
+        qid = await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
         try:
             from src.database import get_clip
             c_rec = await get_clip(clip_id)
@@ -1018,8 +1012,22 @@ class WebUIServer:
         if isinstance(time_range, (list, tuple)) and len(time_range) == 2:
             time_range = f"{time_range[0]}-{time_range[1]}"
 
+        # Opus-style options: how many clips, clip length range, and what to focus on
+        options = {}
+        try:
+            if data.get("max_clips") is not None:
+                options["max_clips"] = max(1, min(int(data["max_clips"]), 30))
+            if data.get("min_len") is not None:
+                options["min_len"] = max(5.0, float(data["min_len"]))
+            if data.get("max_len") is not None:
+                options["max_len"] = min(180.0, float(data["max_len"]))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "max_clips, min_len and max_len must be numbers"}, status=400)
+        if isinstance(data.get("focus"), str) and data["focus"].strip():
+            options["focus"] = data["focus"].strip()[:200]
+
         if self.on_manual_clip:
-            asyncio.create_task(self.on_manual_clip(url, template, time_range))
+            asyncio.create_task(self.on_manual_clip(url, template, time_range, options))
 
         return web.json_response({"success": True, "message": "Manual clip processing initiated."})
 
@@ -1055,11 +1063,18 @@ class WebUIServer:
         model_val = db_settings.get("gemini_model", {}).get("value") or GEMINI_MODEL or "gemini-flash-lite-latest"
         min_score = db_settings.get("min_virality_score", {}).get("value") or DEFAULT_MIN_VIRALITY_SCORE
 
+        from src.compositor.profanity import merge_config, load_global_config
+        import config.settings as s
+        censor_cfg = merge_config(await load_global_config())
+        whisper_model = db_settings.get("whisper_model", {}).get("value") or getattr(s, "WHISPER_MODEL", "small")
+
         return web.json_response({
             "gemini_api_keys": keys_list,
             "gemini_model": model_val,
             "min_virality_score": int(min_score),
             "total_keys_count": len(keys_list),
+            "censor": censor_cfg,
+            "whisper_model": whisper_model,
         })
 
     async def handle_save_settings(self, request: web.Request) -> web.Response:
@@ -1096,7 +1111,102 @@ class WebUIServer:
             await set_system_setting("min_virality_score", str(int(min_score)), category="scoring", description="Minimum threshold for clip extraction")
             s.DEFAULT_MIN_VIRALITY_SCORE = int(min_score)
 
+        censor = data.get("censor")
+        if isinstance(censor, dict):
+            from src.compositor.profanity import merge_config, SETTINGS_KEY, DEFAULT_CENSOR_CONFIG
+            clean = merge_config(censor)
+            # Only persist known keys
+            clean = {k: clean[k] for k in DEFAULT_CENSOR_CONFIG}
+            for list_key in ("custom_words", "allow_words"):
+                vals = clean.get(list_key) or []
+                if isinstance(vals, str):
+                    vals = vals.split(",")
+                clean[list_key] = sorted({str(v).strip().lower() for v in vals if str(v).strip()})
+            await set_system_setting(SETTINGS_KEY, json.dumps(clean), category="censor", description="Profanity bleep / caption masking settings")
+
+        whisper_model = data.get("whisper_model")
+        if whisper_model:
+            allowed = {"tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"}
+            if whisper_model not in allowed:
+                return web.json_response({"error": {"code": "BAD_MODEL", "message": f"whisper_model must be one of {sorted(allowed)}"}}, status=400)
+            await set_system_setting("whisper_model", whisper_model, category="ai", description="faster-whisper transcription model")
+            s.WHISPER_MODEL = whisper_model
+
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
+
+    # ------------------------------------------------------------------
+    # Profanity censoring: sound effects & preview
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _sfx_dirs():
+        from src.compositor.profanity import BUILTIN_SFX_DIR
+        from config.settings import DATA_DIR
+        user_dir = Path(DATA_DIR) / "sfx"
+        user_dir.mkdir(parents=True, exist_ok=True)
+        return BUILTIN_SFX_DIR, user_dir
+
+    async def handle_list_censor_sfx(self, request: web.Request) -> web.Response:
+        builtin_dir, user_dir = self._sfx_dirs()
+        items = []
+        seen = set()
+        for folder, kind in ((user_dir, "uploaded"), (builtin_dir, "builtin")):
+            if not folder.exists():
+                continue
+            for f in sorted(folder.iterdir()):
+                if f.suffix.lower() in (".wav", ".mp3", ".ogg", ".m4a", ".aac", ".flac") and f.name not in seen:
+                    seen.add(f.name)
+                    items.append({"name": f.name, "kind": kind, "size": f.stat().st_size})
+        return web.json_response({"sfx": items})
+
+    async def handle_upload_censor_sfx(self, request: web.Request) -> web.Response:
+        import re as _re
+        _, user_dir = self._sfx_dirs()
+        reader = await request.multipart()
+        field = await reader.next()
+        if field is None or field.name != "file" or not field.filename:
+            return web.json_response({"error": {"code": "NO_FILE", "message": "Upload a 'file' field"}}, status=400)
+        ext = Path(field.filename).suffix.lower()
+        if ext not in (".wav", ".mp3", ".ogg", ".m4a", ".aac", ".flac"):
+            return web.json_response({"error": {"code": "BAD_TYPE", "message": "Audio file required (wav, mp3, ogg, m4a, aac, flac)"}}, status=400)
+        stem = _re.sub(r"[^A-Za-z0-9_-]+", "_", Path(field.filename).stem).strip("_")[:40] or "sfx"
+        target = user_dir / f"{stem}{ext}"
+        size = 0
+        with open(target, "wb") as out:
+            while True:
+                chunk = await field.read_chunk(64 * 1024)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > 5 * 1024 * 1024:
+                    out.close()
+                    target.unlink(missing_ok=True)
+                    return web.json_response({"error": {"code": "TOO_LARGE", "message": "Sound effect must be under 5 MB"}}, status=400)
+                out.write(chunk)
+        return web.json_response({"success": True, "name": target.name})
+
+    async def handle_get_censor_sfx(self, request: web.Request) -> web.StreamResponse:
+        name = Path(request.match_info["name"]).name  # strip any path components
+        builtin_dir, user_dir = self._sfx_dirs()
+        for folder in (user_dir, builtin_dir):
+            f = folder / name
+            if f.is_file():
+                return web.FileResponse(f)
+        return web.json_response({"error": {"code": "NOT_FOUND", "message": "Sound effect not found"}}, status=404)
+
+    async def handle_censor_preview(self, request: web.Request) -> web.Response:
+        """Preview how text and words would be censored with the given (unsaved) settings."""
+        from src.compositor.profanity import merge_config, load_global_config, censor_text, annotate_words, display_word
+        data = await request.json()
+        cfg = merge_config(await load_global_config(), data.get("censor") or {})
+        text = str(data.get("text", ""))[:2000]
+        words = [{"word": t} for t in text.split()]
+        annotated = annotate_words(words, cfg)
+        caption = " ".join(display_word(w, cfg) if w["censored"] else w["word"] for w in annotated)
+        return web.json_response({
+            "caption": caption.upper() if data.get("uppercase", True) else caption,
+            "title": censor_text(text, {**cfg, "censor_titles": True}),
+            "words": [{"word": w["word"], "profanity": w["profanity"], "censored": w["censored"]} for w in annotated],
+        })
 
     async def handle_test_gemini_key(self, request: web.Request) -> web.Response:
         """Test a candidate Gemini API key for validity and quota status."""
@@ -1210,7 +1320,7 @@ class WebUIServer:
         hype_id = int(request.match_info["id"])
         from src.database import get_db_connection, get_channel, create_clip
         from src.bot.trimmer import load_template
-        from src.renderer.subtitles import generate_ass_subtitles
+        from src.compositor.ass_generator import generate_ass_subtitles
         from config.settings import OUTPUT_DIR, RENDER_DIR
         import time
 

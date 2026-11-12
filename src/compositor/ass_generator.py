@@ -12,6 +12,7 @@ import math
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from src.compositor.caption_geometry import caption_geometry
+from src.compositor.profanity import annotate_words, display_word
 
 
 def seconds_to_ass_time(seconds: float) -> str:
@@ -65,10 +66,22 @@ def generate_ass_subtitles(
     template_config: Dict[str, Any],
     time_offset: float = 0.0,
     max_duration: Optional[float] = None,
+    censor_cfg: Optional[Dict[str, Any]] = None,
 ) -> Path:
     """
     Generate kinetic word-level .ass subtitle file with exact geometry alignment.
+
+    When ``censor_cfg`` is given, profane words are masked (e.g. F*CK). Words that
+    were already annotated by ``profanity.annotate_words`` keep their decision.
     """
+    if censor_cfg is not None and word_timestamps and not all("censored" in w for w in word_timestamps):
+        word_timestamps = annotate_words(word_timestamps, censor_cfg)
+    censor_on = bool(censor_cfg and censor_cfg.get("enabled", True) and censor_cfg.get("caption_style") != "none")
+    censored_color = (
+        censor_cfg.get("censored_color")
+        if censor_on and censor_cfg.get("highlight_censored", True)
+        else None
+    )
     sub_cfg = template_config.get("subtitles") or template_config.get("captions") or {}
     font_name = sub_cfg.get("font_name") or sub_cfg.get("font", "Montserrat ExtraBold")
     font_size = int(sub_cfg.get("font_size") or sub_cfg.get("size", 60))
@@ -125,7 +138,9 @@ def generate_ass_subtitles(
             continue
         w_start = item.get("start", 0.0) - time_offset
         w_end = item.get("end", 0.0) - time_offset
-        text = clean_word(item.get("word") or item.get("text", ""))
+        is_censored = censor_on and bool(item.get("censored"))
+        raw_text = display_word(item, censor_cfg) if is_censored else (item.get("word") or item.get("text", ""))
+        text = clean_word(raw_text)
 
         if not text:
             continue
@@ -142,7 +157,7 @@ def generate_ass_subtitles(
             "start": w_start,
             "end": w_end if not max_duration else min(w_end, max_duration),
             "highlight": item.get("highlight", False),
-            "color": item.get("color"),
+            "color": item.get("color") or (censored_color if is_censored else None),
         })
 
     # Group words into chunks of max_words_per_screen

@@ -62,6 +62,12 @@ class YouTubeShortsPublisher:
         if not v_path.exists():
             raise FileNotFoundError(f"Video file not found for upload: {video_path}")
 
+        # Last line of defence: mask profanity in metadata (titles can be edited by hand after rendering).
+        from src.compositor.profanity import load_censor_config, censor_text
+        censor_cfg = await load_censor_config()
+        title = censor_text(title, censor_cfg)
+        description = censor_text(description, censor_cfg)
+
         # Ensure #Shorts is in title or description
         full_title = title if "#Shorts" in title else f"{title} #Shorts"
         full_title = full_title[:100]  # YouTube 100 char title limit

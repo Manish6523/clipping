@@ -18,6 +18,15 @@ import {
   Check
 } from 'lucide-react';
 import axios from 'axios';
+import CensorSettings from './CensorSettings';
+
+const WHISPER_MODELS = [
+  { id: 'tiny', label: 'tiny — fastest, misses many swears' },
+  { id: 'base', label: 'base — fast' },
+  { id: 'small', label: 'small — recommended balance' },
+  { id: 'medium', label: 'medium — accurate, slower' },
+  { id: 'large-v3-turbo', label: 'large-v3-turbo — most accurate' },
+];
 
 export default function Settings() {
   const [keys, setKeys] = useState([]);
@@ -33,6 +42,8 @@ export default function Settings() {
   const [copiedPool, setCopiedPool] = useState(false);
   const [bulkModalOpen, setBulkModalOpen] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
+  const [censor, setCensor] = useState(null);
+  const [whisperModel, setWhisperModel] = useState('small');
 
   useEffect(() => {
     fetchSettings();
@@ -44,6 +55,8 @@ export default function Settings() {
       setKeys(res.data.gemini_api_keys || []);
       setModel(res.data.gemini_model || 'gemini-flash-lite-latest');
       setMinScore(res.data.min_virality_score || 70);
+      setCensor(res.data.censor || null);
+      setWhisperModel(res.data.whisper_model || 'small');
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -121,6 +134,8 @@ export default function Settings() {
         gemini_api_keys: keys,
         gemini_model: model,
         min_virality_score: minScore,
+        whisper_model: whisperModel,
+        ...(censor ? { censor } : {}),
       });
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -202,16 +217,16 @@ export default function Settings() {
   };
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 pb-28 sm:pb-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-slate-800 pb-5">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/10">
+      <div className="flex items-center justify-between gap-4 border-b border-slate-800 pb-5">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="hidden sm:flex w-10 h-10 shrink-0 rounded-xl bg-gradient-to-tr from-purple-500 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-purple-500/10">
             <SettingsIcon className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">System Settings</h1>
-            <p className="text-sm text-slate-400">
+            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white">System Settings</h1>
+            <p className="text-xs sm:text-sm text-slate-400">
               Manage multi-key failover pools, AI models, and detection thresholds without editing files.
             </p>
           </div>
@@ -220,7 +235,7 @@ export default function Settings() {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-sm shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          className="fixed sm:static bottom-[calc(72px+env(safe-area-inset-bottom))] md:bottom-4 left-4 right-4 z-40 justify-center sm:justify-start shrink-0 px-5 py-3 sm:py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-semibold text-sm shadow-lg shadow-cyan-500/20 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {saving ? <RotateCw className="w-4 h-4 animate-spin" /> : <ShieldCheck className="w-4 h-4" />}
           {saveSuccess ? 'Saved & Applied!' : 'Save Changes'}
@@ -228,13 +243,13 @@ export default function Settings() {
       </div>
 
       {/* Multi-Key Pool Card */}
-      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-4">
-        <div className="flex items-center justify-between">
+      <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Key className="w-5 h-5 text-cyan-400" />
-            <h2 className="text-lg font-semibold text-white">Google Gemini API Key Pool</h2>
+            <Key className="w-5 h-5 text-cyan-400 shrink-0" />
+            <h2 className="text-base sm:text-lg font-semibold text-white">Gemini API Key Pool</h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               onClick={handleCopyAllKeys}
               className="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer border border-slate-700"
@@ -381,7 +396,7 @@ export default function Settings() {
       {/* Model & Virality Controls */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Model Selector */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-3">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-3">
           <div className="flex items-center gap-2">
             <Cpu className="w-5 h-5 text-purple-400" />
             <h2 className="text-base font-semibold text-white">AI Scoring Model</h2>
@@ -399,10 +414,23 @@ export default function Settings() {
             <option value="gemini-flash-latest">gemini-flash-latest</option>
             <option value="gemini-2.5-flash">gemini-2.5-flash</option>
           </select>
+
+          <div className="pt-2 space-y-1.5">
+            <label htmlFor="whisper-model" className="text-xs font-semibold text-slate-300">Transcription model (Whisper)</label>
+            <select
+              id="whisper-model"
+              value={whisperModel}
+              onChange={(e) => setWhisperModel(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
+            >
+              {WHISPER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500">Bigger models catch swear words and fast speech far more reliably.</p>
+          </div>
         </div>
 
         {/* Min Virality Score */}
-        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-6 space-y-3">
+        <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Sliders className="w-5 h-5 text-emerald-400" />
@@ -429,9 +457,11 @@ export default function Settings() {
         </div>
       </div>
 
+      <CensorSettings value={censor} onChange={setCensor} />
+
       {/* Bulk Import / Paste Keys Modal */}
       {bulkModalOpen && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
           <div className="bg-[#0f172a] border border-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-2xl">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h3 className="text-base font-bold text-white flex items-center gap-2">

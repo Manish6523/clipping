@@ -109,6 +109,7 @@ export default function PreviewStage({ videoRef }) {
         videoRef={videoRef}
         captionsConfig={{
           ...(edl?.captions || {}),
+          censor: edl?._censor_cfg ? { ...edl._censor_cfg, ...(edl?.censor || {}) } : null,
           onChangePos: updateCaptionPos,
         }}
         words={edl?.words || []}
@@ -132,7 +133,7 @@ export default function PreviewStage({ videoRef }) {
 
       {/* Side-by-Side Test Render Comparison Modal */}
       {testRenderUrl && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-50 flex items-center justify-center p-6">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[80] flex items-center justify-center p-6">
           <div className="bg-[#0D1017] border border-white/20 rounded-2xl p-5 max-w-lg w-full flex flex-col gap-3 shadow-2xl">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase text-[#8FD3FF] flex items-center gap-1.5">

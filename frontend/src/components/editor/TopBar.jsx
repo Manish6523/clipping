@@ -53,8 +53,8 @@ export default function TopBar() {
       const data = await res.json();
       if (data.success && data.clip?.rendered_video_path) {
         const v = data.clip.render_version || Date.now();
-        const filename = data.clip.rendered_video_path.split(/[\\/]/).pop();
-        setRenderedResultUrl(`/renders/${filename}?v=${v}`);
+        // Served by the backend wherever the render landed (output or renders dir)
+        setRenderedResultUrl(`/api/clips/${clipId}/video?v=${v}`);
       } else {
         alert('Render failed: ' + (data.error || 'Unknown error'));
       }
@@ -167,7 +167,7 @@ export default function TopBar() {
 
       {/* Save Preset Modal */}
       {showPresetModal && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="bg-[#13151A] border border-white/10 rounded-2xl p-5 max-w-sm w-full flex flex-col gap-4 shadow-2xl">
             <h3 className="font-bold text-sm text-white flex items-center gap-2">
               <BookmarkPlus size={16} className="text-[#8FD3FF]" /> Save as Visual Preset
@@ -234,7 +234,7 @@ export default function TopBar() {
 
       {/* Final Render Modal */}
       {renderedResultUrl && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="bg-[#13151A] border border-white/10 rounded-2xl p-5 max-w-sm w-full flex flex-col items-center gap-4 shadow-2xl">
             <h3 className="font-bold text-sm text-white flex items-center gap-2">
               <CheckCircle2 size={16} className="text-emerald-400" /> Final Render Complete!

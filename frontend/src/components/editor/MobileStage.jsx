@@ -20,6 +20,15 @@ import {
 } from 'lucide-react';
 import { calculateLayerGeometry } from '../../utils/layoutMath';
 import { renderCaptionsToCanvas } from '../../utils/captionRenderer';
+import VideoMirror from './VideoMirror';
+import { drawSourceRegion } from '../../utils/mediaDraw';
+
+// The clip editor serves its source from /api/clips/:id/source (no file extension),
+// so detect video by path as well as by extension.
+function isVideoUrl(url) {
+  if (!url) return false;
+  return /\.(mp4|webm|mov|m4v|mkv)(\?.*)?$/i.test(url) || /\/api\/clips\/[^/]+\/source(\?.*)?$/.test(url);
+}
 
 export default function MobileStage({
   layout,
@@ -360,8 +369,10 @@ export default function MobileStage({
 
   // Image reference for static snapshot when editing templates or when source is an image
   const imgRef = useRef(null);
+  const sourceIsVideo = isVideoUrl(sourceMediaUrl);
   useEffect(() => {
-    if (sourceMediaUrl) {
+    // Never load a video URL as an <img> (it would download the whole file and fail)
+    if (sourceMediaUrl && !isVideoUrl(sourceMediaUrl)) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.src = sourceMediaUrl;
@@ -372,6 +383,33 @@ export default function MobileStage({
       imgRef.current = null;
     }
   }, [sourceMediaUrl]);
+
+  // iOS ignores preload and decodes no frames until playback starts. Prime the first frame
+  // with a silent muted play/pause (allowed without a gesture), then enable sound on the
+  // first real touch so the play button has audio.
+  useEffect(() => {
+    const v = videoRef?.current;
+    if (!v || !sourceMediaUrl) return undefined;
+    let primed = false;
+    const prime = () => {
+      if (primed) return;
+      primed = true;
+      const t = v.currentTime;
+      v.muted = true;
+      const p = v.play();
+      if (p && p.then) {
+        p.then(() => { v.pause(); v.currentTime = t; }).catch(() => {});
+      }
+    };
+    const unmute = () => { v.muted = false; };
+    v.addEventListener('loadedmetadata', prime);
+    if (v.readyState >= 1) prime();
+    window.addEventListener('pointerdown', unmute, { once: true, capture: true });
+    return () => {
+      v.removeEventListener('loadedmetadata', prime);
+      window.removeEventListener('pointerdown', unmute, { capture: true });
+    };
+  }, [videoRef, sourceMediaUrl]);
 
   const pipDstCanvasRef = useRef(null);
 
@@ -424,10 +462,18 @@ export default function MobileStage({
             ctx.arc(dr.x + dr.w / 2, dr.y + dr.h / 2, Math.min(dr.w, dr.h) / 2, 0, Math.PI * 2);
             ctx.clip();
           }
-          if (geo.fit === 'cover' && geo.inner_crop) {
-            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
+          // Clip to the layer box so cover-mode overflow can't spill onto other layers (matches the render)
+          if (layer.style?.shape !== 'circle') {
+            ctx.beginPath();
+            ctx.rect(dr.x, dr.y, dr.w, dr.h);
+            ctx.clip();
+          }
+          if (geo.fit === 'contain' && geo.letterbox_offset) {
+            drawSourceRegion(ctx, media, sc, dr.x + geo.letterbox_offset.dx, dr.y + geo.letterbox_offset.dy, sz.w, sz.h);
+          } else if (geo.fit === 'cover' && geo.inner_crop) {
+            drawSourceRegion(ctx, media, sc, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
           } else {
-            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x, dr.y, dr.w, dr.h);
+            drawSourceRegion(ctx, media, sc, dr.x, dr.y, dr.w, dr.h);
           }
           ctx.restore();
         }
@@ -500,10 +546,18 @@ export default function MobileStage({
             ctx.arc(dr.x + dr.w / 2, dr.y + dr.h / 2, Math.min(dr.w, dr.h) / 2, 0, Math.PI * 2);
             ctx.clip();
           }
-          if (geo.fit === 'cover' && geo.inner_crop) {
-            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
+          // Clip to the layer box so cover-mode overflow can't spill onto other layers (matches the render)
+          if (layer.style?.shape !== 'circle') {
+            ctx.beginPath();
+            ctx.rect(dr.x, dr.y, dr.w, dr.h);
+            ctx.clip();
+          }
+          if (geo.fit === 'contain' && geo.letterbox_offset) {
+            drawSourceRegion(ctx, media, sc, dr.x + geo.letterbox_offset.dx, dr.y + geo.letterbox_offset.dy, sz.w, sz.h);
+          } else if (geo.fit === 'cover' && geo.inner_crop) {
+            drawSourceRegion(ctx, media, sc, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
           } else {
-            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x, dr.y, dr.w, dr.h);
+            drawSourceRegion(ctx, media, sc, dr.x, dr.y, dr.w, dr.h);
           }
           ctx.restore();
         }
@@ -552,11 +606,14 @@ export default function MobileStage({
       <video
         ref={videoRef}
         src={sourceMediaUrl || undefined}
-        crossOrigin="anonymous"
         playsInline
         webkit-playsinline="true"
         preload="auto"
-        className={mainView === 'source' ? 'hidden' : 'sr-only'}
+        muted
+        // Never display:none — iOS Safari stops decoding frames for hidden videos, which
+        // leaves every canvas preview black. Keep it rendered but invisible instead.
+        className="absolute left-0 top-0 w-[2px] h-[2px] opacity-0 pointer-events-none"
+        aria-hidden="true"
       />
 
       {/* 1. PRIMARY STAGE (Either 9:16 Output Canvas or 16:9 Source Crop) */}
@@ -637,7 +694,7 @@ export default function MobileStage({
               className="absolute -translate-x-1/2 -translate-y-1/2 z-50 h-12 border border-dashed border-[#8FD3FF]/70 active:border-[#8FD3FF] active:bg-[#8FD3FF]/15 cursor-move rounded-lg flex items-center justify-center transition-all touch-none shadow-lg"
               title="Drag directly on mobile to reposition subtitles"
             >
-              <span className="text-[10px] font-mono font-bold text-[#8FD3FF] bg-black/85 px-2 py-0.5 rounded border border-white/20 pointer-events-none shadow">
+              <span className="absolute -top-2.5 left-2 text-[9px] leading-none font-mono font-bold text-[#8FD3FF] bg-black/85 px-1.5 py-1 rounded border border-white/20 pointer-events-none shadow">
                 Subtitles ({Math.round((captionsConfig.position?.y ?? 0.76) * 100)}%)
               </span>
             </div>
@@ -651,20 +708,8 @@ export default function MobileStage({
           className="w-full aspect-video max-h-full bg-black rounded-none overflow-hidden border border-white/10 relative shadow-2xl flex items-center justify-center"
         >
           {sourceMediaUrl && (
-            sourceMediaUrl.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
-              <video
-                src={sourceMediaUrl}
-                crossOrigin="anonymous"
-                playsInline
-                webkit-playsinline="true"
-                preload="auto"
-                className="w-full h-full object-cover pointer-events-none"
-                ref={(el) => {
-                  if (el && videoRef?.current) {
-                    el.currentTime = videoRef.current.currentTime;
-                  }
-                }}
-              />
+            sourceIsVideo ? (
+              <VideoMirror videoRef={videoRef} fit="contain" className="w-full h-full pointer-events-none" />
             ) : (
               <img
                 src={sourceMediaUrl}
@@ -852,19 +897,8 @@ export default function MobileStage({
           /* PiP displays 16:9 source with mini crop boxes */
           <div className="w-full h-full relative flex items-center justify-center">
             {sourceMediaUrl && (
-              sourceMediaUrl.match(/\.(mp4|webm|mov)(\?.*)?$/i) ? (
-                <video
-                  src={sourceMediaUrl}
-                  playsInline
-                  webkit-playsinline="true"
-                  muted
-                  className="w-full h-full object-cover pointer-events-none opacity-80"
-                  ref={(el) => {
-                    if (el && videoRef?.current) {
-                      el.currentTime = videoRef.current.currentTime;
-                    }
-                  }}
-                />
+              sourceIsVideo ? (
+                <VideoMirror videoRef={videoRef} fit="contain" opacity={0.85} className="w-full h-full pointer-events-none" />
               ) : (
                 <img
                   src={sourceMediaUrl}

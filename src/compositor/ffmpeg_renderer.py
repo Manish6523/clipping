@@ -11,8 +11,97 @@ from config.settings import USE_VAAPI, VAAPI_DEVICE, RENDER_DIR
 from src.compositor.face_tracker import FaceTracker
 from src.compositor.filter_graph_builder import build_filter_graph
 from src.compositor.crop_calculator import build_crop_filter
+from src.compositor.profanity import build_censor_audio_graph, compute_windows, resolve_sfx_path
 
 logger = logging.getLogger(__name__)
+
+
+async def has_audio_stream(path: str | Path) -> bool:
+    """Return True when the media file contains at least one audio stream."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "error", "-select_streams", "a",
+            "-show_entries", "stream=index", "-of", "csv=p=0", str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        return bool(out.strip())
+    except Exception:
+        return False
+
+
+async def build_censored_audio(
+    source_path: str | Path,
+    censor_words: Optional[List[Dict[str, Any]]],
+    censor_cfg: Optional[Dict[str, Any]],
+    words_time_offset: float,
+    duration: float,
+    tail_filters: List[str],
+    sfx_input_index: int = 1,
+) -> Optional[Dict[str, Any]]:
+    """Return {"graph", "extra_inputs", "windows"} for censored audio, or None if nothing to do."""
+    if not censor_words or not censor_cfg or not censor_cfg.get("enabled", True):
+        return None
+    if censor_cfg.get("audio_mode", "bleep") == "off":
+        return None
+    windows = compute_windows(censor_words, words_time_offset, duration, censor_cfg)
+    if not windows or not await has_audio_stream(source_path):
+        return None
+
+    extra_inputs: List[str] = []
+    sfx_idx: Optional[int] = None
+    if censor_cfg.get("audio_mode") == "sfx":
+        sfx_path = resolve_sfx_path(censor_cfg)
+        if sfx_path:
+            extra_inputs = ["-i", str(sfx_path)]
+            sfx_idx = sfx_input_index
+        else:
+            logger.warning("Censor SFX file '%s' not found; falling back to bleep.", censor_cfg.get("sfx_file"))
+
+    graph = build_censor_audio_graph(
+        windows, censor_cfg, audio_in="0:a", sfx_input_index=sfx_idx, tail_filters=tail_filters
+    )
+    if not graph:
+        return None
+    return {"graph": graph, "extra_inputs": extra_inputs, "windows": windows}
+
+
+async def probe_video_size(path: str | Path) -> Optional[tuple]:
+    """Return (width, height) of the first video stream, or None."""
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "error", "-select_streams", "v:0",
+            "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+        )
+        out, _ = await proc.communicate()
+        w, h = out.decode().strip().splitlines()[0].split("x")[:2]
+        return int(w), int(h)
+    except Exception:
+        return None
+
+
+CANVAS_SRC_W, CANVAS_SRC_H = 1920, 1080
+
+
+def normalize_source_input(filter_complex: str, size: Optional[tuple]) -> str:
+    """All layout/crop math assumes a 1920x1080 source. When the real source differs
+    (e.g. a 720p YouTube download), scale+pad it to 1920x1080 first and feed every
+    former [0:v] consumer from a split of the normalized stream."""
+    if not size or size == (CANVAS_SRC_W, CANVAS_SRC_H):
+        return filter_complex
+    uses = filter_complex.count("[0:v]")
+    if uses == 0:
+        return filter_complex
+    norm = (
+        f"[0:v]scale={CANVAS_SRC_W}:{CANVAS_SRC_H}:force_original_aspect_ratio=decrease,"
+        f"pad={CANVAS_SRC_W}:{CANVAS_SRC_H}:(ow-iw)/2:(oh-ih)/2,setsar=1"
+    )
+    labels = [f"[srcn{i}]" for i in range(uses)]
+    norm += (f",split={uses}" if uses > 1 else "") + "".join(labels)
+    parts = filter_complex.split("[0:v]")
+    rebuilt = parts[0] + "".join(labels[i] + parts[i + 1] for i in range(uses))
+    return f"{norm};{rebuilt}"
 
 
 def escape_ffmpeg_path(path: str | Path) -> str:
@@ -39,6 +128,7 @@ class FFmpegRenderer:
         ass_path: Optional[str] = None,
         has_watermark: bool = False,
         watermark_path: Optional[str] = None,
+        src_size: Optional[tuple] = None,
     ) -> str:
         """
         Build the video filter_complex pipeline according to the template layout.
@@ -87,6 +177,13 @@ class FFmpegRenderer:
             # Single 9:16 crop centered on active speaker face
             crop_box = self.face_tracker.get_static_average_crop(source_path)
             cx, cy, cw, ch = crop_box
+            if src_size and tuple(src_size) != (CANVAS_SRC_W, CANVAS_SRC_H):
+                # Face crop is in real source pixels; map it into the normalized 1920x1080 frame.
+                k = min(CANVAS_SRC_W / src_size[0], CANVAS_SRC_H / src_size[1])
+                ox = (CANVAS_SRC_W - src_size[0] * k) / 2
+                oy = (CANVAS_SRC_H - src_size[1] * k) / 2
+                cx, cy = int(cx * k + ox), int(cy * k + oy)
+                cw, ch = int(cw * k) // 2 * 2, int(ch * k) // 2 * 2
             filters.append(
                 f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2[tracked]"
             )
@@ -150,9 +247,16 @@ class FFmpegRenderer:
         ass_path: Optional[str] = None,
         teaser_timestamp: Optional[float] = None,
         include_teaser: bool = True,
+        censor_words: Optional[List[Dict[str, Any]]] = None,
+        censor_cfg: Optional[Dict[str, Any]] = None,
+        words_time_offset: Optional[float] = None,
     ) -> str:
         """
         Execute full FFmpeg render pipeline for vertical clip.
+
+        ``censor_words`` are word dicts annotated by ``profanity.annotate_words``; their
+        timestamps are in the same time base as ``words_time_offset`` (defaults to
+        ``start_time``, i.e. word times are source times).
         """
         out_p = Path(output_path)
         out_p.parent.mkdir(parents=True, exist_ok=True)
@@ -163,12 +267,14 @@ class FFmpegRenderer:
         wm_path = anti.get("watermark_path")
         has_wm = bool(wm_path and os.path.exists(wm_path))
 
+        src_size = await probe_video_size(source_path)
         filter_complex = self.build_layout_filter(
             template=template,
             source_path=source_path,
             ass_path=ass_path,
             has_watermark=has_wm,
             watermark_path=wm_path,
+            src_size=src_size,
         )
 
         # Audio filter: atempo to match video speed, plus optional silence removal
@@ -181,6 +287,18 @@ class FFmpegRenderer:
             audio_filters.append(f"silenceremove=stop_periods=-1:stop_duration={silence_sec}:stop_threshold={noise_db}dB")
 
         a_filter_str = ",".join(audio_filters)
+
+        if src_size and src_size != (CANVAS_SRC_W, CANVAS_SRC_H):
+            logger.info("Source is %dx%d; normalizing to %dx%d for layout math.", *src_size, CANVAS_SRC_W, CANVAS_SRC_H)
+        filter_complex = normalize_source_input(filter_complex, src_size)
+
+        offset = start_time if words_time_offset is None else words_time_offset
+        censored_audio = await build_censored_audio(
+            source_path, censor_words, censor_cfg, offset, duration, audio_filters
+        )
+        if censored_audio:
+            logger.info("Censoring %d audio window(s): %s", len(censored_audio["windows"]), censored_audio["windows"])
+            filter_complex = f"{filter_complex};{censored_audio['graph']}"
 
         # Base FFmpeg command
         cmd = ["ffmpeg", "-y", "-threads", "2"]
@@ -198,11 +316,17 @@ class FFmpegRenderer:
             "-ss", f"{start_time:.3f}",
             "-t", f"{duration:.3f}",
             "-i", str(source_path),
-            "-filter_complex", filter_complex,
-            "-map", "[vout]",
-            "-map", "0:a:0?",
-            "-af", a_filter_str,
         ])
+        if censored_audio:
+            cmd.extend(censored_audio["extra_inputs"])
+            cmd.extend(["-filter_complex", filter_complex, "-map", "[vout]", "-map", "[aout]"])
+        else:
+            cmd.extend([
+                "-filter_complex", filter_complex,
+                "-map", "[vout]",
+                "-map", "0:a:0?",
+                "-af", a_filter_str,
+            ])
 
         # Encoding codec selection
         if self.use_vaapi:
@@ -242,6 +366,9 @@ class FFmpegRenderer:
                     ass_path=ass_path,
                     teaser_timestamp=teaser_timestamp,
                     include_teaser=include_teaser,
+                    censor_words=censor_words,
+                    censor_cfg=censor_cfg,
+                    words_time_offset=words_time_offset,
                 )
             raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}: {err_msg[:400]}")
 
@@ -252,6 +379,9 @@ class FFmpegRenderer:
                 source_path=source_path,
                 teaser_timestamp=teaser_timestamp,
                 template=template,
+                censor_words=censor_words,
+                censor_cfg=censor_cfg,
+                words_time_offset=offset + (teaser_timestamp - start_time),
             )
             return teaser_output
 
@@ -283,6 +413,9 @@ class FFmpegRenderer:
         source_path: str,
         teaser_timestamp: float,
         template: Dict[str, Any],
+        censor_words: Optional[List[Dict[str, Any]]] = None,
+        censor_cfg: Optional[Dict[str, Any]] = None,
+        words_time_offset: Optional[float] = None,
     ) -> str:
         """Extract a 1.5s teaser climax, apply flash transition, and concatenate before main clip."""
         teaser_tmp = Path(RENDER_DIR) / f"teaser_{os.path.basename(base_rendered_path)}"
@@ -291,23 +424,38 @@ class FFmpegRenderer:
         # Render 1.5s teaser in same vertical layout
         anti = template.get("anti_shadowban", {})
         speed = anti.get("speed_multiplier", 1.02)
+        teaser_src_size = await probe_video_size(source_path)
         filter_complex = self.build_layout_filter(
             template=template,
             source_path=source_path,
             ass_path=None,
             has_watermark=False,
+            src_size=teaser_src_size,
         )
+        filter_complex = normalize_source_input(filter_complex, teaser_src_size)
         # Add white flash at the end of teaser (st=1.3 d=0.2)
         flash_filter = f"{filter_complex};[vout]fade=t=out:st=1.3:d=0.2:color=white[v_flashed]"
+
+        teaser_audio = await build_censored_audio(
+            source_path, censor_words, censor_cfg,
+            teaser_timestamp if words_time_offset is None else words_time_offset,
+            1.5, [],
+        )
+        if teaser_audio:
+            flash_filter = f"{flash_filter};{teaser_audio['graph']}"
+            audio_map = ["-map", "[aout]"]
+        else:
+            audio_map = ["-map", "0:a:0?"]
 
         cmd_teaser = [
             "ffmpeg", "-y", "-threads", "2",
             "-ss", f"{teaser_timestamp:.3f}",
             "-t", "1.500",
             "-i", str(source_path),
+            *(teaser_audio["extra_inputs"] if teaser_audio else []),
             "-filter_complex", flash_filter,
             "-map", "[v_flashed]",
-            "-map", "0:a:0?",
+            *audio_map,
             "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25",
             "-c:a", "aac", "-b:a", "192k",
             str(teaser_tmp),
@@ -322,9 +470,11 @@ class FFmpegRenderer:
 
         # Concatenate teaser + main clip
         concat_txt = Path(RENDER_DIR) / f"concat_{os.path.basename(base_rendered_path)}.txt"
+        teaser_posix = Path(teaser_tmp).resolve().as_posix()
+        base_posix = Path(base_rendered_path).resolve().as_posix()
         with open(concat_txt, "w", encoding="utf-8") as f:
-            f.write(f"file '{str(Path(teaser_tmp).resolve()).replace('\\', '/')}'\n")
-            f.write(f"file '{str(Path(base_rendered_path).resolve()).replace('\\', '/')}'\n")
+            f.write(f"file '{teaser_posix}'\n")
+            f.write(f"file '{base_posix}'\n")
 
         cmd_concat = [
             "ffmpeg", "-y",

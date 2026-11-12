@@ -9,6 +9,7 @@
  */
 
 import { captionGeometry, getActiveCaptionChunk } from './captionGeometry.js';
+import { censorDisplay } from './profanity.js';
 
 // Cache loaded fonts to prevent repeated document.fonts.load calls
 const loadedFontsCache = new Set();
@@ -98,11 +99,14 @@ export function renderCaptionsToCanvas({
   // Measure word widths to compute layout
   const wordMetrics = chunk.map((wItem, idx) => {
     let rawText = wItem.word || wItem.text || '';
+    const censored = censorDisplay(wItem, rawText, cfg.censor);
+    rawText = censored.text;
     if (isUppercase) rawText = rawText.toUpperCase();
     const width = ctx.measureText(rawText).width;
     return {
       text: rawText,
       width,
+      censorColor: censored.color,
       item: wItem,
       isActive: idx === activeIndex,
       isHighlighted: wItem.highlight || idx === activeIndex,
@@ -182,7 +186,7 @@ export function renderCaptionsToCanvas({
 
     // Text Fill
     ctx.shadowBlur = 0; // Turn off shadow so fill is crisp
-    ctx.fillStyle = m.isHighlighted ? highlightColor : primaryColor;
+    ctx.fillStyle = m.censorColor || (m.isHighlighted ? highlightColor : primaryColor);
     ctx.fillText(m.text, wordCenterX, targetY);
 
     ctx.restore();

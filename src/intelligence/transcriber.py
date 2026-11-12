@@ -34,15 +34,28 @@ logger = logging.getLogger(__name__)
 class Transcriber:
     """Extracts high-precision word timestamps using faster-whisper."""
 
-    def __init__(self, model_size: str = "tiny", device: str = "auto", compute_type: str = "auto"):
-        self.model_size = model_size
+    def __init__(self, model_size: Optional[str] = None, device: str = "auto", compute_type: str = "auto"):
+        # model_size=None follows config.settings.WHISPER_MODEL (changeable at runtime from Settings).
+        self._fixed_model_size = model_size
         self.device = device
         self.compute_type = compute_type
         self._model = None
+        self._loaded_size: Optional[str] = None
+
+    @property
+    def model_size(self) -> str:
+        if self._fixed_model_size:
+            return self._fixed_model_size
+        import config.settings as s
+        return getattr(s, "WHISPER_MODEL", "small") or "small"
 
     def _get_model(self):
         """Lazy loader for faster-whisper WhisperModel with cached instance."""
+        if self._model is not None and self._model != "fallback" and self._loaded_size != self.model_size:
+            logger.info("Whisper model changed %s -> %s; reloading.", self._loaded_size, self.model_size)
+            self._model = None
         if self._model is None:
+            self._loaded_size = self.model_size
             if not HAS_FASTER_WHISPER or WhisperModel is None:
                 logger.warning("faster-whisper not installed. Falling back to basic extractor.")
                 self._model = "fallback"

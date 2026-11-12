@@ -45,6 +45,73 @@ class ViralAnalysisResponse(BaseModel):
     candidates: List[ViralHookCandidate] = Field(default_factory=list)
 
 
+WINDOW_SECONDS = 600.0      # transcript chunk sent per AI call
+WINDOW_OVERLAP = 60.0       # so moments spanning a boundary aren't lost
+MAX_WINDOWS = 18            # ~3 hours of content per run
+MAX_SEGMENTS_PER_WINDOW = 400
+
+
+def build_windows(segments: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Split transcript segments into overlapping time windows with formatted text."""
+    windows: List[Dict[str, Any]] = []
+    i = 0
+    n = len(segments)
+    while i < n and len(windows) < MAX_WINDOWS:
+        w_start = float(segments[i]["start"])
+        w_end_limit = w_start + WINDOW_SECONDS
+        j = i
+        while j < n and float(segments[j]["start"]) < w_end_limit and (j - i) < MAX_SEGMENTS_PER_WINDOW:
+            j += 1
+        chunk = segments[i:j]
+        windows.append({
+            "start": w_start,
+            "end": float(chunk[-1]["end"]),
+            "text": "\n".join(f"[{float(s['start']):.1f}s - {float(s['end']):.1f}s]: {s['text'].strip()}" for s in chunk),
+        })
+        if j >= n:
+            break
+        # next window starts WINDOW_OVERLAP seconds before this one ended
+        overlap_from = float(chunk[-1]["end"]) - WINDOW_OVERLAP
+        k = j
+        while k > i + 1 and float(segments[k - 1]["start"]) > overlap_from:
+            k -= 1
+        i = max(k, i + 1)
+    return windows
+
+
+def _overlap_ratio(a_start: float, a_end: float, b_start: float, b_end: float) -> float:
+    inter = max(0.0, min(a_end, b_end) - max(a_start, b_start))
+    shorter = max(1e-6, min(a_end - a_start, b_end - b_start))
+    return inter / shorter
+
+
+def select_clips(
+    candidates: List["ViralHookCandidate"],
+    min_score: int,
+    min_len: float,
+    max_len: float,
+    max_clips: int,
+    max_overlap: float = 0.35,
+) -> List["ViralHookCandidate"]:
+    """Filter by score/length, drop overlapping duplicates (keep the higher score), rank."""
+    lo, hi = min_len * 0.8, max_len * 1.15   # small tolerance: AI timestamps snap to sentences
+    pool = []
+    for c in candidates:
+        dur = c.end_time - c.start_time
+        if c.virality_score < min_score or dur <= 0 or dur < lo or dur > hi:
+            continue
+        pool.append(c)
+    pool.sort(key=lambda c: c.virality_score, reverse=True)
+    chosen: List[ViralHookCandidate] = []
+    for c in pool:
+        if any(_overlap_ratio(c.start_time, c.end_time, k.start_time, k.end_time) > max_overlap for k in chosen):
+            continue
+        chosen.append(c)
+        if len(chosen) >= max_clips:
+            break
+    return chosen
+
+
 class ViralScorer:
     """Evaluates transcripts and multimodal signals via Gemini to pinpoint viral hooks."""
 
@@ -138,9 +205,16 @@ class ViralScorer:
         chat_spikes: Optional[List[Dict[str, Any]]] = None,
         audio_peaks: Optional[List[Dict[str, Any]]] = None,
         heatmap_peaks: Optional[List[Dict[str, Any]]] = None,
+        max_clips: int = 10,
+        min_len: float = 25.0,
+        max_len: float = 60.0,
+        focus: Optional[str] = None,
     ) -> List[ViralHookCandidate]:
-        """
-        Evaluate full transcript and metadata to discover 25-58s viral clips.
+        """Find up to ``max_clips`` viral moments across the WHOLE transcript.
+
+        Long videos are scanned in overlapping ~10-minute windows (previously only the
+        first 100 segments were ever sent), candidates from every window are merged,
+        de-duplicated by overlap, filtered by score/length and ranked.
         """
         await self._sync_settings_from_db()
         self._init_client()
@@ -149,86 +223,125 @@ class ViralScorer:
             logger.warning("No Gemini client or API key available. Skipping clip creation (heuristics disabled).")
             return []
 
+        segments = [s for s in transcript_data.get("segments", []) if s.get("text", "").strip()]
+        if not segments:
+            return []
+
+        windows = build_windows(segments)
+        per_window = max(3, min(8, -(-max_clips * 2 // max(1, len(windows)))))  # over-generate, then rank
+        logger.info("Scanning %d transcript window(s) for up to %d clips (%d-%ds)...",
+                    len(windows), max_clips, int(min_len), int(max_len))
+
+        sem = asyncio.Semaphore(2)
+
+        async def run(win):
+            async with sem:
+                return await self._score_window(
+                    win, per_window, min_len, max_len, focus, chat_spikes, audio_peaks, heatmap_peaks,
+                )
+
+        results = await asyncio.gather(*(run(w) for w in windows), return_exceptions=True)
+        candidates: List[ViralHookCandidate] = []
+        for r in results:
+            if isinstance(r, Exception):
+                logger.warning("Window scoring failed: %s", r)
+            else:
+                candidates.extend(r)
+
+        selected = select_clips(candidates, min_score=min_score, min_len=min_len, max_len=max_len, max_clips=max_clips)
+        logger.info("Gemini proposed %d candidates; selected %d: %s", len(candidates), len(selected),
+                    [(c.suggested_title, c.virality_score) for c in selected])
+        return selected
+
+    async def _score_window(
+        self,
+        window: Dict[str, Any],
+        n_clips: int,
+        min_len: float,
+        max_len: float,
+        focus: Optional[str],
+        chat_spikes, audio_peaks, heatmap_peaks,
+        _retried: bool = False,
+    ) -> List[ViralHookCandidate]:
+        w_start, w_end = window["start"], window["end"]
+
+        def in_window(items):
+            out = []
+            for it in items or []:
+                t = it.get("time", it.get("start", it.get("timestamp")))
+                try:
+                    if t is None or w_start <= float(t) <= w_end:
+                        out.append(it)
+                except (TypeError, ValueError):
+                    out.append(it)
+            return out
+
         system_instruction = (
             "You are an elite short-form social video editor specializing in YouTube Shorts and Instagram Reels.\n"
-            "Your objective is to find 25-58 second viral gold moments from this stream transcript.\n"
+            f"Find the {n_clips} best standalone viral moments in this part of the stream, each {int(min_len)}-{int(max_len)} seconds long.\n"
             "Criteria:\n"
             "1. First 3 seconds MUST have a strong hook, question, curiosity gap, or shouting/reaction.\n"
             "2. Rising tension or narrative flow in the middle.\n"
             "3. Clear climax, punchline, or resolution before the end.\n"
-            "4. Never cut mid-sentence.\n"
-            "5. If a huge climax occurs, specify its exact timestamp in 'teaser_hook_timestamp' so we can pre-roll a 1.5s teaser.\n"
-            "6. Rank clips by predicted virality score (0-100). Return ONLY JSON matching the schema."
+            "4. Never cut mid-sentence. Each clip must make sense without the rest of the stream.\n"
+            "5. Clips must not overlap each other.\n"
+            "6. If a huge climax occurs, put its exact timestamp in 'teaser_hook_timestamp'.\n"
+            "7. Score honestly (0-100): most moments are NOT viral; reserve 85+ for exceptional ones.\n"
+            + (f"8. Prioritise moments about: {focus}\n" if focus else "")
+            + "Use the absolute timestamps shown. Return ONLY JSON matching the schema."
         )
-
-        segments = transcript_data.get("segments", [])
-        formatted_segments = "\n".join(
-            [f"[{s['start']:.1f}s - {s['end']:.1f}s]: {s['text']}" for s in segments[:100]]
-        )
-
-        prompt = f"""Analyze this segment and metadata:
+        prompt = f"""Window {w_start:.0f}s - {w_end:.0f}s of the stream.
 
 Metadata:
-- Chat Velocity Spikes: {json.dumps(chat_spikes or [])}
-- Audio dB Peaks: {json.dumps(audio_peaks or [])}
-- YouTube Retention Heatmap Peaks: {json.dumps(heatmap_peaks or [])}
+- Chat Velocity Spikes: {json.dumps(in_window(chat_spikes))}
+- Audio dB Peaks: {json.dumps(in_window(audio_peaks))}
+- YouTube Retention Heatmap Peaks: {json.dumps(in_window(heatmap_peaks))}
 
 Transcript:
-{formatted_segments}
+{window["text"]}
 
-Return JSON with candidate clips meeting all criteria.
+Return JSON with up to {n_clips} candidate clips meeting all criteria.
 """
+        loop = asyncio.get_running_loop()
+
+        def _call_gemini():
+            if self._mode == "genai":
+                resp = self._client.models.generate_content(
+                    model=self.model_name,
+                    contents=f"{system_instruction}\n\n{prompt}",
+                    config={"response_mime_type": "application/json", "response_schema": ViralAnalysisResponse},
+                )
+                return resp.text
+            resp = self._client.generate_content(
+                f"{system_instruction}\n\n{prompt}",
+                generation_config={"response_mime_type": "application/json"},
+            )
+            return resp.text
 
         try:
-            loop = asyncio.get_running_loop()
-
-            def _call_gemini():
-                if self._mode == "genai":
-                    resp = self._client.models.generate_content(
-                        model=self.model_name,
-                        contents=f"{system_instruction}\n\n{prompt}",
-                        config={
-                            "response_mime_type": "application/json",
-                            "response_schema": ViralAnalysisResponse,
-                        },
-                    )
-                    return resp.text
-                else:
-                    resp = self._client.generate_content(
-                        f"{system_instruction}\n\n{prompt}",
-                        generation_config={"response_mime_type": "application/json"},
-                    )
-                    return resp.text
-
             raw_json = await loop.run_in_executor(None, _call_gemini)
-
             data = json.loads(raw_json)
-            candidates_raw = data.get("candidates", []) if isinstance(data, dict) else data
-            candidates = [ViralHookCandidate(**item) for item in candidates_raw]
-            logger.info("Gemini scored %d candidates: %s", len(candidates), [(c.suggested_title, c.virality_score) for c in candidates])
-
-            filtered = [c for c in candidates if c.virality_score >= min_score]
-            filtered.sort(key=lambda x: x.virality_score, reverse=True)
-            return filtered
-
+            raw = data.get("candidates", []) if isinstance(data, dict) else data
+            out = []
+            for item in raw or []:
+                try:
+                    out.append(ViralHookCandidate(**item))
+                except Exception as e:
+                    logger.debug("Skipping malformed candidate %s: %s", item, e)
+            return out
         except Exception as e:
             err_str = str(e).lower()
             if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit", "rate limit"]):
-                logger.warning("🛑 Gemini AI quota reached on key #%d (%s). Recording exhausted status...", self.current_key_idx + 1, self.api_key[:10])
+                logger.warning("🛑 Gemini AI quota reached on key #%d (%s). Recording exhausted status...",
+                               self.current_key_idx + 1, self.api_key[:10])
                 from src.database import mark_key_exhausted
                 await mark_key_exhausted(self.api_key)
-                if len(self.api_keys) > 1:
+                if len(self.api_keys) > 1 and not _retried:
                     self._rotate_key()
-                    # Retry with next key once
-                    return await self.analyze_transcript(
-                        transcript_data=transcript_data,
-                        min_score=min_score,
-                        chat_spikes=chat_spikes,
-                        audio_peaks=audio_peaks,
-                        heatmap_peaks=heatmap_peaks,
-                    )
+                    return await self._score_window(window, n_clips, min_len, max_len, focus,
+                                                    chat_spikes, audio_peaks, heatmap_peaks, _retried=True)
             else:
-                logger.error("Gemini API call failed: %s. Skipping clip creation (heuristics disabled).", e)
+                logger.error("Gemini API call failed for window %.0f-%.0fs: %s", w_start, w_end, e)
             return []
 
     def _heuristic_fallback(self, transcript_data: Dict[str, Any], min_score: int) -> List[ViralHookCandidate]:

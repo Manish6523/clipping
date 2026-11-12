@@ -5,6 +5,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import './index.css'
 import App from './App.jsx'
 import ErrorBoundary from './components/ErrorBoundary.jsx'
+import { registerServiceWorker, initInstallPrompt } from './services/pwa.js'
+
+registerServiceWorker()
+initInstallPrompt()
 
 const queryClient = new QueryClient({
   defaultOptions: {

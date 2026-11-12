@@ -124,7 +124,12 @@ class DripScheduler:
             last_error=f"YT: {yt_res.get('error')} | IG: {ig_res.get('error')}" if (not yt_res.get("success") or not ig_res.get("success")) else None,
         )
 
-        overall_status = "published" if (yt_res.get("success") or ig_res.get("success")) else "rejected"
+        # A failed upload is not a rejection: keep the clip approved so it can be retried
+        # (error details are stored on the queue row and sent in the publish notification).
+        overall_status = "published" if (yt_res.get("success") or ig_res.get("success")) else "approved"
+        if overall_status == "approved":
+            logger.warning("Upload failed for clip #%d; kept as approved for retry. YT: %s | IG: %s",
+                           clip_id, yt_res.get("error"), ig_res.get("error"))
         await update_clip_status(clip_id, overall_status)
 
         # Notify via callback if registered

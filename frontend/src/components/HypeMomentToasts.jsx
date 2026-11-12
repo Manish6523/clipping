@@ -31,7 +31,7 @@ export default function HypeMomentToasts({ activePipelines = [], toasts = [], on
   return (
     <aside
       aria-label="Active Hype Moments Feed"
-      className="fixed top-16 left-5 z-50 flex flex-col gap-2.5 max-w-[340px] w-full pointer-events-auto select-none transition-all duration-300"
+      className="fixed top-16 left-3 right-3 sm:right-auto sm:left-5 z-50 flex flex-col gap-2.5 sm:max-w-[340px] sm:w-full pointer-events-auto select-none transition-all duration-300"
     >
       {/* 1. Live Processing Hype Moments (Stacked Card with fluid 3D tilt & expand animation) */}
       {count > 0 && (

@@ -25,7 +25,33 @@ from typing import Any, Dict
 
 from aiohttp import web
 
-from config.settings import RENDER_DIR
+from config.settings import RENDER_DIR, OUTPUT_DIR
+
+
+def media_url(file_path) -> "str | None":
+    """Map a file on disk to the static route that serves it (/output or /renders)."""
+    if not file_path:
+        return None
+    fp = Path(file_path).resolve()
+    if not fp.exists():
+        return None
+    for base, prefix in ((Path(OUTPUT_DIR).resolve(), "/output"), (Path(RENDER_DIR).resolve(), "/renders")):
+        try:
+            return f"{prefix}/{fp.relative_to(base).as_posix()}"
+        except ValueError:
+            continue
+    return None
+
+
+def thumbnail_for(clip: dict) -> "str | None":
+    if clip.get("thumbnail_path"):
+        url = media_url(clip["thumbnail_path"])
+        if url:
+            return url
+    if clip.get("rendered_video_path"):
+        p = Path(clip["rendered_video_path"])
+        return media_url(p.parent / f"{p.stem}_thumb.jpg")
+    return None
 from src.database import (
     get_db_connection,
     get_clip,
@@ -163,17 +189,8 @@ async def get_clips_list(request: web.Request) -> web.Response:
         for r in rows:
             d = dict(r)
             # Add convenient relative thumbnail_url
-            if d.get("thumbnail_path"):
-                d["thumbnail_url"] = f"/renders/{Path(d['thumbnail_path']).name}"
-            elif d.get("rendered_video_path"):
-                p = Path(d["rendered_video_path"])
-                t_cand = p.parent / f"{p.stem}_thumb.jpg"
-                if t_cand.exists():
-                    d["thumbnail_url"] = f"/renders/{t_cand.name}"
-                else:
-                    d["thumbnail_url"] = None
-            else:
-                d["thumbnail_url"] = None
+            # Thumbnails live in OUTPUT_DIR (pipeline renders) or RENDER_DIR (re-renders)
+            d["thumbnail_url"] = thumbnail_for(d)
 
             # Add video_url
             if d.get("rendered_video_path"):
@@ -212,10 +229,9 @@ async def get_clip_by_id(request: web.Request) -> web.Response:
                 pass
 
     if clip.get("rendered_video_path"):
-        p = Path(clip["rendered_video_path"])
-        t_cand = p.parent / f"{p.stem}_thumb.jpg"
         v = clip.get("render_version") or 1
-        clip["thumbnail_url"] = f"/renders/{t_cand.name}?v={v}" if t_cand.exists() else None
+        thumb = thumbnail_for(clip)
+        clip["thumbnail_url"] = f"{thumb}?v={v}" if thumb else None
         clip["video_url"] = f"/api/clips/{clip_id}/video?v={v}"
     else:
         clip["thumbnail_url"] = None
@@ -258,7 +274,8 @@ async def serve_clip_source(request: web.Request) -> web.StreamResponse:
     if not svp or not Path(svp).exists():
         return make_json_error("SOURCE_NOT_FOUND", f"Video for clip #{clip_id} not found on disk", status=404)
 
-    return await serve_file_range(Path(svp), request)
+    from src.web.media_preview import browser_playable
+    return await serve_file_range(await browser_playable(Path(svp)), request)
 
 
 async def get_clip_words(request: web.Request) -> web.Response:
@@ -277,6 +294,8 @@ async def get_clip_words(request: web.Request) -> web.Response:
                     words = json.load(f)
             except Exception:
                 pass
+    from src.compositor.profanity import prepare_censor
+    words, _ = await prepare_censor(words)
     return web.json_response({"words": words})
 
 
@@ -416,7 +435,7 @@ async def extend_clip_source(request: web.Request) -> web.Response:
     if ranges_to_transcribe:
         try:
             from src.intelligence.transcriber import Transcriber
-            transcriber = Transcriber(model_size="base")
+            transcriber = Transcriber()
             for r_start, r_end in ranges_to_transcribe:
                 dur = r_end - r_start
                 if dur < 0.5:
@@ -481,10 +500,12 @@ async def extend_clip_source(request: web.Request) -> web.Response:
         await save_clip_edl(clip_id, edl)
 
     updated_clip = await get_clip(clip_id)
+    from src.compositor.profanity import prepare_censor
+    annotated_words, _ = await prepare_censor(deduped)
     return web.json_response({
         "success": True,
         "clip": updated_clip,
-        "words": deduped,
+        "words": annotated_words,
         "adjusted_start": new_start,
         "adjusted_end": new_end,
         "duration": new_duration,

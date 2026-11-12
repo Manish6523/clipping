@@ -479,7 +479,7 @@ export default function Timeline({ videoRef }) {
 
       {/* Keyboard Shortcuts Overlay Modal */}
       {showShortcuts && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
           <div className="bg-[#13151A] border border-white/10 rounded-2xl p-5 max-w-sm w-full text-xs text-[#E8EAF0] shadow-2xl">
             <h4 className="font-bold text-sm mb-3 text-[#8FD3FF]">Keyboard Shortcuts Guide</h4>
             <div className="space-y-1.5 font-mono">

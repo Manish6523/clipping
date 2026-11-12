@@ -132,7 +132,15 @@ class VODWatcher:
         # Prefer direct MP4/M4A streams that allow instantaneous slice extraction without re-encoding
         cmd = [
             sys.executable, "-m", "yt_dlp",
-            "-f", "bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/best[height<=720][ext=mp4]/bestvideo[height<=720]+bestaudio/best[height<=720]/best",
+            # Prefer H.264 (avc1): it plays in every phone browser and renders fast. YouTube otherwise
+            # serves AV1/VP9, which most phones can't decode (the editor's source preview stays black).
+            "-f", (
+                "bestvideo[vcodec^=avc1][height<=1080]+bestaudio[ext=m4a]"
+                "/best[vcodec^=avc1][height<=1080]"
+                "/bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]"
+                "/bestvideo[height<=1080]+bestaudio/best[height<=1080]/best"
+            ),
+            "--merge-output-format", "mp4",
             "--download-sections", section_arg,
             "--no-warnings",
             "--output", str(output_file),
@@ -155,8 +163,12 @@ class VODWatcher:
         title: str,
         video_url: str,
         template_name: str,
+        options: Optional[Dict[str, Any]] = None,
     ) -> None:
-        """Execute full VOD heatmap and audio extraction pipeline."""
+        """Execute full VOD heatmap and audio extraction pipeline.
+
+        ``options`` (max_clips, min_len, max_len, focus) are passed through to clip selection.
+        """
         if await is_vod_processed(vod_id):
             return
 
@@ -187,6 +199,7 @@ class VODWatcher:
                         "template_name": template_name,
                         "heatmap_peaks": peaks,
                         "work_dir": str(work_dir),
+                        **(options or {}),
                     },
                 )
 
@@ -194,6 +207,11 @@ class VODWatcher:
         except Exception as e:
             logger.error("Failed processing VOD %s: %s", vod_id, e)
             await update_vod_status(vod_id, "failed")
+            try:
+                from src.web.logger_stream import update_pipeline_progress
+                update_pipeline_progress("error", channel_id=channel_id, error=f"VOD processing failed: {str(e)[:200]}")
+            except Exception:
+                pass
 
     async def poll_channel_vods(self, platform: str, channel_id: str, template_name: str) -> None:
         """Poll channel for newest uploaded videos or VODs and process unhandled ones."""

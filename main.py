@@ -13,7 +13,7 @@ import signal
 import sys
 import time
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 # Ensure standard output can handle UTF-8 symbols & emojis without cp1252 charmap crashes
 if hasattr(sys.stdout, "reconfigure"):
@@ -44,6 +44,7 @@ from src.bot.telegram_bot import AutoClipBot
 from src.bot.trimmer import load_template
 from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
+from src.compositor.profanity import prepare_censor, censor_text, summarize as summarize_censor, merge_flags
 from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
 from src.intelligence.calibrated_judge import CalibratedJudge
@@ -87,7 +88,7 @@ class AutoClipEngine:
             admin_id=ADMIN_CHAT_ID,
             on_manual_clip=self._on_manual_clip,
         )
-        self.transcriber = Transcriber(model_size="tiny")
+        self.transcriber = Transcriber()  # follows WHISPER_MODEL setting
         self.scorer = ViralScorer()
         self.calibrated_judge = CalibratedJudge()
         self.renderer = FFmpegRenderer()
@@ -104,13 +105,51 @@ class AutoClipEngine:
         self._clip_semaphore = asyncio.Semaphore(concurrency)
         logger.info("Pipeline concurrency limit initialized: %d parallel job(s)", concurrency)
 
+    @staticmethod
+    def _cache_words(ass_path: str, words: list, shift: float = 0.0) -> None:
+        """Persist word timestamps next to the .ass file so trims/editor re-renders keep captions & censoring."""
+        try:
+            shifted = [
+                {**w, "start": round(float(w.get("start", 0.0)) - shift, 3), "end": round(float(w.get("end", 0.0)) - shift, 3)}
+                for w in words
+            ] if shift else list(words)
+            with open(Path(ass_path).with_suffix(".json"), "w", encoding="utf-8") as f:
+                json.dump(shifted, f)
+        except Exception as e:
+            logger.warning("Could not cache word timestamps for %s: %s", ass_path, e)
+
     async def initialize(self) -> None:
         """Initialize database and verify configuration."""
         logger.info("Initializing AutoClipDaemon database schema...")
         await init_db()
+        # Nothing can still be running right after startup: close out runs orphaned by a crash/restart
+        try:
+            from src.database import get_db_connection
+            async with get_db_connection() as db:
+                cur = await db.execute(
+                    "UPDATE pipeline_runs SET status = 'failed', "
+                    "error_message = COALESCE(error_message, 'Interrupted: server restarted while this run was in progress') "
+                    "WHERE status = 'running'"
+                )
+                await db.commit()
+                if cur.rowcount:
+                    logger.info("Marked %d interrupted pipeline run(s) as failed.", cur.rowcount)
+        except Exception as e:
+            logger.debug("Could not close stale pipeline runs: %s", e)
+        try:
+            from src.database import get_system_setting
+            import config.settings as s
+            saved_model = await get_system_setting("whisper_model")
+            if saved_model:
+                s.WHISPER_MODEL = saved_model
+        except Exception as e:
+            logger.debug("No saved whisper_model setting: %s", e)
         logger.info("AutoClipDaemon initialized successfully.")
 
-    async def _on_manual_clip(self, url: str, template_name: str, time_range: Optional[str] = None) -> None:
+    async def _on_manual_clip(
+        self, url: str, template_name: str, time_range: Optional[str] = None,
+        options: Optional[Dict[str, Any]] = None,
+    ) -> None:
         """Handle manual URL clip triggered from Web UI or Telegram (/clip)."""
         logger.info("Processing manual clip for URL: %s (Template: %s, TimeRange: %s)", url, template_name, time_range)
         
@@ -177,12 +216,15 @@ class AutoClipEngine:
                 transcription = await self.transcriber.transcribe(str(slice_source))
                 ass_path = str(work_dir / f"{fake_vod_id}_sub.ass")
 
+                words, censor_cfg = await prepare_censor(transcription.get("words", []), template)
+                self._cache_words(ass_path, words)
                 generate_ass_subtitles(
-                    word_timestamps=transcription.get("words", []),
+                    word_timestamps=words,
                     output_path=ass_path,
                     template_config=template,
                     time_offset=0.0,
                     max_duration=clip_dur,
+                    censor_cfg=censor_cfg,
                 )
 
                 update_pipeline_progress("processing", channel_id="manual", step=4, step_name=f"Compositing 9:16 vertical layout ({template_name})...")
@@ -196,6 +238,14 @@ class AutoClipEngine:
                     ass_path=ass_path,
                     teaser_timestamp=None,
                     include_teaser=False,
+                    censor_words=words,
+                    censor_cfg=censor_cfg,
+                    words_time_offset=0.0,
+                )
+                manual_flags = merge_flags(
+                    json.dumps([{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]),
+                    summarize_censor(words, 0.0, clip_dur),
+                    censor_cfg,
                 )
 
                 clip_id = await create_clip(
@@ -203,14 +253,16 @@ class AutoClipEngine:
                     source_id=fake_vod_id,
                     channel_id="manual",
                     template_name=template_name,
-                    raw_start=start_sec,
-                    raw_end=end_sec,
+                    # Times are relative to the downloaded slice (source_video_path), which starts at start_sec.
+                    raw_start=0.0,
+                    raw_end=clip_dur,
+                    trigger_json=json.dumps({"type": "manual", "source_url": url, "source_start": start_sec, "source_end": end_sec}),
                     virality_score=0,
                     final_score=None,
-                    flags=json.dumps([{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]),
+                    flags=manual_flags,
                     title=f"Manual Highlight ({template_name})",
                     teaser_hook_timestamp=None,
-                    description=transcription.get("text", "")[:100],
+                    description=censor_text(transcription.get("text", "")[:100], censor_cfg),
                     hashtags="#Shorts #Reels #Viral",
                     source_video_path=str(slice_source),
                     rendered_video_path=rendered_mp4,
@@ -264,10 +316,23 @@ class AutoClipEngine:
                 title=f"Manual Clip ({template_name})",
                 video_url=url,
                 template_name=template_name,
+                options=options or {},
             )
 
         except Exception as e:
             logger.error("Manual clip processing failed: %s", e, exc_info=True)
+            # Surface the failure to the Quick Clip page / pipeline monitor instead of failing silently.
+            short_err = str(e).splitlines()[0][:200] if str(e) else type(e).__name__
+            update_pipeline_progress("error", channel_id="manual", error=f"Quick clip failed: {short_err}")
+            try:
+                async with get_db_connection() as db:
+                    await db.execute(
+                        "UPDATE pipeline_runs SET status = 'failed', error_message = ? WHERE id = ?",
+                        (short_err, f"run_{fake_vod_id}"),
+                    )
+                    await db.commit()
+            except Exception:
+                pass
             update_pipeline_progress("error", channel_id="manual", error=str(e))
 
     async def _on_live_moment(self, video_path: str, metadata: Dict[str, Any]) -> None:
@@ -468,15 +533,17 @@ class AutoClipEngine:
                 ass_path = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}.ass")
                 ass_json_cache = Path(ass_path).with_suffix(".json")
 
+                words, censor_cfg = await prepare_censor(transcription.get("words", []), template)
                 with open(ass_json_cache, "w", encoding="utf-8") as f:
-                    json.dump(transcription.get("words", []), f)
+                    json.dump(words, f)
 
                 generate_ass_subtitles(
-                    word_timestamps=transcription.get("words", []),
+                    word_timestamps=words,
                     output_path=ass_path,
                     template_config=template,
                     time_offset=clip_start,
                     max_duration=clip_dur,
+                    censor_cfg=censor_cfg,
                 )
 
                 update_pipeline_progress(
@@ -511,7 +578,11 @@ class AutoClipEngine:
                     ass_path=ass_path,
                     teaser_timestamp=teaser_ts,
                     include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
+                    censor_words=words,
+                    censor_cfg=censor_cfg,
                 )
+                flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
+                suggested_title = censor_text(suggested_title, censor_cfg)
 
                 clip_id = await create_clip(
                     source_type="live",
@@ -596,6 +667,122 @@ class AutoClipEngine:
                 logger.error("Error processing live highlight: %s", e, exc_info=True)
                 update_pipeline_progress("error", channel_id=channel_id, error=str(e))
 
+    @staticmethod
+    def _clip_options(metadata: Dict[str, Any], channel_record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Clip count/length/focus: Quick Clip request > streamer clip rules > defaults."""
+        rules: Dict[str, Any] = {}
+        if channel_record and channel_record.get("settings_json"):
+            try:
+                cfg = channel_record["settings_json"]
+                cfg = json.loads(cfg) if isinstance(cfg, str) else cfg
+                rules = (cfg or {}).get("clip_rules", {}) or {}
+            except Exception:
+                rules = {}
+
+        def num(*vals, default):
+            for v in vals:
+                try:
+                    if v is not None and float(v) > 0:
+                        return float(v)
+                except (TypeError, ValueError):
+                    continue
+            return default
+
+        min_len = num(metadata.get("min_len"), rules.get("min_length"), rules.get("min_len"), default=25.0)
+        max_len = num(metadata.get("max_len"), rules.get("max_length"), rules.get("max_len"), default=60.0)
+        if max_len < min_len + 5:
+            max_len = min_len + 5
+        max_clips = int(num(metadata.get("max_clips"), rules.get("max_clips_per_vod"), default=5))
+        return {
+            "max_clips": max(1, min(max_clips, 30)),
+            "min_len": max(5.0, min_len),
+            "max_len": min(180.0, max_len),
+            "focus": (metadata.get("focus") or rules.get("focus") or "").strip() or None,
+        }
+
+    def _normalise_candidate(self, c: Any, from_new: bool) -> Dict[str, Any]:
+        """One shape for both judges (legacy returns Pydantic objects, calibrated returns dicts)."""
+        if from_new:
+            return {
+                "start": float(c["start_time"]), "end": float(c["end_time"]),
+                "score": int(c.get("virality_score") or 0), "final_score": c.get("final_score"),
+                "title": c.get("title") or "Stream Highlight", "description": c.get("description", ""),
+                "hashtags": " ".join(c.get("hashtags", [])),
+                "score_breakdown": json.dumps(c.get("scores", {})), "flags": json.dumps(c.get("flags", [])),
+                "formula": "v3.0_calibrated_0.7llm_0.3sig",
+                "prompt": c.get("prompt_version", "v3.0_calibrated_judge"),
+                "model": c.get("model", "gemini-flash-lite-latest"),
+            }
+        score = int(getattr(c, "virality_score", 0) or 0)
+        return {
+            "start": float(c.start_time), "end": float(c.end_time), "score": score,
+            "final_score": float(score) if score > 0 else None,
+            "title": c.suggested_title, "description": c.hook_summary, "hashtags": " ".join(c.hashtags),
+            "score_breakdown": None, "flags": None, "formula": "legacy_windowed",
+            "prompt": "legacy_v2_windowed", "model": getattr(self.scorer, "model_name", "gemini-flash-lite-latest"),
+        }
+
+    async def _render_vod_candidate(
+        self, cand: Dict[str, Any], idx: int, vod_id: str, channel_id: str, template_name: str,
+        template: Dict[str, Any], video_url: str, work_dir: Path, words_all: list, censor_cfg: Dict[str, Any],
+    ) -> Optional[int]:
+        """Download, caption, render and register ONE candidate of a VOD."""
+        clip_start, clip_end = cand["start"], cand["end"]
+        clip_dur = clip_end - clip_start
+        tag = f"{vod_id}_c{idx:02d}"
+        slice_source = work_dir / f"{tag}_slice.mp4"
+
+        downloaded = await self.vod_watcher.download_video_section(
+            video_url=video_url, start_time=clip_start, end_time=clip_end, output_file=slice_source,
+        )
+        if not downloaded or not slice_source.exists():
+            logger.error("Failed to download section %.1f-%.1fs for VOD %s", clip_start, clip_end, vod_id)
+            return None
+
+        ass_path = str(work_dir / f"{tag}_sub.ass")
+        # Cache words in clip-relative time: the stored source video is the slice, not the full VOD.
+        self._cache_words(ass_path, words_all, shift=clip_start)
+        generate_ass_subtitles(
+            word_timestamps=words_all, output_path=ass_path, template_config=template,
+            time_offset=clip_start, max_duration=clip_dur, censor_cfg=censor_cfg,
+        )
+
+        rendered_mp4 = str(Path(OUTPUT_DIR) / f"{tag}_vertical.mp4")
+        await self.renderer.render_clip(
+            source_path=str(slice_source), start_time=0.0, end_time=clip_dur, output_path=rendered_mp4,
+            template=template, ass_path=ass_path, teaser_timestamp=None, include_teaser=False,
+            censor_words=words_all, censor_cfg=censor_cfg, words_time_offset=clip_start,
+        )
+        flags_json = merge_flags(cand["flags"], summarize_censor(words_all, clip_start, clip_dur), censor_cfg)
+        title = censor_text(cand["title"], censor_cfg)
+
+        clip_id = await create_clip(
+            source_type="vod", source_id=vod_id, channel_id=channel_id, template_name=template_name,
+            raw_start=0.0, raw_end=clip_dur,  # relative to the downloaded slice (source_video_path)
+            virality_score=cand["score"], final_score=cand["final_score"],
+            score_breakdown=cand["score_breakdown"], flags=flags_json,
+            prompt_version=cand["prompt"], formula_version=cand["formula"],
+            title=title, teaser_hook_timestamp=None, description=censor_text(cand["description"], censor_cfg),
+            hashtags=cand["hashtags"], source_video_path=str(slice_source), rendered_video_path=rendered_mp4,
+            subtitle_path=ass_path,
+            trigger_json=json.dumps({"type": "vod_heatmap", "vod_start": clip_start, "vod_end": clip_end, "rank": idx}),
+            model=cand["model"],
+        )
+
+        from src.web.ws_manager import ws_manager
+        await ws_manager.broadcast("clip_created", {
+            "id": clip_id, "clip_id": clip_id, "channel_id": channel_id, "title": title,
+            "virality_score": cand["score"], "template_name": template_name,
+            "rendered_video_path": rendered_mp4, "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+        clip_record = await get_clip(clip_id)
+        if clip_record and self.bot:
+            try:
+                await self.bot.send_clip_card(clip_record)
+            except Exception as bot_err:
+                logger.warning("Telegram notification failed (clip is safe in Web UI): %s", bot_err)
+        return clip_id
+
     async def _on_vod_event(self, audio_or_url: str, metadata: Dict[str, Any]) -> None:
         """Handler triggered when VODWatcher discovers and extracts candidate VOD."""
         vod_id = metadata.get("vod_id", "unknown")
@@ -639,150 +826,70 @@ class AutoClipEngine:
                 except Exception as e:
                     logger.warning("VOD CalibratedJudge evaluation error: %s", e)
 
+            opts = self._clip_options(metadata, channel_record)
             candidates = []
             if PIPELINE_MODE in ("legacy", "shadow"):
                 candidates = await self.scorer.analyze_transcript(
                     transcript_data=transcription,
                     min_score=min_score,
                     heatmap_peaks=metadata.get("heatmap_peaks", []),
+                    max_clips=opts["max_clips"],
+                    min_len=opts["min_len"],
+                    max_len=opts["max_len"],
+                    focus=opts["focus"],
                 )
 
-            best_candidate = None
-            chosen_from_new = False
-            if PIPELINE_MODE == "new" and calibrated_candidates:
-                best_candidate = calibrated_candidates[0]
-                chosen_from_new = True
-            elif candidates:
-                candidates.sort(key=lambda c: getattr(c, "virality_score", 0), reverse=True)
-                best_candidate = candidates[0]
-            elif calibrated_candidates:
-                best_candidate = calibrated_candidates[0]
-                chosen_from_new = True
+            # Normalise both judge outputs into one shape (the calibrated judge returns dicts)
+            picked = [self._normalise_candidate(c, from_new=False) for c in candidates]
+            if PIPELINE_MODE == "new" or not picked:
+                picked = [self._normalise_candidate(c, from_new=True) for c in calibrated_candidates] or picked
+            picked.sort(key=lambda c: c["score"], reverse=True)
+            if skip_unscored:
+                picked = [c for c in picked if c["score"] > 0]
+            picked = picked[: opts["max_clips"]]
 
-            if not best_candidate:
+            if not picked:
                 logger.info("No candidates above threshold for VOD %s.", vod_id)
                 update_pipeline_progress("idle", step_name="VOD processed - No clips above threshold.")
-                # Update pipeline_runs to completed if this was a recorded run
                 async with get_db_connection() as db:
                     await db.execute("UPDATE pipeline_runs SET stage = 'completed', status = 'completed', candidates_count = 0 WHERE id = ?", (f"run_{vod_id}",))
                     await db.commit()
                 return
 
-            if chosen_from_new:
-                cand_score = best_candidate["virality_score"]
-                final_score_val = best_candidate.get("final_score")
-                clip_start = best_candidate["start_time"]
-                clip_end = best_candidate["end_time"]
-                suggested_title = best_candidate["title"]
-                description_text = best_candidate.get("description", "")
-                hashtags_text = " ".join(best_candidate.get("hashtags", []))
-                score_breakdown_json = json.dumps(best_candidate.get("scores", {}))
-                flags_json = json.dumps(best_candidate.get("flags", []))
-                formula_ver = "v3.0_calibrated_0.7llm_0.3sig"
-                prompt_ver = best_candidate.get("prompt_version", "v3.0_calibrated_judge")
-                model_used = best_candidate.get("model", "gemini-flash-lite-latest")
-            else:
-                cand_score = getattr(best_candidate, "virality_score", 0)
-                final_score_val = float(cand_score) if cand_score > 0 else None
-                clip_start = best_candidate.start_time
-                clip_end = best_candidate.end_time
-                suggested_title = best_candidate.suggested_title
-                description_text = best_candidate.hook_summary
-                hashtags_text = " ".join(best_candidate.hashtags)
-                score_breakdown_json = None
-                flags_json = None
-                formula_ver = "legacy_single_call"
-                prompt_ver = "legacy"
-                model_used = getattr(self.scorer, "model_name", "gemini-flash-lite-latest")
-
-            if cand_score <= 0 and skip_unscored:
-                logger.info("VOD candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
-                update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Moment unscored (skipped).")
-                return
-
             work_dir = Path(metadata.get("work_dir", RENDER_DIR))
-            slice_source = work_dir / f"{vod_id}_slice.mp4"
+            words_all, censor_cfg = await prepare_censor(transcription.get("words", []), template)
+            made: List[int] = []
+            for idx, cand in enumerate(picked, start=1):
+                update_pipeline_progress(
+                    "processing", channel_id=channel_id, step=4,
+                    step_name=f"Rendering clip {idx}/{len(picked)}: {cand['title'][:50]}",
+                )
+                try:
+                    clip_id = await self._render_vod_candidate(
+                        cand, idx, vod_id, channel_id, template_name, template, video_url,
+                        work_dir, words_all, censor_cfg,
+                    )
+                except Exception as clip_err:
+                    logger.error("Clip %d/%d of VOD %s failed: %s", idx, len(picked), vod_id, clip_err, exc_info=True)
+                    continue
+                if clip_id:
+                    made.append(clip_id)
 
-            update_pipeline_progress("processing", channel_id=channel_id, step=4, step_name="Downloading exact video section and rendering 9:16 layout...")
-            downloaded = await self.vod_watcher.download_video_section(
-                video_url=video_url,
-                start_time=clip_start,
-                end_time=clip_end,
-                output_file=slice_source,
-            )
+            async with get_db_connection() as db:
+                await db.execute(
+                    "UPDATE pipeline_runs SET stage = 'completed', status = ?, candidates_count = ? WHERE id = ?",
+                    ("completed" if made else "failed", len(made), f"run_{vod_id}"),
+                )
+                await db.commit()
 
-            if not downloaded or not slice_source.exists():
-                logger.error("Failed to download video section for VOD %s", vod_id)
-                update_pipeline_progress("error", channel_id=channel_id, error="Section download failed")
+            if not made:
+                update_pipeline_progress("error", channel_id=channel_id, error="All clip renders failed - see Live Logs")
                 return
 
-            clip_dur = clip_end - clip_start
-            ass_path = str(work_dir / f"{vod_id}_sub.ass")
-
-            generate_ass_subtitles(
-                word_timestamps=transcription.get("words", []),
-                output_path=ass_path,
-                template_config=template,
-                time_offset=clip_start,
-                max_duration=clip_dur,
+            update_pipeline_progress(
+                "completed", channel_id=channel_id, step=5,
+                step_name=f"{len(made)} clip(s) ready from this video", clip_id=made[0],
             )
-
-            rendered_mp4 = str(Path(OUTPUT_DIR) / f"{vod_id}_vertical.mp4")
-            await self.renderer.render_clip(
-                source_path=str(slice_source),
-                start_time=0.0,
-                end_time=clip_dur,
-                output_path=rendered_mp4,
-                template=template,
-                ass_path=ass_path,
-                teaser_timestamp=None,
-                include_teaser=False,
-            )
-
-            clip_id = await create_clip(
-                source_type="vod",
-                source_id=vod_id,
-                channel_id=channel_id,
-                template_name=template_name,
-                raw_start=clip_start,
-                raw_end=clip_end,
-                virality_score=cand_score,
-                final_score=final_score_val,
-                score_breakdown=score_breakdown_json,
-                flags=flags_json,
-                prompt_version=prompt_ver,
-                formula_version=formula_ver,
-                title=suggested_title,
-                teaser_hook_timestamp=None,
-                description=description_text,
-                hashtags=hashtags_text,
-                source_video_path=str(slice_source),
-                rendered_video_path=rendered_mp4,
-                subtitle_path=ass_path,
-                trigger_json=json.dumps({"type": "vod_heatmap"}),
-                model=model_used,
-            )
-
-            update_pipeline_progress("completed", channel_id=channel_id, step=5, step_name=f"VOD Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
-
-            from src.web.ws_manager import ws_manager
-            await ws_manager.broadcast("clip_created", {
-                "id": clip_id,
-                "clip_id": clip_id,
-                "channel_id": channel_id,
-                "title": best_candidate.suggested_title,
-                "virality_score": best_candidate.virality_score,
-                "template_name": template_name,
-                "rendered_video_path": rendered_mp4,
-                "created_at": time.strftime("%Y-%m-%d %H:%M:%S"),
-            })
-
-            clip_record = await get_clip(clip_id)
-            if clip_record and self.bot:
-                try:
-                    await self.bot.send_clip_card(clip_record)
-                except Exception as bot_err:
-                    logger.warning("Telegram notification timed out or failed (clip is safe in Web UI): %s", bot_err)
 
             async def _reset():
                 await asyncio.sleep(20)

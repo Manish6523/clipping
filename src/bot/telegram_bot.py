@@ -123,13 +123,27 @@ def format_clip_caption_html(clip: Dict[str, Any]) -> str:
     is_unscored = v_score == 0 or "unscored" in flags_raw
     score_display = "unscored" if is_unscored else f"{v_score}/100"
 
+    censor_line = ""
+    try:
+        flag_list = json.loads(flags_raw) if flags_raw else []
+    except Exception:
+        flag_list = []
+    for f in flag_list if isinstance(flag_list, list) else []:
+        if not isinstance(f, dict):
+            continue
+        if f.get("type") == "profanity_censored":
+            censor_line += f"🔇 <b>Censored:</b> <code>{int(f.get('count', 0))} word(s)</code>\n"
+        elif f.get("type") == "slur_detected":
+            censor_line += "⚠️ <b>Slur detected</b> - censored, review before posting\n"
+
     caption = (
         f"🔥 <b>Viral Candidate #{clip['id']}</b>\n\n"
         f"📺 <b>Channel:</b> <code>{channel_id}</code>\n"
         f"🎨 <b>Template:</b> <code>{template_name}</code>\n"
         f"📈 <b>Virality Score:</b> <code>{score_display}</code>\n"
         f"⏱️ <b>Duration:</b> <code>{duration:.1f}s</code> ({clip['adjusted_start']:.1f}s - {clip['adjusted_end']:.1f}s)\n"
-        f"🎬 <b>Teaser Pre-Roll:</b> <code>{teaser_status}</code>\n\n"
+        f"🎬 <b>Teaser Pre-Roll:</b> <code>{teaser_status}</code>\n"
+        f"{censor_line}\n"
         f"📝 <b>Title:</b> {title}\n"
         f"🏷️ <b>Tags:</b> {tags}\n\n"
         f"💡 <i>Reply to this message with text to edit the title/caption.</i>"
@@ -474,8 +488,7 @@ class AutoClipBot:
 
             if action == "great":
                 next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-                await enqueue_clip(clip_id, next_slot)
-                await update_clip_status(clip_id, "approved")
+                await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
                 await _safe_log_feedback("marked_great", {"source": "telegram_button"})
                 await callback.message.edit_caption(
                     caption=f"⭐ <b>Clip #{clip_id} Marked GREAT &amp; Queued!</b>\nScheduled for: <code>{next_slot}</code>",
@@ -546,8 +559,7 @@ class AutoClipBot:
 
             if action == "queue":
                 next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-                await enqueue_clip(clip_id, next_slot)
-                await update_clip_status(clip_id, "approved")
+                await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
                 await _safe_log_feedback("approved", {"source": "telegram_queue"})
                 await callback.message.edit_caption(
                     caption=f"🗓️ <b>Clip #{clip_id} Added to Drip Queue!</b>\nScheduled for: <code>{next_slot}</code>",

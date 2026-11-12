@@ -113,4 +113,8 @@ DRIP_INTERVAL_HOURS = int(os.getenv("DRIP_INTERVAL_HOURS", "4"))
 WEB_HOST = os.getenv("WEB_HOST", "0.0.0.0")
 WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 # Web lock / Telegram PIN protection (defaults to False for localhost convenience, True in production/VPS)
+# faster-whisper model for clip transcription (tiny | base | small | medium | large-v3-turbo).
+# Bigger models catch swear words far more reliably; editable from the Settings page.
+WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+
 AUTH_LOCK_ENABLED = os.getenv("AUTH_LOCK_ENABLED", "false").lower() in ("true", "1", "yes")

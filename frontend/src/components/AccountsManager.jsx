@@ -207,55 +207,58 @@ export default function AccountsManager() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 flex items-center justify-center text-white shadow-lg shadow-rose-500/25">
+          <div className="hidden sm:flex w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 items-center justify-center text-white shadow-lg shadow-rose-500/25">
             <YoutubeIcon size={22} />
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-black text-white tracking-tight">YouTube & Multi-Account Distribution</h1>
+              <h1 className="text-xl font-black text-white tracking-tight">
+                <span className="sm:hidden">Distribution</span>
+                <span className="hidden sm:inline">YouTube & Multi-Account Distribution</span>
+              </h1>
               {feedback && (
                 <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full animate-in fade-in">
                   <CheckCircle2 size={12} /> {feedback}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-400 mt-0.5">
+            <p className="hidden sm:block text-xs text-slate-400 mt-0.5">
               Connect multiple YouTube channels and map streamers to broadcast highlights automatically.
             </p>
           </div>
         </div>
 
         {/* Tab Switcher (Scrollable horizontally on mobile) */}
-        <div className="flex items-center gap-1 bg-[#0E121B] p-1 rounded-xl border border-white/[0.08] overflow-x-auto max-w-full custom-scrollbar">
+        <div className="grid grid-cols-3 md:flex md:items-center gap-1 bg-[#0E121B] p-1 rounded-xl border border-white/[0.08] w-full md:w-auto">
           <button
             onClick={() => setActiveTab('accounts')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
               activeTab === 'accounts'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <YoutubeIcon size={14} /> Connected Accounts ({accounts.length})
+            <YoutubeIcon size={14} className="shrink-0" /><span className="md:hidden">Accounts ({accounts.length})</span><span className="hidden md:inline">Connected Accounts ({accounts.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('mappings')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
               activeTab === 'mappings'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Share2 size={14} /> Streamer Mappings
+            <Share2 size={14} className="shrink-0" /><span className="md:hidden">Mappings</span><span className="hidden md:inline">Streamer Mappings</span>
           </button>
           <button
             onClick={() => setActiveTab('oauth_setup')}
-            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 whitespace-nowrap ${
+            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
               activeTab === 'oauth_setup'
                 ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            <Key size={14} /> Google App Credentials
+            <Key size={14} className="shrink-0" /><span className="md:hidden">Google app</span><span className="hidden md:inline">Google App Credentials</span>
           </button>
         </div>
       </div>
@@ -487,7 +490,8 @@ export default function AccountsManager() {
               <Share2 size={16} className="text-[#8FD3FF]" /> Streamer-to-YouTube Distribution Matrix
             </h3>
             <p className="text-xs text-slate-400 mb-4">
-              Check which YouTube channel(s) should automatically receive clips when generated for each streamer. One streamer can upload to multiple channels simultaneously!
+              <span className="md:hidden">Tap a channel to send that streamer's clips there.</span>
+              <span className="hidden md:inline">Check which YouTube channel(s) should automatically receive clips when generated for each streamer. One streamer can upload to multiple channels simultaneously!</span>
             </p>
 
             {channels.length === 0 ? (
@@ -504,7 +508,44 @@ export default function AccountsManager() {
                 </button>
               </div>
             ) : (
-              <div className="overflow-x-auto custom-scrollbar">
+              <>
+              {/* Phone: one card per streamer with toggle chips */}
+              <div className="md:hidden space-y-2">
+                {channels.map((ch) => {
+                  const handle = ch.channel_id_or_handle;
+                  const mapped = accounts.filter((acc) => mappings.some(
+                    (m) => m.streamer_handle.toLowerCase() === handle.toLowerCase() && m.account_key === acc.account_key
+                  ));
+                  return (
+                    <div key={handle} className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
+                      <div className="flex items-center justify-between gap-2 mb-2">
+                        <span className="font-bold text-white text-sm truncate">{ch.display_name || handle}</span>
+                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 uppercase shrink-0">{ch.platform}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {accounts.map((acc) => {
+                          const on = mapped.includes(acc);
+                          return (
+                            <button
+                              key={acc.account_key}
+                              type="button"
+                              onClick={() => toggleStreamerAccountMapping(handle, acc.account_key)}
+                              aria-pressed={on}
+                              className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
+                                on ? 'bg-[#8FD3FF] text-[#0A0D14] border-[#8FD3FF]' : 'bg-transparent text-slate-300 border-white/15'
+                              }`}
+                            >
+                              {on ? '✓ ' : ''}{acc.channel_title}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {mapped.length === 0 && <p className="text-[11px] text-amber-300/80 mt-2">Not posting anywhere yet</p>}
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="hidden md:block overflow-x-auto custom-scrollbar">
                 <table className="w-full text-left text-xs min-w-[500px]">
                   <thead>
                     <tr className="border-b border-white/[0.08] text-slate-400 uppercase text-[10px] font-mono">
@@ -556,6 +597,7 @@ export default function AccountsManager() {
                   </tbody>
                 </table>
               </div>
+              </>
             )}
           </div>
         </div>
@@ -632,7 +674,7 @@ export default function AccountsManager() {
 
       {/* Manual JSON Import Modal */}
       {showImportModal && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E121B] border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
             <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
               <FileJson size={16} className="text-[#8FD3FF]" /> Import OAuth Token JSON

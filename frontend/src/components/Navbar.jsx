@@ -1,28 +1,111 @@
 import React, { useState } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink } from 'react-router-dom';
 import { 
   Film, 
   Palette, 
-  Bookmark,
   Radio, 
   Calendar, 
   Terminal, 
   Zap, 
   Share2,
-  Menu,
-  X,
   Flame,
   Settings,
   Loader2,
-  ChevronDown,
-  Scissors,
-  ArrowUpRight
+  ChevronDown
 } from 'lucide-react';
 
-export default function Navbar({ pendingCount = 0, activePipelines = [], toasts = [], onDismissToast }) {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+function MobileStatusPill({ status = {}, activePipelines = [] }) {
+  const [open, setOpen] = useState(false);
+  const running = activePipelines.length > 0;
+  const primary = activePipelines[0];
+  const pending = status.pending_clips_count || 0;
+
+  let pill;
+  if (running) {
+    pill = (
+      <span className="flex items-center gap-1.5 text-amber-300">
+        <Loader2 size={13} className="animate-spin" />
+        <span className="max-w-[90px] truncate">@{primary?.channel_id || 'clip'}</span>
+        <span className="font-mono text-[10px] text-amber-400/80">{Math.min(5, primary?.current_step || 1)}/5</span>
+      </span>
+    );
+  } else if (pending > 0) {
+    pill = <span className="text-[#8FD3FF]">🎬 {pending} to review</span>;
+  } else {
+    pill = (
+      <span className="flex items-center gap-1.5 text-emerald-400">
+        <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" /> Idle
+      </span>
+    );
+  }
+
+  return (
+    <div className="relative md:hidden">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className={`flex items-center gap-1 px-2.5 py-1.5 rounded-full border text-[11px] font-bold ${
+          running ? 'border-amber-500/40 bg-amber-500/10' : pending > 0 ? 'border-[#8FD3FF]/30 bg-[#8FD3FF]/10' : 'border-emerald-500/30 bg-emerald-500/10'
+        }`}
+      >
+        {pill}
+        <ChevronDown size={12} className={`opacity-70 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-full mt-2 w-[min(320px,calc(100vw-24px))] z-50 rounded-2xl bg-[#0D111A]/98 backdrop-blur-xl border border-white/10 shadow-2xl p-3 space-y-3">
+            <div className="grid grid-cols-3 gap-2 text-center">
+              {[
+                ['To review', status.pending_clips_count || 0, 'text-[#8FD3FF]'],
+                ['Queued', status.queued_count || 0, 'text-emerald-300'],
+                ['Published', status.published_count || 0, 'text-violet-300'],
+              ].map(([label, val, cls]) => (
+                <div key={label} className="rounded-xl bg-white/[0.04] border border-white/[0.06] py-2">
+                  <div className={`text-lg font-black ${cls}`}>{val}</div>
+                  <div className="text-[10px] text-slate-400">{label}</div>
+                </div>
+              ))}
+            </div>
+            {running ? (
+              <div className="space-y-2">
+                {activePipelines.map((pipe) => {
+                  const step = Math.min(5, Math.max(1, pipe.current_step || 1));
+                  return (
+                    <div key={pipe.channel_id} className="rounded-xl bg-black/40 border border-amber-500/20 p-2.5 space-y-1.5">
+                      <div className="flex justify-between text-xs">
+                        <span className="font-bold text-white">@{pipe.channel_id}</span>
+                        <span className="font-mono text-amber-400 text-[10px]">Step {step}/5</span>
+                      </div>
+                      <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
+                        <div className="h-full bg-amber-400" style={{ width: `${step * 20}%` }} />
+                      </div>
+                      <div className="text-[11px] text-slate-400 break-words">{pipe.step_name || 'Processing…'}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-slate-400 text-center">No clip is rendering right now.</p>
+            )}
+            <div className="flex gap-2">
+              <NavLink to="/channels" onClick={() => setOpen(false)} className="flex-1 text-center py-2 rounded-xl bg-white/[0.05] text-xs font-bold text-slate-200">
+                Channels ({status.channels_count || 0})
+              </NavLink>
+              <NavLink to="/pipelines" onClick={() => setOpen(false)} className="flex-1 text-center py-2 rounded-xl bg-white/[0.05] text-xs font-bold text-slate-200">
+                Pipelines →
+              </NavLink>
+            </div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+export default function Navbar({ pendingCount = 0, activePipelines = [], status = {} }) {
   const [pipelineDropdownOpen, setPipelineDropdownOpen] = useState(false);
-  const navigate = useNavigate();
 
   const navItems = [
     { to: '/', label: 'Review', shortLabel: 'Review', icon: Film, badge: pendingCount, end: true },
@@ -125,11 +208,13 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
           {/* In-Navbar Active Pipelines Pill with Hover Dropdown */}
           {pipelineCount > 0 && (
             <div
-              className="relative"
+              className="relative hidden md:block"
               onMouseEnter={() => setPipelineDropdownOpen(true)}
               onMouseLeave={() => setPipelineDropdownOpen(false)}
             >
               <button
+                type="button"
+                onClick={() => setPipelineDropdownOpen((o) => !o)}
                 className="flex items-center gap-2 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 px-3 py-1 rounded-xl text-xs transition-all shadow-lg shadow-amber-500/5 cursor-pointer group"
               >
                 <div className="flex items-center gap-1.5">
@@ -208,60 +293,20 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], toasts 
             </div>
           )}
 
+          <MobileStatusPill status={status} activePipelines={activePipelines} />
+
           {/* Daemon Active Pill */}
-          <div className="flex items-center gap-1.5 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+          <div className="hidden md:flex items-center gap-1.5 text-[10px] font-mono font-bold px-2.5 py-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
             <span className="relative flex h-1.5 w-1.5">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
               <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-emerald-500" />
             </span>
-            <span className="hidden sm:inline">DAEMON ACTIVE</span>
-            <span className="sm:hidden">LIVE</span>
+            <span>DAEMON ACTIVE</span>
           </div>
 
-          {/* Mobile Menu Hamburger */}
-          <button
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
-            aria-label="Toggle menu"
-          >
-            {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
-          </button>
         </div>
       </div>
 
-      {/* Mobile Drawer Navigation */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-white/[0.08] bg-[#0E121B] px-4 py-3 space-y-1 animate-in slide-in-from-top-2">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                onClick={() => setMobileMenuOpen(false)}
-                className={({ isActive }) => `
-                  flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all
-                  ${isActive
-                    ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30'
-                    : 'text-[#8B90A0] hover:text-white hover:bg-white/[0.04]'
-                  }
-                `}
-              >
-                <div className="flex items-center gap-2.5">
-                  <Icon size={16} />
-                  <span>{item.label}</span>
-                </div>
-                {item.badge > 0 && (
-                  <span className="text-[10px] px-2 py-0.5 rounded-full font-mono font-bold bg-[#8FD3FF]/20 text-[#8FD3FF] border border-[#8FD3FF]/30">
-                    {item.badge}
-                  </span>
-                )}
-              </NavLink>
-            );
-          })}
-        </div>
-      )}
     </header>
   );
 }

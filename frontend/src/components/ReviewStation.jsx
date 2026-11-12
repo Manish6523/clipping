@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { censorFlagInfo } from '../utils/profanity';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -602,9 +603,23 @@ export default function ReviewStation({ onStatusChange }) {
                           {clip.title || 'Untitled Clip'}
                         </div>
 
-                        <div className="flex items-center justify-between text-[10px] text-[#8B90A0] font-mono pl-5">
+                        <div className="flex items-center justify-between gap-2 text-[10px] text-[#8B90A0] font-mono pl-5">
                           <span className="truncate max-w-[130px]">{clip.template_name}</span>
-                          <span>⏱️ {dur}s</span>
+                          <span className="flex items-center gap-1.5 shrink-0">
+                            {(() => {
+                              const info = censorFlagInfo(clip.flags);
+                              if (!info) return null;
+                              return (
+                                <span
+                                  className={`px-1 rounded border ${info.slur ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}
+                                  title={info.slur ? 'Slur detected - review before posting' : 'Profanity censored'}
+                                >
+                                  {info.slur ? '⚠️' : '🔇'} {info.count}
+                                </span>
+                              );
+                            })()}
+                            <span>⏱️ {dur}s</span>
+                          </span>
                         </div>
 
                         {/* Rejection Reason Badge if rejected */}
@@ -682,6 +697,15 @@ export default function ReviewStation({ onStatusChange }) {
                     ? '⚪ Score: unscored'
                     : `🔥 Score: ${activeClipSummary.virality_score}/100`}
                 </span>
+                {(() => {
+                  const info = censorFlagInfo(activeClipSummary.flags);
+                  if (!info) return null;
+                  return (
+                    <span className={`px-2.5 py-1 rounded-lg border font-bold text-xs flex items-center gap-1 ${info.slur ? 'bg-red-500/15 border-red-500/40 text-red-300' : 'bg-rose-500/10 border-rose-500/30 text-rose-300'}`}>
+                      {info.slur ? '⚠️ Slur censored — review' : `🔇 ${info.count} bleeped`}
+                    </span>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={handleOpenExplain}
@@ -818,7 +842,7 @@ export default function ReviewStation({ onStatusChange }) {
                   <span className="text-[10px] font-bold uppercase tracking-wider text-[#8B90A0] block mb-1.5 flex items-center gap-1.5">
                     <Scissors size={12} className="text-[#8FD3FF]" /> Boundary Fine-Tuning (-3s / +3s Re-render)
                   </span>
-                  <div className="grid grid-cols-5 gap-1.5">
+                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-1.5 [&>*:last-child]:col-span-2 sm:[&>*:last-child]:col-span-1">
                     <button
                       onClick={() => handleTrim(-3, 0)}
                       disabled={loading}
@@ -908,7 +932,7 @@ export default function ReviewStation({ onStatusChange }) {
 
               {/* One-Tap Rejection Reason Modal */}
               {showRejectModal && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
                   <div className="bg-[#0E1118] border border-white/[0.1] rounded-2xl p-5 max-w-md w-full shadow-2xl flex flex-col gap-3">
                     <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                       <div className="flex items-center gap-2">
@@ -956,7 +980,7 @@ export default function ReviewStation({ onStatusChange }) {
 
               {/* Explainability Score Breakdown Modal */}
               {showExplainModal && (
-                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[80] flex items-center justify-center p-4">
                   <div className="bg-[#0E1118] border border-white/[0.1] rounded-2xl p-5 max-w-lg w-full shadow-2xl flex flex-col gap-4 max-h-[85vh] overflow-y-auto custom-scrollbar">
                     <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
                       <div className="flex items-center gap-2">

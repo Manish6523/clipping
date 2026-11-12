@@ -266,9 +266,11 @@ export default function ChannelManager() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Radio className="text-rose-500 animate-pulse" /> Monitored Streamers &amp; Channels
+            <Radio className="text-rose-500 animate-pulse" />
+            <span className="sm:hidden">Streamers</span>
+            <span className="hidden sm:inline">Monitored Streamers &amp; Channels</span>
           </h2>
-          <p className="text-xs text-[#8B90A0] mt-1">
+          <p className="hidden sm:block text-xs text-[#8B90A0] mt-1">
             Group creators by niche (GTA RP, Casual Gaming, IRL), auto-fetch platform logos, and customize viral detection.
           </p>
         </div>
@@ -302,6 +304,8 @@ export default function ChannelManager() {
           {availableGroups.map((grp) => {
             const count = channels.filter(c => (c.group_tag || 'General').toLowerCase() === grp.toLowerCase()).length;
             const isSel = selectedGroup.toLowerCase() === grp.toLowerCase();
+            // Only show groups you actually use (defaults remain as suggestions when adding a streamer)
+            if (count === 0 && !isSel) return null;
             return (
               <button
                 key={grp}
@@ -351,8 +355,12 @@ export default function ChannelManager() {
           </span>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredChannels.map((c) => {
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {[...filteredChannels].sort((a, b) => {
+            // Live first, then active, then paused
+            const rank = (c) => ((streamers[c.channel_id_or_handle] || {}).is_live && c.enabled === 1 ? 0 : c.enabled === 1 ? 1 : 2);
+            return rank(a) - rank(b);
+          }).map((c) => {
             const streamInfo = streamers[c.channel_id_or_handle] || {};
             const isLive = streamInfo.is_live;
             const isEnabled = c.enabled === 1;
@@ -362,7 +370,7 @@ export default function ChannelManager() {
             return (
               <div
                 key={c.id}
-                className={`bg-[#0E1118] border rounded-2xl p-4 transition-all flex flex-col justify-between shadow-xl relative overflow-hidden group ${
+                className={`bg-[#0E1118] border rounded-2xl p-3 sm:p-4 transition-all flex flex-col justify-between shadow-xl relative overflow-hidden group ${
                   !isEnabled
                     ? 'border-amber-500/20 opacity-70'
                     : isLive
@@ -452,7 +460,7 @@ export default function ChannelManager() {
                   ) : null}
 
                   {/* Stream & Template Stats Grid */}
-                  <div className="grid grid-cols-3 gap-2 bg-[#12151E] p-2 rounded-xl border border-white/[0.04] mb-3">
+                  <div className={`${isLive ? 'grid' : 'hidden sm:grid'} grid-cols-3 gap-2 bg-[#12151E] p-2 rounded-xl border border-white/[0.04] mb-3`}>
                     <div>
                       <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block">Layout</span>
                       <span className="text-xs font-mono font-bold text-indigo-300 truncate block" title={c.template_name}>
@@ -480,7 +488,7 @@ export default function ChannelManager() {
                     href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
                     target="_blank"
                     rel="noreferrer"
-                    className="text-[11px] font-semibold text-slate-400 hover:text-white flex items-center gap-1 transition-colors"
+                    className="text-[11px] font-semibold text-slate-400 hover:text-white flex items-center gap-1 transition-colors py-2"
                   >
                     Open Stream <ExternalLink size={11} />
                   </a>
@@ -489,7 +497,7 @@ export default function ChannelManager() {
                     {/* Pause/Resume Toggle */}
                     <button
                       onClick={() => handleTogglePause(c)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
+                      className={`px-3 sm:px-2.5 py-2 sm:py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
                         isEnabled
                           ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
                           : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
@@ -503,7 +511,7 @@ export default function ChannelManager() {
                     {/* Settings Button */}
                     <button
                       onClick={() => openSettings(c)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors border border-white/[0.04]"
+                      className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors border border-white/[0.04]"
                       title="Settings & Persona"
                     >
                       <Settings size={14} />
@@ -512,7 +520,7 @@ export default function ChannelManager() {
                     {/* Delete Button */}
                     <button
                       onClick={() => handleRemove(c.channel_id_or_handle)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
+                      className="p-2.5 sm:p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
                       title="Remove Channel"
                     >
                       <Trash2 size={14} />
@@ -527,7 +535,7 @@ export default function ChannelManager() {
 
       {/* PAUSE CONFIRMATION MODAL */}
       {pauseModalChannel && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="bg-[#0E1118] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
               <Pause className="text-amber-400" size={18} />
@@ -581,7 +589,7 @@ export default function ChannelManager() {
 
       {/* SETTINGS & PERSONA SLIDE-OVER DRAWER */}
       {drawerChannel && drawerForm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex justify-end">
+        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] flex justify-end">
           <div className="w-full max-w-xl bg-[#0E1118] border-l border-white/10 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
             {/* Drawer Header */}
             <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#12151E]">
@@ -811,7 +819,7 @@ export default function ChannelManager() {
 
       {/* ADD STREAMER MODAL */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
           <div className="bg-[#0E1118] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
             <h3 className="text-base font-black text-white mb-1 flex items-center gap-2">
               <Plus className="text-indigo-400" size={18} /> Add Streamer to Monitor

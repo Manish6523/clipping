@@ -302,6 +302,34 @@ async def get_channel_live_frame(request: web.Request) -> web.Response:
         except Exception:
             pass
 
+    # 3b. Offline: grab a 16:9 frame from this streamer's most recent clip source footage.
+    # (Rendered 9:16 thumbnails below have the wrong shape for placing crop boxes.)
+    try:
+        handles = {channel_handle, channel_handle.lstrip("@"), "@" + channel_handle.lstrip("@")}
+        async with get_db_connection() as db:
+            cur = await db.execute(
+                f"SELECT source_video_path FROM clips WHERE channel_id IN ({','.join('?' * len(handles))}) "
+                "AND source_video_path IS NOT NULL ORDER BY id DESC LIMIT 5",
+                tuple(handles),
+            )
+            rows = await cur.fetchall()
+        for row in rows:
+            src = row[0]
+            if src and Path(src).exists():
+                c_buf.mkdir(parents=True, exist_ok=True)
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y", "-ss", "1.0", "-i", str(src), "-vframes", "1",
+                    "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2",
+                    "-q:v", "3", str(out_jpg),
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                )
+                await asyncio.wait_for(proc.communicate(), timeout=8.0)
+                if out_jpg.exists() and out_jpg.stat().st_size > 0:
+                    return web.FileResponse(out_jpg, headers={"Cache-Control": "no-cache"})
+                break
+    except Exception as e:
+        logger.debug("Source-frame fallback failed for %s: %s", channel_handle, e)
+
     # 4. Check rendered clip thumbnails in both RENDER_DIR and OUTPUT_DIR
     from config.settings import RENDER_DIR, OUTPUT_DIR
     rendered_thumbs = sorted(glob.glob(str(Path(RENDER_DIR) / f"*{channel_handle}*thumb*.jpg")), key=os.path.getmtime)
@@ -360,7 +388,18 @@ async def get_channel_live_frame(request: web.Request) -> web.Response:
     if any_frames and Path(any_frames[-1]).exists():
         return web.FileResponse(any_frames[-1])
 
-    return make_json_error("NO_FRAME", f"No live video chunks available yet for {channel_handle}", status=404)
+    # Nothing recorded yet: a 16:9 placeholder keeps the template canvas usable (no broken image).
+    safe = "".join(ch for ch in channel_handle if ch.isalnum() or ch in "@_-.")[:40]
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080">'
+        '<defs><pattern id="g" width="120" height="120" patternUnits="userSpaceOnUse">'
+        '<path d="M120 0H0V120" fill="none" stroke="#1E2433" stroke-width="2"/></pattern></defs>'
+        '<rect width="1920" height="1080" fill="#0B0E15"/><rect width="1920" height="1080" fill="url(#g)"/>'
+        f'<text x="960" y="520" fill="#8B90A0" font-family="sans-serif" font-size="56" text-anchor="middle">No frame yet for @{safe}</text>'
+        '<text x="960" y="600" fill="#5B6170" font-family="sans-serif" font-size="36" text-anchor="middle">'
+        'Appears once they go live or have a clip, or upload a frame image</text></svg>'
+    )
+    return web.Response(text=svg, content_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
 
 
 async def pause_daemon(request: web.Request) -> web.Response:

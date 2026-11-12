@@ -25,7 +25,8 @@ import {
   Lock,
   Unlock,
   Undo2,
-  Redo2
+  Redo2,
+  MoreHorizontal,
 } from 'lucide-react';
 import { 
   getTemplates, 
@@ -41,6 +42,7 @@ import MobileStage from './editor/MobileStage';
 
 export default function TemplateStudio() {
   const { isPhone, isLandscape } = useLayoutMode();
+  const [phoneMenuOpen, setPhoneMenuOpen] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [channels, setChannels] = useState([]);
   const [selectedChannel, setSelectedChannel] = useState('');
@@ -364,8 +366,132 @@ export default function TemplateStudio() {
   };
 
   return (
-    <div className="w-full h-[calc(100dvh-61px)] flex flex-col px-2 sm:px-4 py-2 select-none overflow-hidden bg-[#07090E]">
+    <div className="w-full h-[calc(100dvh-57px-64px-env(safe-area-inset-bottom))] md:h-[calc(100dvh-61px)] flex flex-col px-2 sm:px-4 py-2 select-none overflow-hidden bg-[#07090E]">
+      {/* Phone toolbar: picker + save, then frame + quick actions; rest in a ⋯ sheet */}
+      {isPhone && (
+        <div className="flex flex-col gap-2 pb-2 border-b border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0 flex items-center gap-1.5 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2.5 h-10">
+              <LayoutTemplate size={14} className="text-[#8FD3FF] shrink-0" />
+              <select
+                value={templateName}
+                onChange={(e) => handleLoadPreset(e.target.value)}
+                aria-label="Active template"
+                className="flex-1 min-w-0 bg-transparent text-sm text-[#8FD3FF] font-bold focus:outline-none truncate"
+              >
+                {templates.map((t) => (
+                  <option key={t.name} value={t.name} className="bg-slate-900 text-white">{t.name}</option>
+                ))}
+              </select>
+              {isDirty && <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" title="Unsaved changes" />}
+            </div>
+            <button
+              onClick={handleSave}
+              className="h-10 px-4 flex items-center gap-1.5 bg-gradient-to-r from-[#8FD3FF] to-[#A9B8FF] text-[#0A0B0E] font-black rounded-xl text-sm shrink-0"
+            >
+              <Save size={14} /> Save
+            </button>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className="flex-1 min-w-0 flex items-center gap-1 bg-[#0E1118] border border-white/[0.08] rounded-xl px-2.5 h-10">
+              <span className="text-[10px] text-slate-500 font-bold uppercase shrink-0">Frame</span>
+              <select
+                value={selectedChannel}
+                onChange={(e) => { setCustomImage(null); handleChannelSelect(e.target.value); }}
+                aria-label="Preview frame from streamer"
+                className="flex-1 min-w-0 bg-transparent text-xs text-white focus:outline-none truncate"
+              >
+                {channels.map((c) => (
+                  <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                    @{c.display_name || c.channel_id_or_handle}
+                  </option>
+                ))}
+              </select>
+              <button onClick={() => { setCustomImage(null); fetchChannelFrame(selectedChannel); }} className="p-1.5 text-slate-400" aria-label="Refresh frame">
+                <RefreshCw size={13} />
+              </button>
+            </div>
+            <button onClick={handleUndo} disabled={history.length === 0} aria-label="Undo"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#0E1118] border border-white/[0.08] text-slate-200 disabled:opacity-30">
+              <Undo2 size={15} />
+            </button>
+            <button onClick={handleRedo} disabled={redoStack.length === 0} aria-label="Redo"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#0E1118] border border-white/[0.08] text-slate-200 disabled:opacity-30">
+              <Redo2 size={15} />
+            </button>
+            <button onClick={handleTestRenderSample} disabled={testingSample} aria-label="Test render"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#0E1118] border border-amber-500/30 text-amber-300">
+              {testingSample ? <Loader2 size={15} className="animate-spin" /> : <Play size={15} />}
+            </button>
+            <button onClick={() => setPhoneMenuOpen(true)} aria-label="More template actions"
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-[#0E1118] border border-white/[0.08] text-slate-200">
+              <MoreHorizontal size={16} />
+            </button>
+          </div>
+          {feedback && (
+            <span className="self-start flex items-center gap-1 text-[11px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+              <CheckCircle2 size={11} /> {feedback}
+            </span>
+          )}
+
+          {phoneMenuOpen && (
+            <div className="fixed inset-0 z-[70] bg-black/60 backdrop-blur-sm" onClick={() => setPhoneMenuOpen(false)}>
+              <div
+                className="absolute inset-x-0 bottom-0 rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4 space-y-2"
+                style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-2" />
+                <div className="grid grid-cols-3 gap-2">
+                  <button onClick={() => { setPhoneMenuOpen(false); handleNewTemplate(); }}
+                    className="h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] text-xs font-bold text-slate-200 flex flex-col items-center justify-center gap-1">
+                    <Plus size={18} className="text-[#8FD3FF]" /> New
+                  </button>
+                  <label className="h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] text-xs font-bold text-slate-200 flex flex-col items-center justify-center gap-1 cursor-pointer">
+                    <FileUp size={18} className="text-[#8FD3FF]" /> Import
+                    <input type="file" accept=".json,application/json" onChange={(e) => { setPhoneMenuOpen(false); handleImportTemplate(e); }} className="hidden" />
+                  </label>
+                  <button onClick={() => { setPhoneMenuOpen(false); handleExportTemplate(); }}
+                    className="h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] text-xs font-bold text-slate-200 flex flex-col items-center justify-center gap-1">
+                    <FileDown size={18} className="text-[#8FD3FF]" /> Export
+                  </button>
+                  <label className="h-16 rounded-2xl bg-white/[0.04] border border-white/[0.06] text-xs font-bold text-slate-200 flex flex-col items-center justify-center gap-1 cursor-pointer">
+                    <Upload size={18} className="text-[#8FD3FF]" /> Frame image
+                    <input type="file" accept="image/*" onChange={(e) => { setPhoneMenuOpen(false); handleCustomImageUpload(e); }} className="hidden" />
+                  </label>
+                  <button onClick={() => { setPhoneMenuOpen(false); handleDeleteTemplate(templateName); }}
+                    className="h-16 rounded-2xl bg-rose-500/10 border border-rose-500/20 text-xs font-bold text-rose-300 flex flex-col items-center justify-center gap-1">
+                    <Trash2 size={18} /> Delete
+                  </button>
+                </div>
+                <div className="flex items-center gap-2 pt-1">
+                  <select
+                    value={assigningStreamer}
+                    onChange={(e) => setAssigningStreamer(e.target.value)}
+                    aria-label="Assign template to streamer"
+                    className="flex-1 min-w-0 h-11 bg-slate-950 border border-white/10 rounded-xl px-3 text-sm text-white"
+                  >
+                    <option value="">Use this template for…</option>
+                    {channels.map((c) => (
+                      <option key={c.channel_id_or_handle} value={c.channel_id_or_handle}>@{c.display_name || c.channel_id_or_handle}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => { handleApplyToChannel(assigningStreamer); setPhoneMenuOpen(false); }}
+                    disabled={!assigningStreamer}
+                    className="h-11 px-4 rounded-xl bg-emerald-600 text-white text-sm font-bold disabled:opacity-40"
+                  >
+                    Assign
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Sleek Minimal Top Control Bar */}
+      {!isPhone && (
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/[0.06] shrink-0">
         <div className="flex items-center gap-2">
           <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-xs shadow-md shadow-[#8FD3FF]/20 shrink-0">
@@ -548,6 +674,7 @@ export default function TemplateStudio() {
           </button>
         </div>
       </div>
+      )}
 
       {/* Main Studio Viewport */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden relative">
@@ -895,7 +1022,7 @@ export default function TemplateStudio() {
 
       {/* Render Test Sample Video Modal */}
       {sampleVideoUrl && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E1118] border border-white/[0.12] rounded-2xl max-w-sm w-full p-4 flex flex-col gap-3 shadow-2xl animate-in zoom-in-95">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-white flex items-center gap-1.5">
@@ -931,7 +1058,7 @@ export default function TemplateStudio() {
 
       {/* Advanced Typography Settings Modal */}
       {showAdvancedTypography && (
-        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E1118] border border-white/[0.15] rounded-2xl max-w-md w-full p-5 flex flex-col gap-4 shadow-2xl animate-in zoom-in-95">
             <div className="flex items-center justify-between pb-3 border-b border-white/10">
               <div className="flex items-center gap-2">

@@ -1,0 +1,52 @@
+{
+  "_comment": "Regex patterns are matched against a single normalized word (lowercase, letters/digits/apostrophes/asterisks only) and must match the WHOLE word. Tiers: slur (always censored + clip flagged for review), strong (censored by default), mild (censored only when 'censor_mild' is on).",
+  "slur": [
+    "n+i+g+(a|ah|as|az|er|ers|uh|uhs|guh|gas)",
+    "f+a+g+(s|got|gots|gy)?",
+    "retard(s|ed)?",
+    "chinks?",
+    "spics?",
+    "kikes?",
+    "trann(y|ies)",
+    "coons?"
+  ],
+  "strong": [
+    "(mother|motha|mutha)?f+u+c*k+(s|ed|er|ers|in|in'|ing|ings|face|head|hole|wit|tard|boy)?",
+    "f+(u+c*)?k+i+n+g?'?",
+    "f+u+c+k+",
+    "fk|fck|fcking|fkin|fkn|fucc|fuk|fukk?(ing|in|er)?|phuck(ing|in|er)?",
+    "(bull|horse|dip|jack|ape|chicken)?s+h+i+t+(s|ty|ter|ters|ted|ting|head|heads|hole|show|load|faced)?",
+    "sh\\*+t|s\\*+t",
+    "b+i+t+c+h+(es|ass|y|in|ing)?",
+    "biatch|beyotch",
+    "(dumb|bad|smart|jack|kick|wise|lame|fat|hard)?ass+hole?s?",
+    "(dumb|bad|smart|jack|kick|wise|lame|fat|hard)ass(es)?",
+    "cunts?",
+    "dick(s|head|heads|less|wad)?",
+    "cock(s|sucker|suckers|sucking)?",
+    "puss(y|ies)",
+    "twats?",
+    "wank(er|ers|ing)?",
+    "bastards?",
+    "whores?",
+    "sluts?",
+    "goddamn(it|ed)?|goddam",
+    "[a-z]\\*+[a-z]*"
+  ],
+  "mild": [
+    "damn(it|ed)?|dammit",
+    "hell",
+    "ass(es)?",
+    "crap(py)?",
+    "piss(ed|ing|es)?",
+    "wtf|stfu|lmfao|af",
+    "bloody",
+    "bollocks",
+    "screw(ed)?"
+  ],
+  "allow": [
+    "hello", "shell", "class", "assist", "assess", "bass", "glass", "grass", "pass", "mass",
+    "cocktail", "peacock", "dickens", "scunthorpe", "shiitake", "hitch", "pitch", "witch",
+    "assassin", "assume", "classic", "embassy", "cockpit", "titanic", "therapist", "shitake"
+  ]
+}

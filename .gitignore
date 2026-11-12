@@ -86,3 +86,6 @@ scripts/diagnostics/
 .DS_Store
 Thumbs.db
 
+
+# Built-in censor sound effects
+!assets/sfx/*.wav

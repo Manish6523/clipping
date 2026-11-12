@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { calculateLayerGeometry } from '../utils/layoutMath';
 import { renderCaptionsToCanvas } from '../utils/captionRenderer';
+import { drawSourceRegion } from '../utils/mediaDraw';
 import { getPresets } from '../api';
 
 const LAYER_COLORS = [
@@ -449,20 +450,18 @@ export default function LayoutBuilder({
           }
 
           // Draw layer based on fit mode
+          // Clip to the layer box so cover-mode overflow can't spill onto other layers (matches the render)
+          if (layer.style?.shape !== 'circle') {
+            ctx.beginPath();
+            ctx.rect(dr.x, dr.y, dr.w, dr.h);
+            ctx.clip();
+          }
           if (geo.fit === 'contain' && geo.letterbox_offset) {
-            ctx.drawImage(
-              media,
-              sc.x, sc.y, sc.w, sc.h,
-              dr.x + geo.letterbox_offset.dx, dr.y + geo.letterbox_offset.dy, sz.w, sz.h
-            );
+            drawSourceRegion(ctx, media, sc, dr.x + geo.letterbox_offset.dx, dr.y + geo.letterbox_offset.dy, sz.w, sz.h);
           } else if (geo.fit === 'cover' && geo.inner_crop) {
-            ctx.drawImage(
-              media,
-              sc.x, sc.y, sc.w, sc.h,
-              dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h
-            );
+            drawSourceRegion(ctx, media, sc, dr.x - geo.inner_crop.x, dr.y - geo.inner_crop.y, sz.w, sz.h);
           } else {
-            ctx.drawImage(media, sc.x, sc.y, sc.w, sc.h, dr.x, dr.y, dr.w, dr.h);
+            drawSourceRegion(ctx, media, sc, dr.x, dr.y, dr.w, dr.h);
           }
 
           // Render border on canvas preview if border.w > 0

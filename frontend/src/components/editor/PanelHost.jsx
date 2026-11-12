@@ -54,8 +54,11 @@ export default function PanelHost({
   const currentSnapRef = useRef(sheetSnap);
   currentSnapRef.current = sheetSnap;
 
+  // Panel explicitly opened by the user (drives whether the sheet / drawer is shown at all)
+  const activePanel = propActivePanel || storeActivePanel;
+
   // Prioritize active panel from props or store; fallback contextually based on selection
-  let resolvedPanel = propActivePanel || storeActivePanel;
+  let resolvedPanel = activePanel;
   if (!resolvedPanel) {
     if (selection?.type === 'layer') resolvedPanel = 'layout';
     else if (selection?.type === 'caption') resolvedPanel = 'captions';

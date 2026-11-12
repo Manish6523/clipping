@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Navbar from './components/Navbar';
 import ReviewStation from './components/ReviewStation';
@@ -7,6 +7,10 @@ import PinLockScreen from './components/PinLockScreen';
 import { getStatus, getPipelineStatus, getAuthConfig } from './api';
 import { eventStream } from './services/eventStream';
 import HypeMomentToasts from './components/HypeMomentToasts';
+import MobileTabBar from './components/MobileTabBar';
+import SwipeReview from './components/SwipeReview';
+import { useLayoutMode } from './hooks/useLayoutMode';
+import { notifyClipReady } from './services/pwa';
 
 // Code-split heavy routes with React.lazy
 const TemplateStudio = lazy(() => import('./components/TemplateStudio'));
@@ -18,6 +22,12 @@ const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
+
+// Old /clips/:id/edit links -> /clips/:id/editor (Navigate does not substitute params by itself)
+function LegacyEditRedirect() {
+  const { clipId } = useParams();
+  return <Navigate to={`/clips/${clipId}/editor`} replace />;
+}
 
 function AppLayout() {
   const [status, setStatus] = useState({});
@@ -32,12 +42,13 @@ function AppLayout() {
     // Subscribe to live WebSocket events to invalidate queries instead of rapid polling
     const unsubscribe = eventStream.subscribe((payload) => {
       const { event, data } = payload;
-      if (event === 'clip_created' || event === 'clip_updated' || event === 'render_complete') {
+      if (event === 'clip_created' || event === 'clip_updated' || event === 'clip_deleted' || event === 'render_complete') {
         queryClient.invalidateQueries({ queryKey: ['clips'] });
         fetchSystemStatus();
 
         // Push persistent toast notification for created clips
         if (event === 'clip_created' && data) {
+          notifyClipReady({ clipId: data.clip_id || data.id, title: data.title, score: data.virality_score });
           setToasts((prev) => {
             const toastId = `toast-${data.clip_id || data.id || Date.now()}`;
             if (prev.some((t) => t.toast_id === toastId)) return prev;
@@ -98,12 +109,11 @@ function AppLayout() {
       <Navbar 
         pendingCount={status.pending_clips_count || 0} 
         activePipelines={activePipelines} 
-        toasts={toasts} 
-        onDismissToast={handleDismissToast} 
+        status={status}
       />
 
-      {/* Nested Route Views */}
-      <main className="flex-1">
+      {/* Nested Route Views (bottom padding leaves room for the phone tab bar) */}
+      <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0">
         <Suspense fallback={
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="w-8 h-8 border-2 border-[#8FD3FF] border-t-transparent rounded-full animate-spin" />
@@ -112,12 +122,46 @@ function AppLayout() {
           <Outlet context={{ onStatusChange: fetchSystemStatus }} />
         </Suspense>
       </main>
+
+      {/* New-clip toasts (pipelines are already shown in the navbar / status pill) */}
+      <HypeMomentToasts toasts={toasts} onDismissToast={handleDismissToast} />
+
+      <MobileTabBar pendingCount={status.pending_clips_count || 0} />
     </div>
   );
 }
 
+const REVIEW_MODE_KEY = 'autoclip_review_mode';
+
 function ReviewStationWrapper() {
-  return <ReviewStation />;
+  const { isPhone } = useLayoutMode();
+  const [mode, setMode] = useState(() => {
+    try { return localStorage.getItem(REVIEW_MODE_KEY) || 'swipe'; } catch { return 'swipe'; }
+  });
+  const switchTo = (m) => {
+    setMode(m);
+    try { localStorage.setItem(REVIEW_MODE_KEY, m); } catch { /* storage unavailable */ }
+  };
+
+  if (isPhone && mode === 'swipe') {
+    return <SwipeReview onSwitchClassic={() => switchTo('classic')} />;
+  }
+  return (
+    <>
+      {isPhone && (
+        <div className="px-3 pt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => switchTo('swipe')}
+            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold"
+          >
+            Swipe mode
+          </button>
+        </div>
+      )}
+      <ReviewStation />
+    </>
+  );
 }
 
 export default function App() {
@@ -186,7 +230,7 @@ export default function App() {
           <ClipEditorPage />
         </Suspense>
       } />
-      <Route path="/clips/:clipId/edit" element={<Navigate to="/clips/:clipId/editor" replace />} />
+      <Route path="/clips/:clipId/edit" element={<LegacyEditRedirect />} />
 
       {/* Catch-all redirect to Review Station */}
       <Route path="*" element={<Navigate to="/" replace />} />

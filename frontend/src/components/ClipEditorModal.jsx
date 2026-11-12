@@ -151,7 +151,7 @@ export default function ClipEditorModal({ clip, isOpen, onClose, onSave }) {
   const currentActiveWord = words.find((w) => currentTime >= w.start && currentTime <= w.end);
 
   return (
-    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex flex-col select-none animate-in fade-in duration-200">
+    <div className="fixed inset-0 bg-black/90 backdrop-blur-md z-[80] flex flex-col select-none animate-in fade-in duration-200">
       {/* Top Header */}
       <div className="h-14 border-b border-white/10 px-6 flex items-center justify-between bg-slate-950/80">
         <div className="flex items-center gap-3">

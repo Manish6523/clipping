@@ -53,9 +53,9 @@ export default function LogStreamer() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
         <div>
           <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Terminal className="text-indigo-400" /> Real-Time Live Logs
+            <Terminal className="text-indigo-400" /> Live Logs
           </h2>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="hidden sm:block text-xs text-slate-400 mt-1">
             Real-time output from faster-whisper, Gemini AI, Streamlink, and FFmpeg render pipelines.
           </p>
         </div>

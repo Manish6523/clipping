@@ -53,6 +53,9 @@ export default function ClipEditorPage() {
   const [showSafeAreas, setShowSafeAreas] = useState(false);
   const [fullTimelineOpen, setFullTimelineOpen] = useState(false);
 
+  // Effective profanity settings: global/template config from the server + per-clip override.
+  const censorCfg = edl?._censor_cfg ? { ...edl._censor_cfg, ...(edl?.censor || {}) } : null;
+
   useEffect(() => {
     if (clipId) {
       initClip(clipId);
@@ -196,6 +199,7 @@ export default function ClipEditorPage() {
             videoRef={videoRef}
             captionsConfig={{
               ...(edl?.captions || {}),
+              censor: censorCfg,
               onChangePos: updateCaptionPos,
             }}
             words={edl?.words || []}
@@ -285,6 +289,7 @@ export default function ClipEditorPage() {
               videoRef={videoRef}
               captionsConfig={{
                 ...(edl?.captions || {}),
+                censor: censorCfg,
                 onChangePos: updateCaptionPos,
               }}
               words={edl?.words || []}

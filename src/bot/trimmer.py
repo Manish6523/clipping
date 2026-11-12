@@ -3,7 +3,7 @@
 import json
 import logging
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from config.settings import TEMPLATES_DIR, RENDER_DIR
 from src.database import (
@@ -14,6 +14,7 @@ from src.database import (
 )
 from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
+from src.compositor.profanity import prepare_censor, summarize, merge_flags
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,7 @@ class ClipTrimmer:
         delta_end: float = 0.0,
         toggle_teaser: bool = False,
         custom_template: Optional[Dict[str, Any]] = None,
+        words_override: Optional[List[Dict[str, Any]]] = None,
     ) -> Optional[Dict[str, Any]]:
         """
         Adjust boundaries or teaser status, re-render the vertical MP4, and update DB.
@@ -89,13 +91,19 @@ class ClipTrimmer:
                 except Exception:
                     pass
 
+        # Editor words (with manual strike / bleep toggles) win over the cached transcript.
+        if words_override:
+            subtitle_data = words_override
+
+        censor_words, censor_cfg = await prepare_censor(subtitle_data, template)
         if subtitle_data:
             generate_ass_subtitles(
-                word_timestamps=subtitle_data,
+                word_timestamps=censor_words,
                 output_path=out_ass_path,
                 template_config=template,
                 time_offset=start_time,
                 max_duration=duration,
+                censor_cfg=censor_cfg,
             )
         else:
             out_ass_path = None
@@ -120,7 +128,20 @@ class ClipTrimmer:
             ass_path=out_ass_path,
             teaser_timestamp=teaser_ts if has_teaser else None,
             include_teaser=has_teaser,
+            censor_words=censor_words,
+            censor_cfg=censor_cfg,
         )
+
+        # Keep the clip's profanity flags (Telegram card / review badges) in sync with this render.
+        try:
+            new_flags = merge_flags(clip.get("flags"), summarize(censor_words, start_time, duration), censor_cfg)
+            if new_flags != clip.get("flags"):
+                from src.database import get_db_connection
+                async with get_db_connection() as db:
+                    await db.execute("UPDATE clips SET flags = ? WHERE id = ?", (new_flags, clip_id))
+                    await db.commit()
+        except Exception as e:
+            logger.debug("Could not update profanity flags for clip %d: %s", clip_id, e)
 
         from src.compositor.render_swap import SafeRenderManager, compute_edl_hash
         edl_hash = compute_edl_hash(template)

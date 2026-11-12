@@ -142,70 +142,74 @@ export default function PipelineMonitor() {
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-[#3b82f6] to-[#06b6d4] flex items-center justify-center text-white shadow-lg shadow-cyan-500/10">
+            <div className="hidden sm:flex w-10 h-10 rounded-xl bg-gradient-to-tr from-[#3b82f6] to-[#06b6d4] items-center justify-center text-white shadow-lg shadow-cyan-500/10">
               <GitBranch className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-                Pipeline Studio & Step Monitor
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+                <span className="sm:hidden">Pipelines</span>
+                <span className="hidden sm:inline">Pipeline Studio & Step Monitor</span>
                 <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-cyan-950 border border-cyan-800 text-cyan-400">
                   Active
                 </span>
               </h1>
-              <p className="text-sm text-slate-400">
+              <p className="hidden sm:block text-sm text-slate-400">
                 Inspect live candidate progression, AI model prompts, inputs, outputs, and boundary decisions.
               </p>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="grid grid-cols-3 md:flex md:items-center gap-1 md:gap-2 bg-[#0E121B] md:bg-transparent p-1 md:p-0 rounded-xl border border-white/[0.08] md:border-0">
           <button
             onClick={() => setActiveTab('live_hypes')}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-2 md:px-3.5 py-2 md:py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors min-w-0 ${
               activeTab === 'live_hypes'
                 ? 'bg-slate-800 text-cyan-400 border border-slate-700 shadow-sm'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            🔥 Live Stream Hypes &amp; Rejections ({liveHypes.length})
+            <span className="md:hidden">🔥 Live ({liveHypes.length})</span>
+            <span className="hidden md:inline">🔥 Live Stream Hypes &amp; Rejections ({liveHypes.length})</span>
           </button>
           <button
             onClick={() => setActiveTab('architecture')}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-2 md:px-3.5 py-2 md:py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors min-w-0 ${
               activeTab === 'architecture'
                 ? 'bg-slate-800 text-white border border-slate-700'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            Step-by-Step Architecture
+            <span className="md:hidden">How it works</span>
+            <span className="hidden md:inline">Step-by-Step Architecture</span>
           </button>
           <button
             onClick={() => setActiveTab('overview')}
-            className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+            className={`px-2 md:px-3.5 py-2 md:py-1.5 rounded-lg text-xs md:text-sm font-medium transition-colors min-w-0 ${
               activeTab === 'overview'
                 ? 'bg-slate-800 text-white border border-slate-700'
                 : 'text-slate-400 hover:text-white'
             }`}
           >
-            VOD Execution Runs
+            <span className="md:hidden">VOD runs</span>
+            <span className="hidden md:inline">VOD Execution Runs</span>
           </button>
         </div>
       </div>
 
       {activeTab === 'live_hypes' ? (
         <div className="space-y-4">
-          <div className="bg-[#0f172a]/60 border border-slate-800 rounded-xl p-5 mb-4">
+          <div className="bg-[#0f172a]/60 border border-slate-800 rounded-xl p-4 sm:p-5 mb-4">
             <h2 className="text-lg font-semibold text-white mb-2 flex items-center gap-2">
               <Activity className="w-5 h-5 text-amber-400" />
               Live Hype Moments Filter &amp; Rejection Inspector
             </h2>
-            <p className="text-sm text-slate-300 leading-relaxed">
+            <p className="hidden sm:block text-sm text-slate-300 leading-relaxed">
               Every live audio peak and chat spike captured from your monitored streamers is listed below. Inspect which moments passed into rendering, which were filtered out by the AI Judge rubric, and hit <strong>Force Render</strong> to override any rejection.
             </p>
           </div>
