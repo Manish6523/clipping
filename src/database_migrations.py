@@ -568,6 +568,96 @@ async def migration_v15(db):
     await db.commit()
 
 
+@migration(16, "Per-channel publishing: slots, daily cap, timezone, quota tracking, per-account queue")
+async def migration_v16(db):
+    """Each queue row targets ONE YouTube account and is scheduled into that account's slots."""
+    cur = await db.execute("PRAGMA table_info(youtube_accounts)")
+    cols = {r[1] for r in await cur.fetchall()}
+    for col, ddl in (
+        ("publish_slots", "TEXT DEFAULT '[\"12:30\",\"17:30\",\"21:30\"]'"),
+        ("daily_cap", "INTEGER DEFAULT 3"),
+        ("timezone", "TEXT DEFAULT 'Asia/Kolkata'"),
+        ("quota_units_per_day", "INTEGER DEFAULT 10000"),
+    ):
+        if col not in cols:
+            await db.execute(f"ALTER TABLE youtube_accounts ADD COLUMN {col} {ddl}")
+
+    # Rebuild scheduled_queue: add account_key and allow 'skipped' (SQLite can't alter CHECKs)
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS scheduled_queue_v16 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+            account_key TEXT,
+            scheduled_for TIMESTAMP NOT NULL,
+            yt_status TEXT DEFAULT 'pending' CHECK(yt_status IN ('pending', 'uploaded', 'failed', 'skipped')),
+            ig_status TEXT DEFAULT 'pending' CHECK(ig_status IN ('pending', 'uploaded', 'failed', 'skipped')),
+            yt_video_id TEXT,
+            ig_media_id TEXT,
+            last_error TEXT,
+            attempts INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        INSERT INTO scheduled_queue_v16 (id, clip_id, scheduled_for, yt_status, ig_status, yt_video_id, ig_media_id, last_error, created_at)
+            SELECT id, clip_id, scheduled_for, yt_status, ig_status, yt_video_id, ig_media_id, last_error, created_at FROM scheduled_queue;
+        DROP TABLE scheduled_queue;
+        ALTER TABLE scheduled_queue_v16 RENAME TO scheduled_queue;
+        CREATE INDEX IF NOT EXISTS idx_queue_due ON scheduled_queue(scheduled_for);
+        CREATE INDEX IF NOT EXISTS idx_queue_account ON scheduled_queue(account_key, scheduled_for);
+
+        CREATE TABLE IF NOT EXISTS youtube_api_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_key TEXT NOT NULL,
+            project_key TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            units INTEGER NOT NULL,
+            quota_day TEXT NOT NULL,
+            success INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_api_usage_day ON youtube_api_usage(project_key, quota_day);
+    """)
+    await db.commit()
+
+
+@migration(17, "Auto-approve modes (off/trial/on) and decision log for trial agreement stats")
+async def migration_v17(db):
+    cur = await db.execute("PRAGMA table_info(youtube_accounts)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "auto_mode" not in cols:
+        await db.execute("ALTER TABLE youtube_accounts ADD COLUMN auto_mode TEXT DEFAULT 'off'")
+        # existing auto-upload accounts keep their behaviour
+        await db.execute("UPDATE youtube_accounts SET auto_mode = 'on' WHERE auto_upload = 1")
+    await db.executescript("""
+        CREATE TABLE IF NOT EXISTS auto_decisions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL,
+            account_key TEXT NOT NULL,
+            mode TEXT NOT NULL,
+            score INTEGER NOT NULL,
+            threshold INTEGER NOT NULL,
+            would_approve INTEGER NOT NULL,
+            human_decision TEXT,
+            decided_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(clip_id, account_key)
+        );
+        CREATE INDEX IF NOT EXISTS idx_auto_decisions_account ON auto_decisions(account_key, created_at DESC);
+    """)
+    await db.commit()
+
+
+@migration(18, "Per-video YouTube metrics (a clip can be posted to several channels)")
+async def migration_v18(db):
+    cur = await db.execute("PRAGMA table_info(clip_metrics)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "video_id" not in cols:
+        await db.execute("ALTER TABLE clip_metrics ADD COLUMN video_id TEXT")
+    if "account_key" not in cols:
+        await db.execute("ALTER TABLE clip_metrics ADD COLUMN account_key TEXT")
+    await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_clip_metrics_video_window ON clip_metrics(video_id, window)")
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

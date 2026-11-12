@@ -4,10 +4,14 @@ Supports native aiosqlite or standard library sqlite3 via async thread execution
 """
 
 import asyncio
+import json
+import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from config.settings import DATABASE_PATH
+
+logger = logging.getLogger(__name__)
 
 try:
     import aiosqlite
@@ -144,9 +148,10 @@ async def get_active_channels() -> List[Dict[str, Any]]:
 async def get_channel(channel_id_or_handle: str) -> Optional[Dict[str, Any]]:
     """Retrieve channel by handle or numeric ID."""
     async with get_db_connection() as db:
+        h = (channel_id_or_handle or "").strip()
         cursor = await db.execute(
-            "SELECT * FROM channels WHERE channel_id_or_handle = ? OR channel_id_or_handle = ?",
-            (channel_id_or_handle, channel_id_or_handle.lstrip("@")),
+            "SELECT * FROM channels WHERE channel_id_or_handle IN (?, ?, ?) ORDER BY id LIMIT 1",
+            (h, h.lstrip("@"), "@" + h.lstrip("@")),
         )
         row = await cursor.fetchone()
         return dict(row) if row else None
@@ -190,16 +195,6 @@ async def get_effective_min_score(channel_id: str, template: Optional[Dict[str, 
 
     return int(DEFAULT_MIN_VIRALITY_SCORE)
 
-
-async def get_channel(channel_id_or_handle: str) -> Optional[Dict[str, Any]]:
-    """Get channel record by id or handle."""
-    async with get_db_connection() as db:
-        cursor = await db.execute(
-            "SELECT * FROM channels WHERE channel_id_or_handle = ?",
-            (channel_id_or_handle.strip(),),
-        )
-        row = await cursor.fetchone()
-        return dict(row) if row else None
 
 
 async def update_channel_last_checked(channel_id: str, last_stream_id: Optional[str] = None) -> None:
@@ -351,30 +346,13 @@ async def create_clip(
         await db.commit()
         new_clip_id = cursor.lastrowid or 0
 
-        # Auto-upload evaluation for accounts with auto_upload enabled
+        # Per-channel auto-approve (off / trial / on). One queue row per approving channel,
+        # placed in that channel's own posting slots. Never let bookkeeping break clip creation.
         try:
-            from src.publisher.scheduler import DripScheduler
-            from config.settings import DRIP_INTERVAL_HOURS
-            async with get_db_connection() as eval_db:
-                m_cur = await eval_db.execute(
-                    """
-                    SELECT a.* FROM youtube_accounts a
-                    JOIN streamer_yt_mappings m ON a.account_key = m.account_key
-                    WHERE (m.streamer_handle = ? OR m.streamer_handle = ?)
-                      AND a.is_active = 1
-                      AND a.auto_upload = 1
-                    """,
-                    (channel_id, channel_id.lstrip("@")),
-                )
-                auto_accounts = await m_cur.fetchall()
-                for acc in auto_accounts:
-                    min_score = acc["min_score_threshold"] or 75
-                    if virality_score >= min_score:
-                        drip_hrs = acc["drip_delay_hours"] or DRIP_INTERVAL_HOURS
-                        next_slot = DripScheduler.calculate_next_slot(drip_hrs)
-                        await enqueue_clip(new_clip_id, next_slot)
+            from src.publisher.auto_approve import evaluate_new_clip
+            await evaluate_new_clip(new_clip_id, channel_id, virality_score)
         except Exception as auto_err:
-            pass
+            logger.warning("Auto-approve evaluation failed for clip %s: %s", new_clip_id, auto_err)
 
         return new_clip_id
 
@@ -530,9 +508,10 @@ async def get_upcoming_queue(limit: int = 10) -> List[Dict[str, Any]]:
     async with get_db_connection() as db:
         cursor = await db.execute(
             """
-            SELECT q.*, c.title, c.template_name, c.channel_id
+            SELECT q.*, c.title, c.template_name, c.channel_id, a.channel_title AS account_title
             FROM scheduled_queue q
             JOIN clips c ON q.clip_id = c.id
+            LEFT JOIN youtube_accounts a ON a.account_key = q.account_key
             WHERE q.yt_status = 'pending' OR q.ig_status = 'pending'
             ORDER BY q.scheduled_for ASC
             LIMIT ?
@@ -729,35 +708,22 @@ async def delete_youtube_account(account_key: str) -> bool:
         return True
 
 
-async def update_youtube_account_config(
-    account_key: str,
-    auto_upload: bool,
-    min_score_threshold: int,
-    drip_delay_hours: int,
-    privacy_status: str,
-    tag_override: str,
-) -> None:
-    """Update automation rules and score thresholds for an account."""
+ACCOUNT_EDITABLE_COLUMNS = (
+    "auto_upload", "auto_mode", "min_score_threshold", "drip_delay_hours", "privacy_status", "tag_override",
+    "publish_slots", "daily_cap", "timezone", "quota_units_per_day", "is_active",
+)
+
+
+async def update_youtube_account_config(account_key: str, **changes: Any) -> None:
+    """Partial update: only the given (already validated) columns change."""
+    cols = [k for k in changes if k in ACCOUNT_EDITABLE_COLUMNS]
+    if not cols:
+        return
+    sets = ", ".join(f"{c} = ?" for c in cols)
     async with get_db_connection() as db:
         await db.execute(
-            """
-            UPDATE youtube_accounts
-            SET auto_upload = ?,
-                min_score_threshold = ?,
-                drip_delay_hours = ?,
-                privacy_status = ?,
-                tag_override = ?,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE account_key = ?
-            """,
-            (
-                1 if auto_upload else 0,
-                int(min_score_threshold),
-                int(drip_delay_hours),
-                str(privacy_status),
-                str(tag_override),
-                str(account_key),
-            ),
+            f"UPDATE youtube_accounts SET {sets}, updated_at = CURRENT_TIMESTAMP WHERE account_key = ?",
+            (*[changes[c] for c in cols], str(account_key)),
         )
         await db.commit()
 

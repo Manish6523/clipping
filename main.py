@@ -722,6 +722,31 @@ class AutoClipEngine:
             "focus": (metadata.get("focus") or rules.get("focus") or "").strip() or None,
         }
 
+    async def _scoring_context(self, channel_id: str, channel_record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Streamer persona + how their past Shorts actually performed."""
+        ctx = dict(self._creator_context(channel_record) or {})
+        try:
+            from src.publisher.analytics import performance_examples
+            perf = await performance_examples(channel_id)
+            if perf:
+                ctx["performance"] = perf
+        except Exception as e:
+            logger.debug("No performance examples for %s: %s", channel_id, e)
+        return ctx or None
+
+    @staticmethod
+    def _creator_context(channel_record: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """Persona / good / avoid / inside-jokes from the streamer's settings drawer."""
+        if not channel_record or not channel_record.get("settings_json"):
+            return None
+        try:
+            cfg = channel_record["settings_json"]
+            cfg = json.loads(cfg) if isinstance(cfg, str) else cfg
+            ai = (cfg or {}).get("ai") or {}
+            return ai if any(str(v or "").strip() for v in ai.values()) else None
+        except Exception:
+            return None
+
     def _normalise_candidate(self, c: Any, from_new: bool) -> Dict[str, Any]:
         """One shape for both judges (legacy returns Pydantic objects, calibrated returns dicts)."""
         if from_new:
@@ -736,11 +761,17 @@ class AutoClipEngine:
                 "model": c.get("model", "gemini-flash-lite-latest"),
             }
         score = int(getattr(c, "virality_score", 0) or 0)
+        parts = {k: getattr(c, f"{k}_score", None) for k in ("hook", "flow", "value", "trend")}
+        breakdown = (
+            json.dumps({**parts, "weights": {"hook": 0.35, "flow": 0.25, "value": 0.25, "trend": 0.15},
+                        "hook_summary": c.hook_summary, "punchline_summary": c.punchline_summary})
+            if all(isinstance(v, int) for v in parts.values()) else None
+        )
         return {
             "start": float(c.start_time), "end": float(c.end_time), "score": score,
             "final_score": float(score) if score > 0 else None,
             "title": c.suggested_title, "description": c.hook_summary, "hashtags": " ".join(c.hashtags),
-            "score_breakdown": None, "flags": None, "formula": "legacy_windowed",
+            "score_breakdown": breakdown, "flags": None, "formula": "legacy_windowed_hfvt" if breakdown else "legacy_windowed",
             "prompt": "legacy_v2_windowed", "model": getattr(self.scorer, "model_name", "gemini-flash-lite-latest"),
         }
 
@@ -879,6 +910,7 @@ class AutoClipEngine:
                     min_len=opts["min_len"],
                     max_len=opts["max_len"],
                     focus=opts["focus"],
+                    creator_context=await self._scoring_context(channel_id, channel_record),
                 )
 
             # Normalise both judge outputs into one shape (the calibrated judge returns dicts)
@@ -1038,6 +1070,10 @@ class AutoClipEngine:
                 await asyncio.sleep(300)
 
         vod_task = asyncio.create_task(_vod_poll_loop())
+
+        # Real YouTube performance (24h / 72h / 7d) for the learning loop
+        from src.publisher.analytics import run_metrics_loop
+        self._metrics_task = asyncio.create_task(run_metrics_loop())
 
         logger.info("AutoClipDaemon running. Web UI at http://localhost:%d | Telegram active.", WEB_PORT)
 

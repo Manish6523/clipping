@@ -40,6 +40,44 @@ class ClipTrimmer:
     def __init__(self):
         self.renderer = FFmpegRenderer()
 
+    @staticmethod
+    def _auto_edit_config(clip: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Style an auto-edited clip was made with (from its flags), minus the cutting steps."""
+        from src.compositor.auto_edit import resolve_config
+        try:
+            flags = json.loads(clip.get("flags") or "[]")
+        except (TypeError, ValueError):
+            return None
+        for f in flags if isinstance(flags, list) else []:
+            if isinstance(f, dict) and f.get("type") == "auto_edited":
+                return resolve_config({"style": f.get("style") or "punchy",
+                                       "tighten": False, "jump_cuts": False, "remove_fillers": False})
+        return None
+
+    async def _auto_rerender(
+        self, clip: Dict[str, Any], source_video: str, start_time: float, end_time: float,
+        template: Dict[str, Any], words: List[Dict[str, Any]], censor_cfg: Dict[str, Any],
+        auto_cfg: Dict[str, Any], out_path: Path, tmp_id: str,
+    ) -> str:
+        from src.compositor.auto_edit import auto_edit_clip, cut_segments
+        window = Path(RENDER_DIR) / f"ae_window_{clip['id']}_{tmp_id}.mp4"
+        dur = max(0.5, end_time - start_time)
+        try:
+            await cut_segments(source_video, [(start_time, end_time)], window)
+            window_words = [
+                {**w, "start": round(float(w["start"]) - start_time, 3), "end": round(float(w["end"]) - start_time, 3)}
+                for w in words
+                if float(w.get("end", 0)) > start_time and float(w.get("start", 0)) < end_time
+            ]
+            await auto_edit_clip(
+                self.renderer, window, window_words, dur, template, auto_cfg, censor_cfg,
+                out_path, RENDER_DIR, f"ae_{clip['id']}_{tmp_id}",
+                hook_text=None if str(clip.get("title") or "").startswith("Manual Highlight") else clip.get("title"),
+            )
+        finally:
+            window.unlink(missing_ok=True)
+        return str(out_path)
+
     async def trim_and_rerender(
         self,
         clip_id: int,
@@ -52,18 +90,22 @@ class ClipTrimmer:
         """
         Adjust boundaries or teaser status, re-render the vertical MP4, and update DB.
         """
+        # Check the source BEFORE changing anything, so a failed re-render never leaves the
+        # stored trim/teaser out of step with the actual video.
+        current = await get_clip(clip_id)
+        if not current:
+            logger.error("Clip ID %d not found for trimming.", clip_id)
+            return None
+        source_video = current.get("source_video_path")
+        if not source_video or not Path(source_video).exists():
+            logger.error("Source video missing for clip %d: %s", clip_id, source_video)
+            return None
+
         if toggle_teaser:
             clip = await toggle_clip_teaser(clip_id)
         else:
             clip = await update_clip_trim(clip_id, delta_start, delta_end)
-
         if not clip:
-            logger.error("Clip ID %d not found for trimming.", clip_id)
-            return None
-
-        source_video = clip.get("source_video_path")
-        if not source_video or not Path(source_video).exists():
-            logger.error("Source video missing for clip %d: %s", clip_id, source_video)
             return None
 
         template_name = clip.get("template_name", "ishowspeed_gaming")
@@ -119,18 +161,27 @@ class ClipTrimmer:
         temp_video_path = Path(RENDER_DIR) / f"render_tmp_{clip_id}_{tmp_id}.mp4"
         temp_thumb_path = Path(RENDER_DIR) / f"render_tmp_{clip_id}_{tmp_id}_thumb.jpg"
 
-        rendered_mp4 = await self.renderer.render_clip(
-            source_path=source_video,
-            start_time=start_time,
-            end_time=end_time,
-            output_path=str(temp_video_path),
-            template=template,
-            ass_path=out_ass_path,
-            teaser_timestamp=teaser_ts if has_teaser else None,
-            include_teaser=has_teaser,
-            censor_words=censor_words,
-            censor_cfg=censor_cfg,
-        )
+        auto_cfg = self._auto_edit_config(clip)
+        if auto_cfg:
+            # Auto-edited clip: re-apply its style (zooms, hook card, SFX, loudness) to the new range.
+            # The source is already tightened, so no further cutting.
+            rendered_mp4 = await self._auto_rerender(
+                clip, source_video, start_time, end_time, template, censor_words, censor_cfg,
+                auto_cfg, temp_video_path, tmp_id,
+            )
+        else:
+            rendered_mp4 = await self.renderer.render_clip(
+                source_path=source_video,
+                start_time=start_time,
+                end_time=end_time,
+                output_path=str(temp_video_path),
+                template=template,
+                ass_path=out_ass_path,
+                teaser_timestamp=teaser_ts if has_teaser else None,
+                include_teaser=has_teaser,
+                censor_words=censor_words,
+                censor_cfg=censor_cfg,
+            )
 
         # Keep the clip's profanity flags (Telegram card / review badges) in sync with this render.
         try:

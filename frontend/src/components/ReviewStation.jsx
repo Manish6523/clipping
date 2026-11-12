@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { censorFlagInfo } from '../utils/profanity';
+import ScoreBreakdown from './ScoreBreakdown';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -618,6 +619,11 @@ export default function ReviewStation({ onStatusChange }) {
                                 </span>
                               );
                             })()}
+                            {clip.latest_views != null && (
+                              <span className="text-emerald-300" title={clip.retention_pct ? `${Math.round(clip.retention_pct)}% viewed` : 'views'}>
+                                👁 {Number(clip.latest_views).toLocaleString()}
+                              </span>
+                            )}
                             <span>⏱️ {dur}s</span>
                           </span>
                         </div>
@@ -1023,23 +1029,7 @@ export default function ReviewStation({ onStatusChange }) {
                         </div>
 
                         {/* 1-5 Rubric Subscores */}
-                        {explainData.score_breakdown && Object.keys(explainData.score_breakdown).length > 0 && (
-                          <div className="space-y-2">
-                            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                              1-5 Calibrated Rubric Sub-Scores
-                            </span>
-                            <div className="grid grid-cols-2 gap-2">
-                              {Object.entries(explainData.score_breakdown).map(([dim, val]) => (
-                                <div key={dim} className="bg-white/[0.03] p-2 rounded-lg border border-white/[0.04] flex items-center justify-between">
-                                  <span className="text-slate-300 font-mono capitalize">{dim.replace('_', ' ')}</span>
-                                  <span className="font-extrabold text-white font-mono bg-indigo-500/20 px-2 py-0.5 rounded border border-indigo-500/30">
-                                    {val}/5
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                        <ScoreBreakdown raw={explainData.score_breakdown} />
 
                         {/* Trigger Signal Telemetry */}
                         {explainData.trigger && Object.keys(explainData.trigger).length > 0 && (

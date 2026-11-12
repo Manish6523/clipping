@@ -1,0 +1,15 @@
+# Keep the image small and never bake secrets/user data into it
+venv/
+.venv/
+**/__pycache__/
+**/*.pyc
+.git/
+frontend/node_modules/
+frontend/dist/
+data/
+output/
+tmp/
+config/.env
+config/tokens/
+*.db
+*.log

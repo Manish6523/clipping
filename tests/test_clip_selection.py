@@ -65,3 +65,20 @@ def test_select_respects_max_clips():
     cands = [cand(i * 100, i * 100 + 40, 90 - i) for i in range(10)]
     out = select_clips(cands, min_score=0, min_len=25, max_len=60, max_clips=4)
     assert len(out) == 4 and out[0].virality_score == 90
+
+
+def test_subscores_override_model_headline_score():
+    from src.intelligence.viral_scorer import combine_subscores
+    c = ViralHookCandidate(start_time=0, end_time=30, virality_score=99, suggested_title="t", hook_summary="h",
+                           punchline_summary="p", hook_score=90, flow_score=70, value_score=80, trend_score=60)
+    assert combine_subscores(c).virality_score == round(90 * .35 + 70 * .25 + 80 * .25 + 60 * .15)   # 78, not the model's 99
+    partial = ViralHookCandidate(start_time=0, end_time=30, virality_score=77, suggested_title="t", hook_summary="h",
+                                 punchline_summary="p", hook_score=90)
+    assert combine_subscores(partial).virality_score == 77                                         # incomplete -> keep
+
+
+def test_creator_context_text():
+    from src.intelligence.viral_scorer import creator_context_text
+    assert creator_context_text(None) == "" and creator_context_text({"persona": "  "}) == ""
+    txt = creator_context_text({"persona": "Fortnite pro", "inside_jokes": "the peanut", "avoid_notes": "lobby waiting"})
+    assert "Creator & niche: Fortnite pro" in txt and "AVOID" in txt and "the peanut" in txt

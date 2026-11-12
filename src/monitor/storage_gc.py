@@ -25,36 +25,51 @@ MAX_BUFFER_BYTES = 1500 * 1024 * 1024
 MAX_TEMP_FILE_AGE_SECONDS = 900
 
 
+def _with_siblings(path_str: str) -> List[str]:
+    """A clip file plus the side files the editor/renderer derive from it."""
+    p = Path(path_str)
+    return [
+        str(p),
+        str(p.with_suffix(".json")),                         # word-timing cache next to .ass
+        str(p.with_name(f"{p.stem}_thumb.jpg")),             # poster frame
+        str(p.with_name(f"{p.stem}.h264preview.mp4")),       # phone-playable source preview
+    ]
+
+
 async def get_protected_file_paths() -> Set[str]:
-    """Return normalized paths of clips that must NEVER be deleted.
-    
-    Protects:
-    - Clips in pending scheduled queue (awaiting YouTube/Instagram publish)
-    - Clips in 'ready', 'queued', or 'publishing' state
+    """Normalized paths that must NEVER be deleted.
+
+    Every file a live clip depends on: source footage (editor, trims, re-templates), render,
+    captions + word cache, thumbnail and H.264 preview - for every clip that isn't rejected.
+    Previously only queued renders were protected, so the source and word cache of every clip
+    awaiting review were deleted after 15 minutes and the editor broke for them.
     """
-    protected = set()
+    protected: Set[str] = set()
     try:
         async with get_db_connection() as db:
             cursor = await db.execute(
                 """
-                SELECT c.rendered_video_path 
+                SELECT c.source_video_path, c.rendered_video_path, c.subtitle_path, c.thumbnail_path
                 FROM clips c
                 LEFT JOIN scheduled_queue q ON q.clip_id = c.id
-                WHERE (c.status IN ('ready', 'queued', 'publishing'))
-                   OR (q.yt_status = 'pending' OR q.ig_status = 'pending')
+                WHERE c.status != 'rejected'
+                   OR q.yt_status = 'pending' OR q.ig_status = 'pending'
                 """
             )
             rows = await cursor.fetchall()
             for r in rows:
-                p = r[0] if isinstance(r, (list, tuple)) else r["rendered_video_path"]
-                if p:
-                    try:
-                        resolved = str(Path(p).resolve()).lower()
-                        protected.add(resolved)
-                    except Exception:
-                        protected.add(str(p).lower())
+                for value in tuple(r):
+                    if not value:
+                        continue
+                    for path_str in _with_siblings(value):
+                        try:
+                            protected.add(str(Path(path_str).resolve()).lower())
+                        except Exception:
+                            protected.add(path_str.lower())
     except Exception as e:
-        logger.debug("Failed to query protected clip paths: %s", e)
+        # If we can't tell what's in use, protect everything this round rather than guess.
+        logger.warning("Failed to query protected clip paths (%s); skipping cleanup this round.", e)
+        raise
     return protected
 
 

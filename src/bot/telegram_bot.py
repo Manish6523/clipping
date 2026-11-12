@@ -487,8 +487,13 @@ class AutoClipBot:
                     logger.warning("Feedback logging failed for clip #%d: %s", clip_id, log_err)
 
             if action == "great":
-                next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-                await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
+                from src.publisher.slots import schedule_clip
+                created = await schedule_clip(clip_id)  # one row per mapped channel, in its own slots
+                from src.publisher.auto_approve import record_human_decision
+                await record_human_decision(clip_id, "approve")
+                next_slot = ", ".join(
+                    f"{c['account_key'] or 'drip'} @ {c['scheduled_for'][:16].replace('T', ' ')} UTC" for c in created
+                ) or "already queued"
                 await _safe_log_feedback("marked_great", {"source": "telegram_button"})
                 await callback.message.edit_caption(
                     caption=f"⭐ <b>Clip #{clip_id} Marked GREAT &amp; Queued!</b>\nScheduled for: <code>{next_slot}</code>",
@@ -512,6 +517,8 @@ class AutoClipBot:
                 reason_code = parts[2] if len(parts) > 2 else "none"
                 reason_val = None if reason_code == "none" else reason_code
                 await update_clip_status(clip_id, "rejected")
+                from src.publisher.auto_approve import record_human_decision
+                await record_human_decision(clip_id, "reject")
                 await _safe_log_feedback("rejected", {"reason": reason_val, "source": "telegram_chip"})
                 if reason_val:
                     await _safe_log_feedback("reason_tagged", {"reason": reason_val, "source": "telegram_chip"})
@@ -536,6 +543,8 @@ class AutoClipBot:
 
             if action == "discard":
                 await update_clip_status(clip_id, "rejected")
+                from src.publisher.auto_approve import record_human_decision
+                await record_human_decision(clip_id, "reject")
                 await _safe_log_feedback("rejected", {"source": "telegram_discard"})
                 await delete_clip_completely(clip_id)
                 await callback.message.edit_caption(
@@ -554,12 +563,19 @@ class AutoClipBot:
                     reply_markup=None,
                     parse_mode="HTML",
                 )
+                from src.publisher.auto_approve import record_human_decision
+                await record_human_decision(clip_id, "approve")
                 asyncio.create_task(self._execute_post_now(callback.message, clip_id))
                 return
 
             if action == "queue":
-                next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-                await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
+                from src.publisher.slots import schedule_clip
+                created = await schedule_clip(clip_id)  # one row per mapped channel, in its own slots
+                from src.publisher.auto_approve import record_human_decision
+                await record_human_decision(clip_id, "approve")
+                next_slot = ", ".join(
+                    f"{c['account_key'] or 'drip'} @ {c['scheduled_for'][:16].replace('T', ' ')} UTC" for c in created
+                ) or "already queued"
                 await _safe_log_feedback("approved", {"source": "telegram_queue"})
                 await callback.message.edit_caption(
                     caption=f"🗓️ <b>Clip #{clip_id} Added to Drip Queue!</b>\nScheduled for: <code>{next_slot}</code>",
@@ -638,87 +654,42 @@ class AutoClipBot:
         if not clip:
             return
 
-        template_name = clip.get("template_name", "ishowspeed_gaming")
-        video_path = clip.get("rendered_video_path")
-        title = clip.get("title", "Stream Highlight")
-        description = clip.get("description", "")
-        hashtags = [h.strip() for h in (clip.get("hashtags") or "").split() if h.strip()]
+        # Same path as scheduled uploads: per-channel privacy, quota guard, retries, IG once per clip
+        from src.publisher.scheduler import publish_clip_now
+        result = await publish_clip_now(clip_id)
 
-        dests = load_template_destinations(template_name)
-        channel_id = clip.get("channel_id") or ""
+        if result["success"]:
+            lines = [f"🚀 <b>Clip #{clip_id} Published!</b>"]
+        else:
+            lines = [f"⚠️ <b>Clip #{clip_id} was not uploaded</b>"]
+        for url in result["videos"]:
+            lines.append(f"• 🔴 <b>YouTube Shorts:</b> <a href=\"{html.escape(url)}\">Watch here</a>")
+        for err in result["errors"]:
+            lines.append(f"• <code>{html.escape(err[:300])}</code>")
+        if not result["results"]:
+            lines.append("• No YouTube channel is mapped to this streamer (Distribution → Mappings).")
 
-        # Check mapped YouTube accounts for streamer
-        from src.database import get_accounts_for_streamer
-        mapped_yt_keys = await get_accounts_for_streamer(channel_id)
-        if not mapped_yt_keys and channel_id.startswith("@"):
-            mapped_yt_keys = await get_accounts_for_streamer(channel_id[1:])
-        elif not mapped_yt_keys:
-            mapped_yt_keys = await get_accounts_for_streamer(f"@{channel_id}")
+        if result["success"]:
+            try:
+                from src.intelligence.learning.feedback import FeedbackLearner
+                await FeedbackLearner.log_feedback(
+                    clip_id=clip_id,
+                    channel_id=clip.get("channel_id", "default"),
+                    event="published",
+                    payload={"source": "telegram_post_now"},
+                    candidate_id=clip.get("candidate_id"),
+                )
+            except Exception as fb_err:
+                logger.warning("Feedback logging failed on publish: %s", fb_err)
 
-        if not mapped_yt_keys and dests.get("youtube_account_key"):
-            mapped_yt_keys = [dests.get("youtube_account_key")]
-
-        ig_key = dests.get("instagram_account_key")
-
-        yt_res = {"success": False, "error": "Not configured"}
-        ig_res = {"success": False, "error": "Not configured"}
-
-        tasks = []
-        if mapped_yt_keys:
-            for yk in mapped_yt_keys:
-                pub = YouTubeShortsPublisher(yk)
-                tasks.append(pub.upload_short(video_path, title, description, hashtags))
-        if ig_key:
-            ig_pub = InstagramReelsPublisher(ig_key)
-            tasks.append(ig_pub.upload_reel(video_path, title, hashtags))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        idx = 0
-        if mapped_yt_keys:
-            for _ in mapped_yt_keys:
-                res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
-                if res.get("success"):
-                    yt_res = res
-                    break
-                yt_res = res
-                idx += 1
-        if ig_key:
-            ig_res = results[idx] if not isinstance(results[idx], Exception) else {"success": False, "error": str(results[idx])}
-
-        yt_url = yt_res.get("url") if yt_res.get("success") else None
-        ig_url = ig_res.get("url") if ig_res.get("success") else None
-
-        status_lines = [f"🚀 <b>Clip #{clip_id} Published!</b>"]
-        if yt_url:
-            status_lines.append(f"• 🔴 <b>YouTube Shorts:</b> <a href=\"{yt_url}\">Watch Here</a>")
-        elif mapped_yt_keys:
-            status_lines.append(f"• 🔴 YouTube Failed: <code>{html.escape(str(yt_res.get('error')))}</code>")
-
-        if ig_url:
-            status_lines.append(f"• 📸 <b>Instagram Reels:</b> <a href=\"{ig_url}\">Watch Here</a>")
-        elif ig_key:
-            status_lines.append(f"• 📸 Instagram Failed: <code>{html.escape(str(ig_res.get('error')))}</code>")
-
-        await update_clip_status(clip_id, "published")
         try:
-            from src.intelligence.learning.feedback import FeedbackLearner
-            await FeedbackLearner.log_feedback(
-                clip_id=clip_id,
-                channel_id=clip.get("channel_id", "default"),
-                event="published",
-                payload={"source": "telegram_post_now"},
-                candidate_id=clip.get("candidate_id"),
+            await message.edit_caption(
+                caption="\n\n".join(lines)[:1024],  # Telegram caption limit
+                reply_markup=None,
+                parse_mode="HTML",
             )
-        except Exception:
-            pass
-
-        await message.edit_caption(
-            caption="\n\n".join(status_lines),
-            reply_markup=None,
-            parse_mode="HTML",
-            disable_web_page_preview=False,
-        )
+        except Exception as tg_err:
+            logger.warning("Could not update Telegram card for clip %d: %s", clip_id, tg_err)
 
     async def send_clip_card(self, clip: Dict[str, Any]) -> None:
         """Send freshly rendered clip with 1-tap approval card to admin Telegram chat."""

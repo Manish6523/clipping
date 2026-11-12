@@ -7,6 +7,7 @@ const STATUS_STYLE = {
   uploaded: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
   failed: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
   pending: 'bg-white/[0.05] text-slate-300 border-white/10',
+  skipped: 'bg-transparent text-slate-500 border-white/[0.06]',
 };
 
 function relTime(date, now) {
@@ -140,6 +141,10 @@ export default function QueueCalendar() {
                         <p className="text-sm font-semibold text-white line-clamp-2">{item.title || 'Untitled clip'}</p>
                         <p className="text-[11px] text-slate-400 mt-0.5 truncate">
                           #{item.clip_id} · @{item.channel_id || 'unknown'} · {item.template_name}
+                        </p>
+                        <p className="text-[11px] mt-0.5 font-semibold text-sky-300 truncate">
+                          → {item.account_title || item.account_key || 'Mapped channels'}
+                          {item.attempts > 0 && item.yt_status === 'pending' ? <span className="text-amber-300"> · retry {item.attempts}</span> : null}
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
                           <StatusChip icon={MonitorPlay} label="YT" status={item.yt_status} />

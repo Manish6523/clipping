@@ -21,6 +21,10 @@ from src.web.logger_stream import update_streamer_status, update_pipeline_progre
 
 logger = logging.getLogger(__name__)
 
+BASELINE_WINDOW_S = 600.0   # chat-rate baseline lookback
+BASELINE_EXCLUDE_S = 10.0   # recent seconds excluded from the baseline (that's where spikes are)
+BASELINE_WARMUP_S = 30.0    # need this much history before velocity triggers fire
+
 
 class LiveStreamWatcher:
     """Manages live stream ingestion, 4-minute ring buffer, and multi-modal hype detection."""
@@ -295,13 +299,28 @@ class LiveStreamWatcher:
         self.chat_messages_timestamps.append(now)
         self.chat_history_buffer.append((now, message))
 
-        while self.chat_messages_timestamps and self.chat_messages_timestamps[0] < now - 60.0:
+        # Baseline = chat rate over the previous 10 minutes, EXCLUDING the last 10s. The old 60s
+        # window included the spike itself, so a burst raised its own baseline and hid itself.
+        # Per-second buckets keep this O(600) per message even for 100+ msg/s chats.
+        if not getattr(self, "_chat_first_seen", None):
+            self._chat_first_seen = now
+            self._chat_buckets = deque()  # [second, count]
+        sec = int(now)
+        if self._chat_buckets and self._chat_buckets[-1][0] == sec:
+            self._chat_buckets[-1][1] += 1
+        else:
+            self._chat_buckets.append([sec, 1])
+        while self._chat_buckets and self._chat_buckets[0][0] < now - BASELINE_WINDOW_S:
+            self._chat_buckets.popleft()
+        while self.chat_messages_timestamps and self.chat_messages_timestamps[0] < now - 10.0:
             self.chat_messages_timestamps.popleft()
 
-        total_60s = len(self.chat_messages_timestamps)
-        self.chat_baseline_mps = max(0.5, total_60s / 60.0)
-
         recent_5s = sum(1 for t in self.chat_messages_timestamps if t >= now - 5.0)
+        baseline_count = sum(c for s_, c in self._chat_buckets if s_ < now - BASELINE_EXCLUDE_S)
+        span = min(BASELINE_WINDOW_S, now - self._chat_first_seen) - BASELINE_EXCLUDE_S
+        warmed_up = span >= BASELINE_WARMUP_S
+        if warmed_up:
+            self.chat_baseline_mps = max(0.5, baseline_count / span)
         current_5s_mps = recent_5s / 5.0
 
         msg_upper = message.upper()
@@ -318,7 +337,7 @@ class LiveStreamWatcher:
                     keyword_hit = True
                     break
 
-        velocity_spike = current_5s_mps >= (self.chat_baseline_mps * self.spike_multiplier) and recent_5s >= 10
+        velocity_spike = warmed_up and current_5s_mps >= (self.chat_baseline_mps * self.spike_multiplier) and recent_5s >= 10
 
         # Require meaningful chat velocity for keyword triggers to avoid low-activity false triggers
         should_trigger = velocity_spike or (keyword_hit and recent_5s >= 6)

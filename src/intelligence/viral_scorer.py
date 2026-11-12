@@ -38,11 +38,43 @@ class ViralHookCandidate(BaseModel):
     hashtags: List[str] = Field(default_factory=list, description="Relevant hashtags including #Shorts, #Reels")
     hook_summary: str = Field(..., description="Why the first 3 seconds grab immediate attention")
     punchline_summary: str = Field(..., description="The payoff or resolution of the clip")
+    hook_score: Optional[int] = Field(None, ge=0, le=100, description="How hard the first 3 seconds stop the scroll")
+    flow_score: Optional[int] = Field(None, ge=0, le=100, description="Does it build and pay off without dead spots")
+    value_score: Optional[int] = Field(None, ge=0, le=100, description="Entertainment/skill/emotion payoff for a stranger")
+    trend_score: Optional[int] = Field(None, ge=0, le=100, description="Fit with what performs on Shorts right now")
 
 
 class ViralAnalysisResponse(BaseModel):
     """Container for multiple detected hooks."""
     candidates: List[ViralHookCandidate] = Field(default_factory=list)
+
+
+SUBSCORE_WEIGHTS = {"hook": 0.35, "flow": 0.25, "value": 0.25, "trend": 0.15}
+
+
+def combine_subscores(c: "ViralHookCandidate") -> "ViralHookCandidate":
+    """When the model returns all four sub-scores, the overall score is computed here
+    (consistent weighting) instead of trusting the model's own headline number."""
+    parts = {"hook": c.hook_score, "flow": c.flow_score, "value": c.value_score, "trend": c.trend_score}
+    if all(isinstance(v, int) for v in parts.values()):
+        c.virality_score = int(round(sum(parts[k] * w for k, w in SUBSCORE_WEIGHTS.items())))
+    return c
+
+
+def creator_context_text(ctx: Optional[Dict[str, Any]]) -> str:
+    """Streamer persona/notes from the Channels settings drawer, as prompt lines."""
+    if not ctx:
+        return ""
+    lines = []
+    for key, label in (("persona", "Creator & niche"), ("good_clip_notes", "What makes a GOOD clip for them"),
+                       ("avoid_notes", "AVOID / reject"), ("inside_jokes", "Inside jokes & catchphrases (these are hype)")):
+        val = str(ctx.get(key) or "").strip()
+        if val:
+            lines.append(f"- {label}: {val[:400]}")
+    perf = str(ctx.get("performance") or "").strip()
+    if perf:
+        lines.append(f"- Real results: {perf[:900]}")
+    return ("Creator context:\n" + "\n".join(lines) + "\n") if lines else ""
 
 
 WINDOW_SECONDS = 600.0      # transcript chunk sent per AI call
@@ -209,6 +241,7 @@ class ViralScorer:
         min_len: float = 25.0,
         max_len: float = 60.0,
         focus: Optional[str] = None,
+        creator_context: Optional[Dict[str, Any]] = None,
     ) -> List[ViralHookCandidate]:
         """Find up to ``max_clips`` viral moments across the WHOLE transcript.
 
@@ -238,6 +271,7 @@ class ViralScorer:
             async with sem:
                 return await self._score_window(
                     win, per_window, min_len, max_len, focus, chat_spikes, audio_peaks, heatmap_peaks,
+                    creator_context=creator_context,
                 )
 
         results = await asyncio.gather(*(run(w) for w in windows), return_exceptions=True)
@@ -262,6 +296,7 @@ class ViralScorer:
         focus: Optional[str],
         chat_spikes, audio_peaks, heatmap_peaks,
         _retried: bool = False,
+        creator_context: Optional[Dict[str, Any]] = None,
     ) -> List[ViralHookCandidate]:
         w_start, w_end = window["start"], window["end"]
 
@@ -287,8 +322,12 @@ class ViralScorer:
             "5. Clips must not overlap each other.\n"
             "6. If a huge climax occurs, put its exact timestamp in 'teaser_hook_timestamp'.\n"
             "7. Score honestly (0-100): most moments are NOT viral; reserve 85+ for exceptional ones.\n"
+            "   Also give hook_score (first 3s stop the scroll), flow_score (builds and pays off, no dead spots),\n"
+            "   value_score (payoff for a stranger who never watched this streamer) and trend_score (fits what\n"
+            "   performs on Shorts now). Be strict and use the full 0-100 range.\n"
             + (f"8. Prioritise moments about: {focus}\n" if focus else "")
-            + "Use the absolute timestamps shown. Return ONLY JSON matching the schema."
+            + "Use the absolute timestamps shown. Return ONLY JSON matching the schema.\n"
+            + creator_context_text(creator_context)
         )
         prompt = f"""Window {w_start:.0f}s - {w_end:.0f}s of the stream.
 
@@ -325,7 +364,7 @@ Return JSON with up to {n_clips} candidate clips meeting all criteria.
             out = []
             for item in raw or []:
                 try:
-                    out.append(ViralHookCandidate(**item))
+                    out.append(combine_subscores(ViralHookCandidate(**item)))
                 except Exception as e:
                     logger.debug("Skipping malformed candidate %s: %s", item, e)
             return out
@@ -339,7 +378,8 @@ Return JSON with up to {n_clips} candidate clips meeting all criteria.
                 if len(self.api_keys) > 1 and not _retried:
                     self._rotate_key()
                     return await self._score_window(window, n_clips, min_len, max_len, focus,
-                                                    chat_spikes, audio_peaks, heatmap_peaks, _retried=True)
+                                                    chat_spikes, audio_peaks, heatmap_peaks, _retried=True,
+                                                    creator_context=creator_context)
             else:
                 logger.error("Gemini API call failed for window %.0f-%.0fs: %s", w_start, w_end, e)
             return []

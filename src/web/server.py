@@ -618,24 +618,6 @@ class WebUIServer:
         new_version = await save_clip_edl(clip_id, data)
         return web.json_response({"success": True, "version": new_version})
 
-    async def handle_get_clip_words(self, request: web.Request) -> web.Response:
-        """Get cached word-level timestamps for a clip."""
-        clip_id = int(request.match_info["id"])
-        clip = await get_clip(clip_id)
-        if not clip:
-            return web.json_response({"error": "Clip not found"}, status=404)
-
-        words = []
-        if clip.get("subtitle_path"):
-            words_file = Path(clip["subtitle_path"]).with_suffix(".json")
-            if words_file.exists():
-                try:
-                    with open(words_file, "r", encoding="utf-8") as f:
-                        words = json.load(f)
-                except Exception:
-                    pass
-        return web.json_response({"words": words})
-
     async def handle_transcribe_clip(self, request: web.Request) -> web.Response:
         """Run faster-whisper on demand for a clip and cache word timestamps."""
         clip_id = int(request.match_info["id"])
@@ -670,30 +652,6 @@ class WebUIServer:
         from src.compositor.profanity import prepare_censor
         annotated, _ = await prepare_censor(words)
         return web.json_response({"success": True, "words": annotated})
-
-    async def handle_serve_clip_source(self, request: web.Request) -> web.StreamResponse:
-        """Stream the original 16:9 source (HTTP 206 range requests handled by FileResponse)."""
-        clip_id = int(request.match_info["id"])
-        clip = await get_clip(clip_id)
-        if not clip:
-            return web.Response(text="Clip not found", status=404)
-
-        v_path = Path(clip.get("source_video_path") or clip.get("rendered_video_path") or "")
-        if not v_path.exists():
-            return web.Response(text="Source video file not found on disk", status=404)
-
-        from src.web.media_preview import browser_playable
-        playable = await browser_playable(v_path)
-        return web.FileResponse(playable, headers={"Accept-Ranges": "bytes", "Cache-Control": "no-cache"})
-
-    async def handle_get_clip_waveform(self, request: web.Request) -> web.Response:
-        """Generate or return simulated audio peaks array (100 normalized float points) for timeline waveform."""
-        clip_id = int(request.match_info["id"])
-        import random
-        # Seeded random for deterministic waveforms per clip
-        random.seed(clip_id)
-        peaks = [round(random.uniform(0.15, 0.95), 2) for _ in range(120)]
-        return web.json_response({"peaks": peaks})
 
     async def handle_detect_faces(self, request: web.Request) -> web.Response:
         """Run Haar-cascade face detector on video to suggest smart initial crop box."""
@@ -848,59 +806,16 @@ class WebUIServer:
     async def handle_post_now(self, request: web.Request) -> web.Response:
         """Upload clip immediately to YouTube Shorts and Instagram Reels."""
         clip_id = int(request.match_info["id"])
+        from src.publisher.auto_approve import record_human_decision
+        await record_human_decision(clip_id, 'approve')
         clip = await get_clip(clip_id)
         if not clip:
             return web.json_response({"error": "Clip not found"}, status=404)
 
-        template_name = clip.get("template_name", "ishowspeed_gaming")
-        video_path = clip.get("rendered_video_path")
-        title = clip.get("title", "Stream Highlight")
-        description = clip.get("description", "")
-        hashtags = [h.strip() for h in (clip.get("hashtags") or "").split() if h.strip()]
-        channel_id = clip.get("channel_id") or ""
-
-        # Check streamer-to-YouTube mappings first
-        from src.database import get_accounts_for_streamer
-        mapped_yt_keys = await get_accounts_for_streamer(channel_id)
-        if not mapped_yt_keys and channel_id.startswith("@"):
-            mapped_yt_keys = await get_accounts_for_streamer(channel_id[1:])
-        elif not mapped_yt_keys:
-            mapped_yt_keys = await get_accounts_for_streamer(f"@{channel_id}")
-
-        dests = load_template_destinations(template_name)
-        if not mapped_yt_keys and dests.get("youtube_account_key"):
-            mapped_yt_keys = [dests.get("youtube_account_key")]
-
-        ig_key = dests.get("instagram_account_key")
-
-        tasks = []
-        task_types = []
-        for yt_k in mapped_yt_keys:
-            yt_pub = YouTubeShortsPublisher(yt_k)
-            tasks.append(yt_pub.upload_short(video_path, title, description, hashtags))
-            task_types.append(("youtube", yt_k))
-
-        if ig_key:
-            ig_pub = InstagramReelsPublisher(ig_key)
-            tasks.append(ig_pub.upload_reel(video_path, title, hashtags))
-            task_types.append(("instagram", ig_key))
-
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        yt_results = []
-        ig_res = {"success": False, "error": "Not configured"}
-
-        for (kind, key), res in zip(task_types, results):
-            formatted_res = res if not isinstance(res, Exception) else {"success": False, "error": str(res), "account_key": key}
-            if kind == "youtube":
-                yt_results.append(formatted_res)
-            elif kind == "instagram":
-                ig_res = formatted_res
-
-        has_yt_success = any(r.get("success") for r in yt_results)
-        overall_success = has_yt_success or ig_res.get("success", False)
-        if overall_success:
-            await update_clip_status(clip_id, "published")
+        # Same path as scheduled uploads: per-channel privacy, quota guard, retries, IG once per clip
+        from src.publisher.scheduler import publish_clip_now
+        result = await publish_clip_now(clip_id)
+        if result["success"]:
             try:
                 from src.intelligence.learning.feedback import FeedbackLearner
                 await FeedbackLearner.log_feedback(
@@ -912,18 +827,21 @@ class WebUIServer:
                 )
             except Exception as fb_err:
                 logger.warning("Feedback logging failed on publish: %s", fb_err)
-
         return web.json_response({
-            "success": overall_success,
-            "youtube": yt_results if yt_results else {"success": False, "error": "No mapped YouTube account"},
-            "instagram": ig_res,
+            **result,
+            "error": None if result["success"] else ("; ".join(result["errors"]) or "Nothing was uploaded"),
         })
 
     async def handle_queue_clip(self, request: web.Request) -> web.Response:
         """Enqueue clip to Drip Queue."""
         clip_id = int(request.match_info["id"])
-        next_slot = DripScheduler.calculate_next_slot(DRIP_INTERVAL_HOURS)
-        qid = await enqueue_clip(clip_id, next_slot)  # sets status 'queued'
+        from src.publisher.auto_approve import record_human_decision
+        await record_human_decision(clip_id, 'approve')
+        from src.publisher.slots import schedule_clip
+        try:
+            created = await schedule_clip(clip_id)
+        except ValueError as e:
+            return web.json_response({"error": str(e)}, status=404)
         try:
             from src.database import get_clip
             c_rec = await get_clip(clip_id)
@@ -938,11 +856,19 @@ class WebUIServer:
         except Exception as fb_err:
             logger.warning("Feedback logging failed on queue: %s", fb_err)
 
-        return web.json_response({"success": True, "queue_id": qid, "scheduled_for": next_slot})
+        return web.json_response({
+            "success": True,
+            "scheduled": created,
+            # first slot for older clients
+            "queue_id": created[0]["queue_id"] if created else None,
+            "scheduled_for": created[0]["scheduled_for"] if created else None,
+        })
 
     async def handle_discard_clip(self, request: web.Request) -> web.Response:
         """Purge clip and delete all its files, database rows, and instances."""
         clip_id = int(request.match_info["id"])
+        from src.publisher.auto_approve import record_human_decision
+        await record_human_decision(clip_id, 'reject')
         data = {}
         try:
             data = await request.json()
@@ -983,8 +909,10 @@ class WebUIServer:
             return web.json_response({"error": "clip_ids must be an array"}, status=400)
         
         deleted = []
+        from src.publisher.auto_approve import record_human_decision
         for cid in clip_ids:
             try:
+                await record_human_decision(int(cid), "reject")
                 ok = await delete_clip_completely(int(cid))
                 if ok:
                     deleted.append(int(cid))

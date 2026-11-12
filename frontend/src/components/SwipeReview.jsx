@@ -3,9 +3,12 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Check, Scissors, Zap, Undo2, Volume2, VolumeX, Pencil, LayoutList, PartyPopper, Loader2,
+  Maximize, LayoutTemplate,
 } from 'lucide-react';
+import axios from 'axios';
 import { getClips, queueClip, discardClip, postClipNow, updateClip } from '../api';
 import { censorFlagInfo } from '../utils/profanity';
+import ScoreBreakdown from './ScoreBreakdown';
 
 const REASONS = [
   { code: 'boring', label: 'Boring' },
@@ -24,7 +27,46 @@ const UNDO_MS = { reject: 5000, queue: 3500 };
 
 const vibrate = (ms = 10) => { try { navigator.vibrate?.(ms); } catch { /* unsupported */ } };
 
-function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPointerMove, onPointerUp }) {
+/** Mini 9:16 drawing of a template's layer boxes + caption line. */
+function TemplatePreview({ layout, captionY }) {
+  const layers = (layout?.layers || []).filter((l) => l.visible !== false && l.dst);
+  return (
+    <svg viewBox="0 0 90 160" className="w-full aspect-[9/16] rounded-lg bg-black">
+      {layers.map((l, i) => (
+        <rect
+          key={l.id || i}
+          x={(l.dst.x || 0) * 90}
+          y={(l.dst.y || 0) * 160}
+          width={(l.dst.w || 1) * 90}
+          height={(l.dst.h || 1) * 160}
+          rx={l.style?.shape === 'circle' ? 45 : 2}
+          fill={l.color || '#334155'}
+          fillOpacity="0.35"
+          stroke={l.color || '#64748b'}
+          strokeWidth="1.5"
+        />
+      ))}
+      {layers.length === 0 && <rect x="0" y="0" width="90" height="160" fill="#334155" fillOpacity="0.35" />}
+      <rect x="18" y={(captionY ?? 0.76) * 160 - 3} width="54" height="6" rx="3" fill="#FACC15" />
+    </svg>
+  );
+}
+
+function enterFullscreen(video) {
+  if (!video) return;
+  video.muted = false;
+  // iPhone Safari only allows native fullscreen on the <video> element itself
+  if (video.webkitEnterFullscreen && !document.fullscreenEnabled) {
+    video.webkitEnterFullscreen();
+  } else if (video.requestFullscreen) {
+    video.requestFullscreen().catch(() => video.webkitEnterFullscreen?.());
+  } else if (video.webkitRequestFullscreen) {
+    video.webkitRequestFullscreen();
+  }
+  video.play().catch(() => {});
+}
+
+function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPointerMove, onPointerUp, videoUrl, applying }) {
   const videoRef = useRef(null);
   const dur = Math.max(0, (clip.adjusted_end ?? clip.raw_end ?? 0) - (clip.adjusted_start ?? clip.raw_start ?? 0));
   const censor = censorFlagInfo(clip.flags);
@@ -64,10 +106,11 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
       onPointerUp={isTop ? onPointerUp : undefined}
       onPointerCancel={isTop ? onPointerUp : undefined}
     >
-      {clip.video_url ? (
+      {(videoUrl || clip.video_url) ? (
         <video
           ref={videoRef}
-          src={clip.video_url}
+          key={videoUrl || clip.video_url}
+          src={videoUrl || clip.video_url}
           poster={clip.thumbnail_url || undefined}
           muted={muted}
           loop
@@ -101,6 +144,27 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
         </span>
       </div>
 
+      {applying && (
+        <div className="absolute inset-0 z-40 bg-black/70 flex flex-col items-center justify-center gap-2 text-white">
+          <Loader2 className="animate-spin" />
+          <span className="text-sm font-bold">Applying {applying}…</span>
+          <span className="text-[11px] text-slate-300">Re-rendering with the new layout</span>
+        </div>
+      )}
+
+      {/* Fullscreen */}
+      {isTop && (
+        <button
+          type="button"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => enterFullscreen(videoRef.current)}
+          className="absolute right-3 bottom-40 z-30 p-2.5 rounded-full bg-black/60 backdrop-blur text-white"
+          aria-label="Full screen"
+        >
+          <Maximize size={18} />
+        </button>
+      )}
+
       {/* Mute toggle */}
       {isTop && (
         <button
@@ -116,8 +180,9 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
 
       {/* Bottom gradient + meta */}
       <div className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-black/90 via-black/50 to-transparent pointer-events-none" />
-      <div className="absolute inset-x-3 bottom-3 pointer-events-none">
-        <p className="text-[11px] text-slate-300 font-mono mb-1">#{clip.id} · {dur.toFixed(0)}s · {clip.template_name}</p>
+      <div className="absolute inset-x-3 bottom-3 pointer-events-none space-y-1.5">
+        <ScoreBreakdown raw={clip.score_breakdown} compact />
+        <p className="text-[11px] text-slate-300 font-mono">#{clip.id} · {dur.toFixed(0)}s · {clip.template_name}</p>
       </div>
     </div>
   );
@@ -145,6 +210,10 @@ export default function SwipeReview({ onSwitchClassic }) {
   const [titleDraft, setTitleDraft] = useState('');
   const [titleOverrides, setTitleOverrides] = useState({});
   const [busy, setBusy] = useState(false);
+  const [videoOverrides, setVideoOverrides] = useState({});
+  const [applying, setApplying] = useState({}); // clipId -> template name
+  const [templateSheet, setTemplateSheet] = useState(false);
+  const [templates, setTemplates] = useState(null);
 
   const clips = useMemo(
     () => (data?.clips || []).filter((c) => !handled.has(c.id)),
@@ -286,6 +355,34 @@ export default function SwipeReview({ onSwitchClassic }) {
 
   const titleOf = (c) => titleOverrides[c.id] ?? c.title ?? 'Untitled clip';
 
+  const openTemplates = async () => {
+    setTemplateSheet(true);
+    if (!templates) {
+      try {
+        const res = await axios.get('/api/templates');
+        setTemplates(Array.isArray(res.data) ? res.data : []);
+      } catch {
+        setTemplates([]);
+      }
+    }
+  };
+
+  const applyTemplate = async (clip, name) => {
+    setTemplateSheet(false);
+    if (!clip || applying[clip.id]) return;
+    setApplying((a) => ({ ...a, [clip.id]: name }));
+    try {
+      const res = await axios.post(`/api/clips/${clip.id}/retemplate`, { template: name }, { timeout: 600000 });
+      setVideoOverrides((v) => ({ ...v, [clip.id]: res.data.video_url }));
+      flash(`Clip #${clip.id} now uses ${res.data.template_name}`, 'ok');
+      queryClient.invalidateQueries({ queryKey: ['clips'] });
+    } catch (e) {
+      flash(`Template change failed: ${e.response?.data?.error?.message || e.response?.data?.error || e.message}`, 'error');
+    } finally {
+      setApplying((a) => { const n = { ...a }; delete n[clip.id]; return n; });
+    }
+  };
+
   return (
     <div className="flex flex-col px-3 pt-2 h-[calc(100dvh-56px-64px-env(safe-area-inset-bottom))] min-h-[480px]">
       {/* Header */}
@@ -317,7 +414,7 @@ export default function SwipeReview({ onSwitchClassic }) {
             </Link>
           </div>
         )}
-        {next && <ClipCard key={next.id} clip={next} isTop={false} muted />}
+        {next && <ClipCard key={next.id} clip={next} isTop={false} muted videoUrl={videoOverrides[next.id]} />}
         {top && (
           <ClipCard
             key={top.id}
@@ -329,6 +426,8 @@ export default function SwipeReview({ onSwitchClassic }) {
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
+            videoUrl={videoOverrides[top.id]}
+            applying={applying[top.id]}
           />
         )}
       </div>
@@ -371,6 +470,11 @@ export default function SwipeReview({ onSwitchClassic }) {
           aria-label="Edit">
           <Scissors size={18} />
         </button>
+        <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openTemplates}
+          className="w-11 h-11 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/40 text-fuchsia-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          aria-label="Change template">
+          <LayoutTemplate size={18} />
+        </button>
         <button type="button" disabled={!top || busy} onClick={() => top && postNow(top)}
           className="w-11 h-11 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Post now">
@@ -382,6 +486,39 @@ export default function SwipeReview({ onSwitchClassic }) {
           <Check size={26} />
         </button>
       </div>
+
+      {templateSheet && top && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setTemplateSheet(false)}>
+          <div
+            className="absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
+            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
+            <p className="text-sm font-bold text-white mb-1">Change layout</p>
+            <p className="text-[11px] text-slate-400 mb-3">Re-renders clip #{top.id} with the template you tap. Captions and bleeps are kept.</p>
+            {!templates && <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-slate-500" /></div>}
+            {templates && templates.length === 0 && <p className="text-xs text-slate-500">No templates found.</p>}
+            <div className="grid grid-cols-3 gap-2">
+              {(templates || []).map((t) => {
+                const current = t.name === top.template_name;
+                return (
+                  <button
+                    key={t.name}
+                    type="button"
+                    onClick={() => !current && applyTemplate(top, t.name)}
+                    className={`rounded-xl border p-1.5 text-left ${current ? 'border-fuchsia-400 bg-fuchsia-500/10' : 'border-white/10 active:bg-white/[0.05]'}`}
+                  >
+                    <TemplatePreview layout={t.layout} captionY={t.subtitles?.position?.y} />
+                    <span className="block text-[10px] font-bold text-slate-200 truncate mt-1">{t.name}</span>
+                    {current && <span className="block text-[9px] text-fuchsia-300 font-bold">CURRENT</span>}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Undo / reason sheet */}
       {pending && (

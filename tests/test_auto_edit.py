@@ -112,3 +112,28 @@ def test_hook_card_is_inserted(tmp_path):
     assert "Style: HookCard" in text and "HookCard,,0,0,0,," in text
     assert "\\pos(540,300)" in text                         # top third when captions are low
     assert hook_text_lines("A very long hook title that keeps going and going forever") [-1].endswith("…")
+
+
+def test_zoom_xy_clamps_to_frame():
+    from src.compositor.auto_edit import zoom_xy
+    assert zoom_xy(None) == ("iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)")
+    x, y = zoom_xy((0.5, 0.18))
+    assert x.startswith("max(0,min(iw-iw/zoom,") and "0.1800*ih" in y
+    assert "1.0000*iw" in zoom_xy((5.0, -1))[0] and "0.0000*ih" in zoom_xy((5.0, -1))[1]
+
+
+def test_finish_with_face_target_renders(tmp_path):
+    import asyncio, shutil, subprocess
+    if not shutil.which("ffmpeg"):
+        return
+    from src.compositor.auto_edit import finish_clip, resolve_config
+    base = tmp_path / "b.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1080x1920:r=30:d=6",
+                    "-f", "lavfi", "-i", "sine=d=6", "-shortest", "-c:v", "libx264", "-preset", "ultrafast",
+                    "-c:a", "aac", str(base)], check=True)
+    out = tmp_path / "o.mp4"
+    asyncio.run(finish_clip(base, out, None, [3.0], resolve_config({"style": "punchy"}), hook_card=False,
+                            zoom_center=(0.5, 0.15)))
+    dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
+                         capture_output=True, text=True).stdout
+    assert abs(float(dur) - 6.0) < 0.2

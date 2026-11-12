@@ -150,7 +150,7 @@ async def get_clips_list(request: web.Request) -> web.Response:
 
     query = """
         SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name,
-               c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end,
+               c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end, c.score_breakdown, c.render_version,
                c.status, c.thumbnail_path, c.source_video_path, c.rendered_video_path, c.created_at,
                c.ai_start, c.ai_end, c.flags,
                (SELECT json_extract(f.payload_json, '$.reason') 
@@ -161,7 +161,11 @@ async def get_clips_list(request: web.Request) -> web.Response:
                (SELECT f.event 
                 FROM clip_feedback_events f 
                 WHERE f.clip_id = c.id 
-                ORDER BY f.id DESC LIMIT 1) as last_feedback_event
+                ORDER BY f.id DESC LIMIT 1) as last_feedback_event,
+               (SELECT SUM(m.views) FROM clip_metrics m WHERE m.clip_id = c.id AND m.id IN (
+                    SELECT m2.id FROM clip_metrics m2 WHERE m2.video_id = m.video_id
+                    ORDER BY CASE m2.window WHEN '7d' THEN 0 WHEN '72h' THEN 1 ELSE 2 END LIMIT 1)) as latest_views,
+               (SELECT MAX(m.retention_pct) FROM clip_metrics m WHERE m.clip_id = c.id) as retention_pct
         FROM clips c
     """
     params = []
@@ -194,7 +198,8 @@ async def get_clips_list(request: web.Request) -> web.Response:
 
             # Add video_url
             if d.get("rendered_video_path"):
-                d["video_url"] = f"/api/clips/{d['id']}/video"
+                # versioned so phones reload after a re-render instead of showing a cached copy
+                d["video_url"] = f"/api/clips/{d['id']}/video?v={d.get('render_version') or 1}"
             else:
                 d["video_url"] = None
 
@@ -276,6 +281,80 @@ async def serve_clip_source(request: web.Request) -> web.StreamResponse:
 
     from src.web.media_preview import browser_playable
     return await serve_file_range(await browser_playable(Path(svp)), request)
+
+
+def resolve_template_file(name: str) -> "Path | None":
+    """Template by file stem or by the "name" inside the JSON."""
+    from config.settings import TEMPLATES_DIR
+    name = (name or "").strip()
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        return None
+    direct = Path(TEMPLATES_DIR) / f"{name}.json"
+    if direct.is_file():
+        return direct
+    for f in Path(TEMPLATES_DIR).glob("*.json"):
+        try:
+            if json.loads(f.read_text(encoding="utf-8")).get("name") == name:
+                return f
+        except Exception:
+            continue
+    return None
+
+
+async def retemplate_clip(request: web.Request) -> web.Response:
+    """Re-render a clip with a different layout template (keeps words, bleeps and trims)."""
+    clip_id = int(request.match_info["id"])
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Body must be JSON")
+    t_file = resolve_template_file(str(data.get("template", "")))
+    if not t_file:
+        return make_json_error("TEMPLATE_NOT_FOUND", "Template not found", status=404)
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+
+    template_name = t_file.stem
+    template = json.loads(t_file.read_text(encoding="utf-8"))
+
+    # Keep the editor in step: new layout + caption style, same words/bleeps/segments
+    edl = await get_clip_edl(clip_id)
+    words_override = None
+    if edl:
+        if template.get("layout"):
+            edl["layout"] = template["layout"]
+        subs = template.get("subtitles") or {}
+        caps = dict(edl.get("captions") or {})
+        for src_key, dst_key in (("font_name", "font"), ("font_size", "size"), ("primary_color", "color"),
+                                 ("highlight_color", "highlight"), ("position", "position"), ("animation", "animation")):
+            if subs.get(src_key) is not None:
+                caps[dst_key] = subs[src_key]
+        edl["captions"] = caps
+        await save_clip_edl(clip_id, edl)
+        words_override = edl.get("words") or None
+
+    async with get_db_connection() as db:
+        await db.execute("UPDATE clips SET template_name = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                         (template_name, clip_id))
+        await db.commit()
+
+    from src.bot.trimmer import ClipTrimmer
+    try:
+        updated = await ClipTrimmer().trim_and_rerender(
+            clip_id=clip_id, delta_start=0.0, delta_end=0.0,
+            custom_template=template, words_override=words_override,
+        )
+    except Exception as e:
+        logger.error("Re-template of clip %d failed: %s", clip_id, e, exc_info=True)
+        return make_json_error("RENDER_FAILED", f"Render failed: {str(e)[:200]}", status=500)
+    if not updated:
+        return make_json_error("RENDER_FAILED", "Source video for this clip is missing", status=409)
+    v = updated.get("render_version") or 1
+    return web.json_response({
+        "success": True, "clip_id": clip_id, "template_name": template_name,
+        "video_url": f"/api/clips/{clip_id}/video?v={v}",
+    })
 
 
 async def get_clip_words(request: web.Request) -> web.Response:
@@ -569,6 +648,7 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)
     app.router.add_get("/api/clips/{id}/source", serve_clip_source)
+    app.router.add_post("/api/clips/{id}/retemplate", retemplate_clip)
     app.router.add_get("/api/clips/{id}/words", get_clip_words)
     app.router.add_get("/api/clips/{id}/waveform", get_clip_waveform)
     app.router.add_get("/api/clips/{id}/source-info", get_clip_source_info)

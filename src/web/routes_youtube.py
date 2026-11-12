@@ -42,6 +42,8 @@ logger = logging.getLogger(__name__)
 YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
+    # retention (average % viewed) for the learning loop; optional - uploads never depend on it
+    "https://www.googleapis.com/auth/yt-analytics.readonly",
 ]
 
 
@@ -181,6 +183,8 @@ async def oauth2_callback_handler(request: web.Request) -> web.Response:
             "token": creds.token,
             "refresh_token": creds.refresh_token,
             "token_uri": creds.token_uri,
+            # what Google actually granted; refreshing with ungranted scopes would fail
+            "scopes": list(getattr(creds, "granted_scopes", None) or creds.scopes or YOUTUBE_SCOPES),
         }
 
         # Save token file to config/tokens/yt_<account_key>.json
@@ -234,17 +238,51 @@ async def oauth2_callback_handler(request: web.Request) -> web.Response:
 
 async def list_accounts_handler(request: web.Request) -> web.Response:
     """List all connected YouTube accounts with token verification status."""
+    from src.database import get_db_connection
+    from src.publisher.auto_approve import agreement_stats
+    from src.publisher.slots import (
+        DEFAULT_QUOTA_UNITS, UPLOAD_UNITS, account_taken_times, next_slot, parse_slots, slots_to_strings, units_used,
+    )
+    from src.publisher.youtube_shorts import token_project_key
+
     accounts = await get_all_youtube_accounts()
+    stats = await agreement_stats()
     result = []
-    for acc in accounts:
-        key = acc["account_key"]
-        token_path = TOKENS_DIR / f"yt_{key}.json"
-        has_token = token_path.exists()
-        result.append({
-            **acc,
-            "has_token_file": has_token,
-            "status": "connected" if has_token else "token_missing",
-        })
+    async with get_db_connection() as db:
+        for acc in accounts:
+            key = acc["account_key"]
+            has_token = (TOKENS_DIR / f"yt_{key}.json").exists()
+            project = token_project_key(key)
+            used = await units_used(db, project)
+            limit = int(acc.get("quota_units_per_day") or DEFAULT_QUOTA_UNITS)
+            taken = await account_taken_times(db, key)
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM scheduled_queue WHERE account_key = ? AND yt_status = 'pending'", (key,)
+            )
+            upcoming = (await cur.fetchone())[0]
+            cur = await db.execute(
+                """SELECT COUNT(DISTINCT video_id), COALESCE(SUM(views), 0) FROM clip_metrics m
+                   WHERE account_key = ? AND id IN (SELECT id FROM clip_metrics m2 WHERE m2.video_id = m.video_id
+                       ORDER BY CASE m2.window WHEN '7d' THEN 0 WHEN '72h' THEN 1 ELSE 2 END LIMIT 1)""",
+                (key,),
+            )
+            tracked, total_views = await cur.fetchone()
+            result.append({
+                **acc,
+                "auto_mode": acc.get("auto_mode") or ("on" if acc.get("auto_upload") else "off"),
+                "publish_slots": slots_to_strings(parse_slots(acc.get("publish_slots"))),
+                "has_token_file": has_token,
+                "status": "connected" if has_token else "token_missing",
+                "quota": {
+                    "project": project if project.startswith("account:") else project[:12] + "…",
+                    "used": used, "limit": limit,
+                    "uploads_left_today": max(0, (limit - used) // UPLOAD_UNITS),
+                },
+                "upcoming_posts": upcoming,
+                "performance": {"tracked_shorts": tracked, "total_views": total_views},
+                "next_free_slot": next_slot(acc, taken).isoformat(),
+                "trial": stats.get(key),
+            })
     return web.json_response(result)
 
 
@@ -308,25 +346,71 @@ async def set_mappings_handler(request: web.Request) -> web.Response:
 
 
 async def update_account_config_handler(request: web.Request) -> web.Response:
-    """Update auto-upload rules and score thresholds for an account."""
+    """Partial update of a channel's publishing rules. Only fields present in the body change."""
+    from zoneinfo import ZoneInfo
+    from src.publisher.auto_approve import MODES
+    from src.publisher.slots import parse_slots, slots_to_strings
+    from src.publisher.youtube_shorts import VALID_PRIVACY
+
     key = request.match_info["key"]
-    data = await request.json()
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+    if not isinstance(data, dict):
+        return web.json_response({"error": "Body must be an object"}, status=400)
 
-    auto_upload = bool(data.get("auto_upload", False))
-    min_score = int(data.get("min_score_threshold", 75))
-    drip_delay = int(data.get("drip_delay_hours", 4))
-    privacy = str(data.get("privacy_status", "public"))
-    tags = str(data.get("tag_override", "#Shorts #Viral #Gaming"))
+    changes = {}
+    try:
+        if "auto_mode" in data:
+            if data["auto_mode"] not in MODES:
+                raise ValueError(f"auto_mode must be one of {MODES}")
+            changes["auto_mode"] = data["auto_mode"]
+            changes["auto_upload"] = 1 if data["auto_mode"] == "on" else 0
+        elif "auto_upload" in data:  # legacy toggle
+            changes["auto_upload"] = 1 if data["auto_upload"] else 0
+            changes["auto_mode"] = "on" if data["auto_upload"] else "off"
+        if "min_score_threshold" in data:
+            v = int(data["min_score_threshold"])
+            if not 0 <= v <= 100:
+                raise ValueError("min_score_threshold must be 0-100")
+            changes["min_score_threshold"] = v
+        if "drip_delay_hours" in data:
+            changes["drip_delay_hours"] = max(1, min(int(data["drip_delay_hours"]), 72))
+        if "privacy_status" in data:
+            if data["privacy_status"] not in VALID_PRIVACY:
+                raise ValueError(f"privacy_status must be one of {VALID_PRIVACY}")
+            changes["privacy_status"] = data["privacy_status"]
+        if "tag_override" in data:
+            changes["tag_override"] = str(data["tag_override"])[:500]
+        if "publish_slots" in data:
+            raw = data["publish_slots"]
+            slots = parse_slots(raw)
+            if isinstance(raw, list) and raw and len(slots) == 0:
+                raise ValueError("publish_slots must be HH:MM times")
+            changes["publish_slots"] = json.dumps(slots_to_strings(slots))
+        if "daily_cap" in data:
+            v = int(data["daily_cap"])
+            if not 1 <= v <= 50:
+                raise ValueError("daily_cap must be 1-50")
+            changes["daily_cap"] = v
+        if "timezone" in data:
+            ZoneInfo(str(data["timezone"]))  # raises for unknown zones
+            changes["timezone"] = str(data["timezone"])
+        if "quota_units_per_day" in data:
+            v = int(data["quota_units_per_day"])
+            if not 1600 <= v <= 10_000_000:
+                raise ValueError("quota_units_per_day must be at least 1600 (one upload)")
+            changes["quota_units_per_day"] = v
+        if "is_active" in data:
+            changes["is_active"] = 1 if data["is_active"] else 0
+    except (TypeError, ValueError, KeyError) as e:
+        return web.json_response({"error": str(e) or "Invalid value"}, status=400)
+    except Exception as e:  # ZoneInfoNotFoundError
+        return web.json_response({"error": f"Unknown timezone: {e}"}, status=400)
 
-    await update_youtube_account_config(
-        account_key=key,
-        auto_upload=auto_upload,
-        min_score_threshold=min_score,
-        drip_delay_hours=drip_delay,
-        privacy_status=privacy,
-        tag_override=tags,
-    )
-    return web.json_response({"success": True, "account_key": key})
+    await update_youtube_account_config(key, **changes)
+    return web.json_response({"success": True, "account_key": key, "updated": sorted(changes)})
 
 
 def register_youtube_routes(app: web.Application) -> None:

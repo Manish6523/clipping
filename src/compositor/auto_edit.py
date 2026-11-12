@@ -348,6 +348,60 @@ def pick_punches(
     return sorted(chosen)
 
 
+def _face_center_blocking(path: str, samples: int = 10) -> Optional[Tuple[float, float]]:
+    """Average centre (0-1) of the largest face across sampled frames, or None."""
+    try:
+        import cv2
+    except ImportError:
+        return None
+    cascade_path = os.path.join(cv2.data.haarcascades, "haarcascade_frontalface_default.xml")
+    cascade = cv2.CascadeClassifier(cascade_path)
+    if cascade.empty():
+        return None
+    cap = cv2.VideoCapture(str(path))
+    try:
+        total = int(cap.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        if total <= 0:
+            return None
+        pts = []
+        for i in range(samples):
+            cap.set(cv2.CAP_PROP_POS_FRAMES, int(total * (i + 0.5) / samples))
+            ok, frame = cap.read()
+            if not ok:
+                continue
+            h, w = frame.shape[:2]
+            scale = 480.0 / max(h, w)
+            small = cv2.resize(frame, (int(w * scale), int(h * scale)))
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+            faces = cascade.detectMultiScale(gray, scaleFactor=1.15, minNeighbors=6, minSize=(24, 24))
+            if len(faces):
+                x, y, fw, fh = max(faces, key=lambda f: f[2] * f[3])
+                pts.append(((x + fw / 2) / small.shape[1], (y + fh / 2) / small.shape[0]))
+        if len(pts) < max(2, samples // 4):   # not a consistent face -> keep centred zooms
+            return None
+        return (statistics.median(p[0] for p in pts), statistics.median(p[1] for p in pts))
+    finally:
+        cap.release()
+
+
+async def face_center(path: str | Path) -> Optional[Tuple[float, float]]:
+    """Optional enhancement: any OpenCV problem just means centred zooms, never a failed render."""
+    try:
+        return await asyncio.get_running_loop().run_in_executor(None, _face_center_blocking, str(path))
+    except Exception as e:
+        logger.info("Face targeting unavailable (%s); using centred zooms.", e)
+        return None
+
+
+def zoom_xy(center: Optional[Tuple[float, float]]) -> Tuple[str, str]:
+    """zoompan x/y keeping the zoom aimed at ``center`` (0-1) but always inside the frame."""
+    if not center:
+        return "iw/2-(iw/zoom/2)", "ih/2-(ih/zoom/2)"
+    cx, cy = max(0.0, min(1.0, center[0])), max(0.0, min(1.0, center[1]))
+    return (f"max(0,min(iw-iw/zoom,{cx:.4f}*iw-iw/zoom/2))",
+            f"max(0,min(ih-ih/zoom,{cy:.4f}*ih-ih/zoom/2))")
+
+
 def zoom_expression(punches: Sequence[float], cfg: Dict[str, Any]) -> Optional[str]:
     """zoompan z(t): eased punch-ins (0.10s in, 0.55s hold, 0.35s out) + optional opening snap."""
     amt = float(cfg.get("zoom_amount", 0.1))
@@ -439,6 +493,7 @@ async def finish_clip(
     punches: Sequence[float],
     cfg: Dict[str, Any],
     hook_card: bool,
+    zoom_center: Optional[Tuple[float, float]] = None,
 ) -> None:
     """Zooms + captions/hook card + SFX + loudness on the rendered 1080x1920 base."""
     fps = await probe_fps(base)
@@ -446,9 +501,8 @@ async def finish_clip(
     vf = []
     z = zoom_expression(punches, cfg)
     if z:
-        vf.append(
-            f"zoompan=z='{z}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s=1080x1920:fps={fps:.3f}"
-        )
+        zx, zy = zoom_xy(zoom_center)
+        vf.append(f"zoompan=z='{z}':x='{zx}':y='{zy}':d=1:s=1080x1920:fps={fps:.3f}")
     if ass_path and os.path.exists(ass_path):
         esc = str(Path(ass_path).resolve()).replace("\\", "/").replace(":", "\\:")
         vf.append(f"subtitles='{esc}'")
@@ -578,7 +632,8 @@ async def auto_edit_clip(
 
     energy = await audio_energy(base)
     punches = pick_punches(out_words, energy, out_dur, cfg)
-    await finish_clip(base, out_path, ass_path, punches, cfg, hook_card=hook_used)
+    center = await face_center(base) if punches else None
+    await finish_clip(base, out_path, ass_path, punches, cfg, hook_card=hook_used, zoom_center=center)
     await make_thumbnail(out_path, at=min(1.0, out_dur / 3))
     try:
         base.unlink(missing_ok=True)
@@ -591,6 +646,7 @@ async def auto_edit_clip(
         "removed_seconds": round(removed, 1),
         "zooms": len(punches),
         "zoom_times": list(punches),
+        "zoom_target": "face" if center else "centre",
         "hook_card": hook_used,
         "sfx": bool(cfg.get("sfx")),
     }
