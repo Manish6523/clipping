@@ -22,6 +22,7 @@ const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
+const StreamerTelemetryHub = lazy(() => import('./components/StreamerTelemetryHub'));
 
 // Old /clips/:id/edit links -> /clips/:id/editor (Navigate does not substitute params by itself)
 function LegacyEditRedirect() {
@@ -212,6 +213,7 @@ export default function App() {
         <Route path="templates" element={<TemplateStudio />} />
         <Route path="presets" element={<Navigate to="/templates" replace />} />
         <Route path="channels" element={<ChannelManager />} />
+        <Route path="telemetry" element={<StreamerTelemetryHub />} />
         <Route path="accounts" element={<AccountsManager />} />
         <Route path="queue" element={<QueueCalendar />} />
         <Route path="pipelines" element={<PipelineMonitor />} />

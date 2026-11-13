@@ -24,8 +24,9 @@ _active_pipeline: Dict[str, Any] = {
     "error_message": None,
 }
 
-# Live Streamers Status Cache
+# Live Streamers Status & Real-Time Telemetry Cache
 _streamer_statuses: Dict[str, Dict[str, Any]] = {}
+_streamer_telemetry: Dict[str, deque] = {}  # channel -> deque of {t, mps, baseline_mps, audio_db, is_spike}
 
 
 class WebLogHandler(logging.Handler):
@@ -132,19 +133,52 @@ def get_pipeline_state() -> Dict[str, Any]:
     return state
 
 
-def update_streamer_status(channel_id: str, platform: str, is_live: bool, current_mps: float = 0.0, chunks_count: int = 0) -> None:
-    """Update live streaming presence and buffer metrics."""
-    _streamer_statuses[channel_id.lower()] = {
+def update_streamer_status(
+    channel_id: str,
+    platform: str,
+    is_live: bool,
+    current_mps: float = 0.0,
+    chunks_count: int = 0,
+    audio_peak_db: Optional[float] = None,
+    recent_mps: Optional[float] = None,
+    is_spike: bool = False,
+) -> None:
+    """Update live streaming presence and buffer metrics with rolling telemetry."""
+    cid = channel_id.lower()
+    now_t = time.time()
+    t_clock = time.strftime("%H:%M:%S", time.localtime(now_t))
+
+    _streamer_statuses[cid] = {
         "channel_id": channel_id,
         "platform": platform,
         "is_live": is_live,
         "current_mps": round(current_mps, 2),
+        "recent_mps": round(recent_mps if recent_mps is not None else current_mps, 2),
+        "audio_peak_db": round(audio_peak_db, 2) if audio_peak_db is not None else None,
         "chunks_count": chunks_count,
-        "last_checked": time.strftime("%H:%M:%S", time.localtime()),
+        "last_checked": t_clock,
     }
+
+    if cid not in _streamer_telemetry:
+        _streamer_telemetry[cid] = deque(maxlen=60)  # Keep last 60 points (5-10 mins history)
+
+    _streamer_telemetry[cid].append({
+        "time": t_clock,
+        "timestamp": now_t,
+        "mps": round(recent_mps if recent_mps is not None else current_mps, 2),
+        "baseline_mps": round(current_mps, 2),
+        "audio_db": round(audio_peak_db, 1) if audio_peak_db is not None else -45.0,
+        "is_spike": is_spike,
+    })
 
 
 def get_all_streamer_statuses() -> Dict[str, Dict[str, Any]]:
-    """Get all cached live streamer statuses."""
-    return dict(_streamer_statuses)
+    """Get all cached live streamer statuses along with rolling telemetry history."""
+    res = {}
+    for cid, stat in _streamer_statuses.items():
+        res[cid] = {
+            **stat,
+            "telemetry": list(_streamer_telemetry.get(cid, [])),
+        }
+    return res
 

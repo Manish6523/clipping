@@ -20,7 +20,8 @@ import {
   Search,
   Filter,
   Tv,
-  Check
+  Check,
+  Activity
 } from 'lucide-react';
 import { 
   getChannels, 
@@ -32,6 +33,7 @@ import {
   resumeChannel,
   patchChannelSettings
 } from '../api';
+import { Link } from 'react-router-dom';
 
 const DEFAULT_GROUPS = ['Casual Gaming', 'GTA RP', 'Valorant', 'IRL', 'Shooters', 'Reaction', 'General'];
 
@@ -274,12 +276,21 @@ export default function ChannelManager() {
             Group creators by niche (GTA RP, Casual Gaming, IRL), auto-fetch platform logos, and customize viral detection.
           </p>
         </div>
-        <button
-          onClick={() => setShowAddModal(true)}
-          className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold py-2 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/25 transition-all shrink-0"
-        >
-          <Plus size={16} /> Add Streamer
-        </button>
+        <div className="flex items-center gap-2">
+          <Link
+            to="/telemetry"
+            className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold py-2 px-3.5 rounded-xl text-xs transition-all shrink-0 shadow-sm"
+          >
+            <Activity size={15} className="animate-pulse" />
+            <span>Live Pulse &amp; Waveforms</span>
+          </Link>
+          <button
+            onClick={() => setShowAddModal(true)}
+            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold py-2 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/25 transition-all shrink-0"
+          >
+            <Plus size={16} /> Add Streamer
+          </button>
+        </div>
       </div>
 
       {/* Control Bar: Category Group Pills & Search Bar */}

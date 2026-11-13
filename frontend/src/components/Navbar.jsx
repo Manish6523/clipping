@@ -11,7 +11,8 @@ import {
   Flame,
   Settings,
   Loader2,
-  ChevronDown
+  ChevronDown,
+  Activity
 } from 'lucide-react';
 
 function MobileStatusPill({ status = {}, activePipelines = [] }) {
@@ -110,7 +111,8 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], status 
   const navItems = [
     { to: '/', label: 'Review', shortLabel: 'Review', icon: Film, badge: pendingCount, end: true },
     { to: '/templates', label: 'Templates', shortLabel: 'Templates', icon: Palette },
-    { to: '/channels', label: 'Channels & Live', shortLabel: 'Channels', icon: Radio },
+    { to: '/channels', label: 'Channels', shortLabel: 'Channels', icon: Radio },
+    { to: '/telemetry', label: 'Live Pulse', shortLabel: 'Pulse', icon: Activity },
     { to: '/accounts', label: 'Distribution', shortLabel: 'Distribution', icon: Share2 },
     { to: '/pipelines', label: 'Pipelines', shortLabel: 'Pipelines', icon: Flame },
     { to: '/queue', label: 'Drip Queue', shortLabel: 'Queue', icon: Calendar },

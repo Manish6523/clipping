@@ -175,7 +175,17 @@ class LiveStreamWatcher:
                 is_live = await self.is_channel_live()
                 self._is_channel_live = is_live
                 chunks = glob.glob(str(self.buffer_path / "chunk_*.ts"))
-                update_streamer_status(self.channel_id, self.platform, is_live, self.chat_baseline_mps, len(chunks))
+                recent_5s = sum(1 for t in self.chat_messages_timestamps if t >= time.time() - 5.0)
+                update_streamer_status(
+                    channel_id=self.channel_id,
+                    platform=self.platform,
+                    is_live=is_live,
+                    current_mps=self.chat_baseline_mps,
+                    chunks_count=len(chunks),
+                    audio_peak_db=getattr(self, "_last_peak_db", None),
+                    recent_mps=recent_5s / 5.0,
+                    is_spike=time.time() - getattr(self, "last_trigger_time", 0.0) < 30.0,
+                )
                 if is_live and (self._stream_proc is None or self._stream_proc.poll() is not None):
                     await self.start_ingestion_pipeline()
                 elif not is_live and self._stream_proc is not None:
@@ -390,6 +400,7 @@ class LiveStreamWatcher:
                 processed_chunks.clear()
 
             peak_db = await self._analyze_chunk_audio_db(latest_chunk)
+            self._last_peak_db = peak_db
             if peak_db is not None and peak_db >= AUDIO_PEAK_DB_THRESHOLD:
                 now = time.time()
                 if now - self.last_trigger_time > self.cooldown_seconds:
