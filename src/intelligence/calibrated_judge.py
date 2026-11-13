@@ -106,8 +106,9 @@ class CalibratedJudge:
 
         # Map sentence IDs to timestamps
         sent_map = {
-            (getattr(s, "id", None) or s.get("id")): s
+            (s.id if hasattr(s, "id") else s.get("id")): s
             for s in sentences
+            if (s.id if hasattr(s, "id") else s.get("id"))
         }
 
         # Derive signal score from trigger context if available
@@ -131,8 +132,8 @@ class CalibratedJudge:
                 logger.warning("Judge candidate %s boundaries invalid (%s, %s). Skipping.", cand.candidate_id, cand.boundaries.start_sentence_id, cand.boundaries.end_sentence_id)
                 continue
 
-            t_start = getattr(s_start, "start", None) or s_start.get("start", 0.0)
-            t_end = getattr(s_end, "end", None) or s_end.get("end", 0.0)
+            t_start = s_start.start if hasattr(s_start, "start") else (s_start.get("start", 0.0) if isinstance(s_start, dict) else 0.0)
+            t_end = s_end.end if hasattr(s_end, "end") else (s_end.get("end", 0.0) if isinstance(s_end, dict) else 0.0)
 
             # Calculate predicted & final scores
             predicted = calculate_predicted_score(cand.scores, would_post=cand.would_post)
@@ -142,7 +143,7 @@ class CalibratedJudge:
             teaser_ts = None
             if cand.teaser_hook_sentence_id and cand.teaser_hook_sentence_id in sent_map:
                 teaser_sent = sent_map[cand.teaser_hook_sentence_id]
-                teaser_ts = getattr(teaser_sent, "start", None) or teaser_sent.get("start")
+                teaser_ts = teaser_sent.start if hasattr(teaser_sent, "start") else (teaser_sent.get("start") if isinstance(teaser_sent, dict) else None)
 
             cand_dict = {
                 "id": cand.candidate_id,

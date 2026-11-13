@@ -21,6 +21,17 @@ class Sentence:
     first_word_idx: int
     last_word_idx: int
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """Allow dict-like get access for compatibility."""
+        return getattr(self, key, default)
+
+    def __getitem__(self, key: str) -> Any:
+        """Allow dict-like item access for compatibility."""
+        try:
+            return getattr(self, key)
+        except AttributeError:
+            raise KeyError(key)
+
     @property
     def duration(self) -> float:
         return max(0.0, self.end - self.start)

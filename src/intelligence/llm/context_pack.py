@@ -39,15 +39,15 @@ class ContextPackBuilder:
         # 3. Format sentences with clean ID tokens
         formatted_sentences = []
         for s in sentences:
-            s_id = getattr(s, "id", None) or s.get("id")
-            s_start = getattr(s, "start", None) or s.get("start", 0.0)
-            s_end = getattr(s, "end", None) or s.get("end", 0.0)
-            s_text = getattr(s, "text", None) or s.get("text", "")
+            s_id = s.id if hasattr(s, "id") else (s.get("id") if isinstance(s, dict) else "")
+            s_start = s.start if hasattr(s, "start") else (s.get("start", 0.0) if isinstance(s, dict) else 0.0)
+            s_end = s.end if hasattr(s, "end") else (s.get("end", 0.0) if isinstance(s, dict) else 0.0)
+            s_text = s.text if hasattr(s, "text") else (s.get("text", "") if isinstance(s, dict) else "")
             formatted_sentences.append({
                 "id": s_id,
-                "start": round(s_start, 2),
-                "end": round(s_end, 2),
-                "text": s_text.strip(),
+                "start": round(float(s_start or 0.0), 2),
+                "end": round(float(s_end or 0.0), 2),
+                "text": str(s_text or "").strip(),
             })
 
         return {

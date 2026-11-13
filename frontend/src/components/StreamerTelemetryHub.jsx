@@ -3,6 +3,7 @@ import {
   Radio, 
   Activity, 
   Volume2, 
+  MessageSquare, 
   Flame, 
   Clock, 
   Layers, 
@@ -11,134 +12,62 @@ import {
   TrendingUp, 
   AlertCircle,
   RefreshCw,
+  Tv,
   CheckCircle2,
   Sliders,
-  Filter,
-  BarChart2,
-  Info,
-  Maximize2,
-  ShieldCheck,
-  Disc,
-  ArrowUpRight
+  ChevronRight
 } from 'lucide-react';
 import axios from 'axios';
 
-// High-precision SVG Waveform with grid lines, gradient, and glow point
-function TelemetryWaveform({
-  data = [],
-  height = 140,
-  strokeColor = '#60A5FA',
-  gradientFrom = 'rgba(96, 165, 250, 0.28)',
-  gradientTo = 'rgba(96, 165, 250, 0.0)',
-  minVal = 0,
-  unit = '',
-  yLabels = [],
-  thresholdVal = null,
-  thresholdColor = '#F59E0B'
-}) {
-  const values = data.length > 0 ? data.map(d => (typeof d === 'number' ? d : d.value ?? 0)) : [0, 0];
+// SVG Sparkline component (zero extra dependencies, buttery smooth GPU rendered)
+function Sparkline({ data, height = 48, color = '#6366F1', fillColor = 'rgba(99, 102, 241, 0.15)', minVal = 0 }) {
+  if (!data || data.length < 2) {
+    return (
+      <div style={{ height }} className="flex items-center justify-center text-[10px] text-slate-600 font-mono">
+        Awaiting telemetry...
+      </div>
+    );
+  }
+
+  const values = data.map((d) => (typeof d === 'number' ? d : d.value ?? 0));
   const max = Math.max(...values, minVal + 1);
   const min = Math.min(...values, minVal);
   const range = max - min || 1;
 
-  // Build SVG path points
   const points = values.map((v, i) => {
-    const x = values.length > 1 ? (i / (values.length - 1)) * 100 : 50;
-    const y = 92 - ((v - min) / range) * 82; // 10% padding top, 8% bottom
-    return { x, y, v };
+    const x = (i / (values.length - 1)) * 100;
+    const y = 100 - ((v - min) / range) * 88 - 6; // leave 6% margin top & bottom
+    return `${x},${y}`;
   });
 
-  const polylineStr = points.map(p => `${p.x},${p.y}`).join(' ');
-  const areaStr = `0,100 ${polylineStr} 100,100`;
-
-  // Threshold Y coordinate if present
-  const thresholdY = thresholdVal !== null 
-    ? 92 - ((thresholdVal - min) / range) * 82 
-    : null;
+  const polylinePoints = points.join(' ');
+  const areaPoints = `0,100 ${polylinePoints} 100,100`;
 
   return (
-    <div className="relative w-full rounded-xl overflow-hidden bg-[#0A0D14]/90 border border-white/[0.06] p-3">
-      {/* Background Subtle Grid Lines */}
-      <div className="absolute inset-0 flex flex-col justify-between pointer-events-none p-3 opacity-20">
-        <div className="border-b border-dashed border-white/20 w-full h-0" />
-        <div className="border-b border-dashed border-white/20 w-full h-0" />
-        <div className="border-b border-dashed border-white/20 w-full h-0" />
-      </div>
-
-      {/* SVG Canvas */}
-      <div style={{ height }} className="relative w-full">
-        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
-          <defs>
-            <linearGradient id={`grad-${strokeColor.replace('#', '')}`} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={gradientFrom} />
-              <stop offset="100%" stopColor={gradientTo} />
-            </linearGradient>
-            <filter id={`glow-${strokeColor.replace('#', '')}`} x="-20%" y="-20%" width="140%" height="140%">
-              <feDropShadow dx="0" dy="0" stdDeviation="1.5" floodColor={strokeColor} floodOpacity="0.6" />
-            </filter>
-          </defs>
-
-          {/* Area Fill */}
-          <polygon points={areaStr} fill={`url(#grad-${strokeColor.replace('#', '')})`} />
-
-          {/* Optional Threshold Dotted Line */}
-          {thresholdY !== null && thresholdY >= 0 && thresholdY <= 100 && (
-            <line 
-              x1="0" 
-              y1={thresholdY} 
-              x2="100" 
-              y2={thresholdY} 
-              stroke={thresholdColor} 
-              strokeWidth="0.8" 
-              strokeDasharray="2,2" 
-              opacity="0.85" 
-            />
-          )}
-
-          {/* Line Stroke */}
-          <polyline
-            points={polylineStr}
-            fill="none"
-            stroke={strokeColor}
-            strokeWidth="2"
-            vectorEffect="non-scaling-stroke"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            filter={`url(#glow-${strokeColor.replace('#', '')})`}
+    <div className="relative w-full overflow-hidden" style={{ height }}>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="w-full h-full overflow-visible">
+        <polygon points={areaPoints} fill={fillColor} />
+        <polyline
+          points={polylinePoints}
+          fill="none"
+          stroke={color}
+          strokeWidth="2.5"
+          vectorEffect="non-scaling-stroke"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+        {/* Highlight latest point */}
+        {points.length > 0 && (
+          <circle
+            cx={points[points.length - 1].split(',')[0]}
+            cy={points[points.length - 1].split(',')[1]}
+            r="3"
+            fill="#FFFFFF"
+            stroke={color}
+            strokeWidth="1.5"
           />
-
-          {/* Glowing Head Point */}
-          {points.length > 0 && (
-            <g>
-              <circle
-                cx={points[points.length - 1].x}
-                cy={points[points.length - 1].y}
-                r="3"
-                fill="#FFFFFF"
-                stroke={strokeColor}
-                strokeWidth="1.5"
-              />
-              <circle
-                cx={points[points.length - 1].x}
-                cy={points[points.length - 1].y}
-                r="6"
-                fill={strokeColor}
-                opacity="0.35"
-                className="animate-ping"
-              />
-            </g>
-          )}
-        </svg>
-      </div>
-
-      {/* Axis Footer */}
-      <div className="flex items-center justify-between text-[10px] font-mono text-slate-500 mt-2 pt-1.5 border-t border-white/[0.04]">
-        <span>{yLabels[0] || 'Historical'}</span>
-        <span className="font-bold text-slate-300">
-          Current: {values[values.length - 1] ?? 0} {unit}
-        </span>
-        <span>{yLabels[1] || 'Real-time'}</span>
-      </div>
+        )}
+      </svg>
     </div>
   );
 }
@@ -161,6 +90,7 @@ export default function StreamerTelemetryHub() {
       setStreamers(data);
       setLiveHypes(resHypes.data || []);
 
+      // Auto select first live streamer, or first streamer available
       setSelectedChannel((curr) => {
         if (curr && data[curr]) return curr;
         const keys = Object.keys(data);
@@ -179,7 +109,7 @@ export default function StreamerTelemetryHub() {
     fetchData();
     let interval = null;
     if (autoRefresh) {
-      interval = setInterval(fetchData, 3500);
+      interval = setInterval(fetchData, 4000); // 4-second real-time heartbeat
     }
     return () => clearInterval(interval);
   }, [autoRefresh]);
@@ -187,7 +117,7 @@ export default function StreamerTelemetryHub() {
   const channelList = useMemo(() => Object.values(streamers), [streamers]);
   const activeStreamer = selectedChannel ? streamers[selectedChannel.toLowerCase()] : null;
 
-  // Filter session hypes for this streamer
+  // Filter recent hypes for active streamer
   const channelHypes = useMemo(() => {
     if (!selectedChannel) return [];
     return (liveHypes || []).filter(
@@ -195,54 +125,51 @@ export default function StreamerTelemetryHub() {
     );
   }, [liveHypes, selectedChannel]);
 
-  // Rolling telemetry points
+  // Telemetry rolling metrics
   const telemetry = activeStreamer?.telemetry || [];
   const mpsData = telemetry.map((t) => t.mps);
-  const audioData = telemetry.map((t) => (t.audio_db !== null ? t.audio_db : -45));
+  const baselineData = telemetry.map((t) => t.baseline_mps);
+  const audioData = telemetry.map((t) => Math.max(0, (t.audio_db || -45) + 50)); // Normalize -50dB to 0dB range
 
   const latestPoint = telemetry[telemetry.length - 1] || {};
-  const currentMps = activeStreamer?.recent_mps ?? activeStreamer?.current_mps ?? 0;
-  const baselineMps = activeStreamer?.current_mps ? Number(activeStreamer.current_mps).toFixed(1) : '1.0';
-  const ratio = baselineMps > 0 ? (currentMps / baselineMps).toFixed(1) : '1.0';
+  const currentMps = activeStreamer?.recent_mps || activeStreamer?.current_mps || 0;
+  const baselineMps = activeStreamer?.current_mps || 1.0;
+  const currentRatio = baselineMps > 0 ? (currentMps / baselineMps).toFixed(1) : '1.0';
   const audioDb = activeStreamer?.audio_peak_db ?? latestPoint.audio_db ?? -45;
-  const chunksCount = activeStreamer?.chunks_count || 0;
-
-  // Derived classification
-  const isSpike = Number(ratio) >= 1.6 || activeStreamer?.is_spike;
-  const isAudioLoud = audioDb > -18;
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
-      {/* 1. Header Toolbar */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-white/[0.08] pb-5">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight flex items-center gap-2">
-              <Activity className="text-[#8FD3FF] animate-pulse" size={22} />
-              <span>Stream Telemetry &amp; Live Pulse</span>
-            </h1>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#8FD3FF]/10 text-[#8FD3FF] border border-[#8FD3FF]/25">
-              PRO MONITOR
-            </span>
+      {/* 1. Header Bar with Real-Time Pulse & Stream Selector */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/60 border border-white/10 rounded-2xl p-5 shadow-xl backdrop-blur-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-gradient-to-br from-indigo-500/20 to-purple-500/10 border border-indigo-500/30 rounded-2xl text-indigo-400 shadow-inner">
+            <Activity size={24} className="animate-pulse" />
           </div>
-          <p className="text-xs text-[#8B90A0] mt-1">
-            Real-time chat velocity curves, audio scream detection, ring buffer memory status, and AI candidate scoring.
-          </p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">Stream Pulse & Live Telemetry</h1>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" /> Real-Time 4s
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Live chat velocity waves, scream/volume peaks, ring-buffer health, and AI trigger logs.
+            </p>
+          </div>
         </div>
 
         {/* Global Controls */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={() => setAutoRefresh(!autoRefresh)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-2 ${
+            className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
               autoRefresh
-                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
-                : 'bg-white/[0.04] border-white/10 text-slate-400 hover:text-white'
+                ? 'bg-emerald-500/15 border-emerald-500/40 text-emerald-300'
+                : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${autoRefresh ? 'bg-emerald-400 animate-ping' : 'bg-slate-600'}`} />
-            <span>{autoRefresh ? 'Live Polling 3.5s' : 'Polling Paused'}</span>
+            <Activity size={13} /> {autoRefresh ? 'Live Stream: ON' : 'Paused'}
           </button>
 
           <button
@@ -252,7 +179,7 @@ export default function StreamerTelemetryHub() {
               fetchData();
             }}
             disabled={refreshing}
-            className="p-2 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 transition-all"
+            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-white/5 transition-all"
             title="Refresh now"
           >
             <RefreshCw size={14} className={refreshing ? 'animate-spin' : ''} />
@@ -260,336 +187,280 @@ export default function StreamerTelemetryHub() {
         </div>
       </div>
 
-      {/* 2. Streamer Selection Deck (Clean studio tab bar) */}
-      <div className="space-y-2">
-        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
-          <span>Active Channels &amp; Monitored Feeds ({channelList.length})</span>
-          <span className="text-[10px] text-slate-500">Click a card to switch telemetry feed</span>
-        </div>
+      {/* 2. Streamer Switcher Strip (Horizontal Cards with Status) */}
+      <div className="flex gap-2.5 overflow-x-auto pb-2 -mx-1 px-1 no-scrollbar snap-x">
+        {channelList.length === 0 && !loading && (
+          <div className="p-4 rounded-xl border border-dashed border-white/10 text-xs text-slate-500 w-full text-center">
+            No active streamers configured. Add streamers in the "Channels & Live" tab.
+          </div>
+        )}
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-2.5">
-          {channelList.map((ch) => {
-            const isSelected = selectedChannel?.toLowerCase() === ch.channel_id?.toLowerCase();
-            const isLive = Boolean(ch.is_live);
-            return (
-              <button
-                key={ch.channel_id}
-                type="button"
-                onClick={() => setSelectedChannel(ch.channel_id)}
-                className={`relative rounded-xl p-3 text-left transition-all border ${
-                  isSelected
-                    ? 'bg-[#181C26] border-[#8FD3FF]/60 shadow-lg shadow-[#8FD3FF]/10 ring-1 ring-[#8FD3FF]/30'
-                    : 'bg-[#0E1118] border-white/[0.06] hover:border-white/20 hover:bg-[#131722]'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-1 mb-1.5">
-                  <span className="font-extrabold text-xs text-white truncate">
-                    @{ch.channel_id}
-                  </span>
-                  {isLive ? (
-                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" title="Live Now" />
-                  ) : (
-                    <span className="w-1.5 h-1.5 rounded-full bg-slate-600" title="Offline" />
-                  )}
-                </div>
+        {channelList.map((ch) => {
+          const isSelected = selectedChannel?.toLowerCase() === ch.channel_id?.toLowerCase();
+          return (
+            <button
+              key={ch.channel_id}
+              type="button"
+              onClick={() => setSelectedChannel(ch.channel_id)}
+              className={`snap-start shrink-0 min-w-[200px] sm:min-w-[220px] rounded-2xl border p-3.5 text-left transition-all ${
+                isSelected
+                  ? 'bg-gradient-to-br from-indigo-900/40 to-slate-900/80 border-indigo-500 shadow-lg shadow-indigo-500/15 ring-1 ring-indigo-500/30'
+                  : 'bg-slate-900/40 border-white/10 hover:border-white/20 hover:bg-slate-900/70'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <span className="font-bold text-sm text-white truncate max-w-[120px]">
+                  @{ch.channel_id}
+                </span>
+                <span
+                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 ${
+                    ch.is_live
+                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                      : 'bg-white/5 text-slate-500 border border-white/5'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${ch.is_live ? 'bg-rose-400 animate-pulse' : 'bg-slate-600'}`}
+                  />
+                  {ch.is_live ? 'LIVE' : 'OFFLINE'}
+                </span>
+              </div>
 
-                <div className="flex items-center justify-between text-[10px] font-mono text-slate-400">
-                  <span className={ch.recent_mps > 5 ? 'text-amber-400 font-bold' : ''}>
-                    {ch.recent_mps || 0} MPS
-                  </span>
-                  <span className="text-slate-500">
-                    {ch.chunks_count || 0} cks
-                  </span>
+              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono mt-1 pt-2 border-t border-white/5">
+                <div>
+                  <span className="text-slate-500 block text-[9px] uppercase">Chat MPS</span>
+                  <span className="font-bold text-indigo-300">{ch.recent_mps || ch.current_mps || 0}</span>
                 </div>
-              </button>
-            );
-          })}
-        </div>
+                <div>
+                  <span className="text-slate-500 block text-[9px] uppercase">Ring Buffer</span>
+                  <span className="font-bold text-slate-300">{ch.chunks_count || 0} chunks</span>
+                </div>
+              </div>
+            </button>
+          );
+        })}
       </div>
 
-      {/* 3. Detail Telemetry Workspace */}
+      {/* 3. Main Streamer Detail Workspace */}
       {activeStreamer ? (
-        <div className="space-y-5">
-          {/* Channel Banner / Identity Bar */}
-          <div className="bg-[#0E1118] border border-white/[0.08] rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xl">
-            <div className="flex items-center gap-3">
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-violet-600/30 to-indigo-600/20 border border-violet-500/30 flex items-center justify-center text-white font-black text-base shadow-inner">
-                {activeStreamer.channel_id.slice(0, 2).toUpperCase()}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="font-black text-lg text-white tracking-tight">@{activeStreamer.channel_id}</span>
-                  {activeStreamer.is_live ? (
-                    <span className="px-2 py-0.5 rounded-md bg-rose-500/15 border border-rose-500/30 text-rose-300 font-black text-[10px] tracking-wider uppercase flex items-center gap-1">
-                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" /> LIVE
-                    </span>
-                  ) : (
-                    <span className="px-2 py-0.5 rounded-md bg-white/[0.05] border border-white/10 text-slate-400 font-bold text-[10px]">
-                      STANDBY
-                    </span>
-                  )}
-                  {isSpike && (
-                    <span className="px-2 py-0.5 rounded-md bg-amber-500/20 border border-amber-500/40 text-amber-300 font-black text-[10px] uppercase animate-pulse">
-                      ⚡ VELOCITY SPIKE
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                  <span>Template: <strong className="text-indigo-300">{activeStreamer.template_name || 'Default'}</strong></span>
-                  <span>•</span>
-                  <span>Platform: <strong className="text-slate-300">{activeStreamer.platform || 'Twitch'}</strong></span>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <a
-                href={activeStreamer.platform === 'youtube' ? `https://youtube.com/@${activeStreamer.channel_id}` : `https://twitch.tv/${activeStreamer.channel_id}`}
-                target="_blank"
-                rel="noreferrer"
-                className="px-3 py-1.5 rounded-xl bg-white/[0.04] hover:bg-white/[0.08] text-slate-300 hover:text-white border border-white/10 text-xs font-bold transition-all flex items-center gap-1.5"
-              >
-                <span>Watch Feed</span>
-                <ArrowUpRight size={13} />
-              </a>
-            </div>
-          </div>
-
-          {/* 4 Quick Stat Metric Meters */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-            {/* Card 1: Chat Speed */}
-            <div className="bg-[#0E1118] border border-white/[0.06] rounded-2xl p-4 relative overflow-hidden">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
-                <span className="flex items-center gap-1.5">
-                  <Activity size={14} className="text-[#8FD3FF]" /> Chat Velocity
+        <div className="space-y-6">
+          {/* Top Live Stats Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+            {/* Stat 1: Current Chat Velocity */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <MessageSquare size={14} className="text-indigo-400" /> Chat Velocity
                 </span>
-                <span className="text-[10px] font-mono text-[#8FD3FF]">MPS</span>
+                <span className="text-[10px] font-mono text-indigo-400/80">MPS</span>
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 mt-2">
                 <span className="text-2xl sm:text-3xl font-black text-white font-mono">{currentMps}</span>
-                <span className="text-xs text-slate-500 font-mono">/ base {baselineMps}</span>
+                <span className="text-xs text-slate-500 font-mono">/ baseline {baselineMps}</span>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
-                <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
-                  Number(ratio) >= 1.6 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' : 'bg-white/[0.04] text-slate-400'
-                }`}>
-                  {ratio}x
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+                <TrendingUp size={12} className={Number(currentRatio) >= 2.0 ? 'text-amber-400' : 'text-slate-500'} />
+                <span className={Number(currentRatio) >= 2.0 ? 'font-bold text-amber-300' : ''}>
+                  {currentRatio}x baseline spike
                 </span>
-                <span className="text-slate-400">{Number(ratio) >= 1.6 ? 'High excitement' : 'Normal chatter'}</span>
               </div>
             </div>
 
-            {/* Card 2: Audio Loudness */}
-            <div className="bg-[#0E1118] border border-white/[0.06] rounded-2xl p-4 relative overflow-hidden">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
-                <span className="flex items-center gap-1.5">
-                  <Volume2 size={14} className="text-cyan-400" /> Peak Loudness
+            {/* Stat 2: Audio Volume Peak */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <Volume2 size={14} className="text-cyan-400" /> Audio Level
                 </span>
-                <span className="text-[10px] font-mono text-cyan-400">dBFS</span>
+                <span className="text-[10px] font-mono text-cyan-400/80">dBFS</span>
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-white font-mono">{audioDb}</span>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                  {audioDb !== null ? `${audioDb}` : '-45'}
+                </span>
                 <span className="text-xs text-slate-500 font-mono">dB</span>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
-                <span className={`px-1.5 py-0.2 rounded text-[10px] font-mono font-bold ${
-                  isAudioLoud ? 'bg-rose-500/20 text-rose-300 border border-rose-500/30' : 'bg-white/[0.04] text-slate-400'
-                }`}>
-                  {isAudioLoud ? 'SCREAM / ACTION' : 'NORMAL LEVEL'}
-                </span>
-                <span className="text-slate-500 text-[10px]">Gate: -15 dB</span>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                <span>Threshold: -15.0 dB</span>
               </div>
             </div>
 
-            {/* Card 3: Ring Buffer */}
-            <div className="bg-[#0E1118] border border-white/[0.06] rounded-2xl p-4 relative overflow-hidden">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
-                <span className="flex items-center gap-1.5">
+            {/* Stat 3: 4-Min Ring Buffer Health */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
                   <Layers size={14} className="text-emerald-400" /> Ring Buffer
                 </span>
-                <span className="text-[10px] font-mono text-emerald-400">TS Chunks</span>
+                <span className="text-[10px] font-mono text-emerald-400/80">.TS</span>
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-white font-mono">{chunksCount}</span>
-                <span className="text-xs text-slate-500 font-mono">/ 24 (~4m)</span>
+              <div className="flex items-baseline gap-2 mt-2">
+                <span className="text-2xl sm:text-3xl font-black text-white font-mono">
+                  {activeStreamer.chunks_count || 0}
+                </span>
+                <span className="text-xs text-slate-500 font-mono">/ 24 max</span>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1.5">
-                <CheckCircle2 size={12} className={chunksCount >= 5 ? 'text-emerald-400' : 'text-slate-500'} />
-                <span>{chunksCount >= 5 ? 'Ready for 75s slice' : 'Buffering segments...'}</span>
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
+                <CheckCircle2 size={12} className="text-emerald-400" />
+                <span>Ready for instant 75s slice</span>
               </div>
             </div>
 
-            {/* Card 4: Viral Triggers */}
-            <div className="bg-[#0E1118] border border-white/[0.06] rounded-2xl p-4 relative overflow-hidden">
-              <div className="flex items-center justify-between text-slate-400 text-xs font-bold">
-                <span className="flex items-center gap-1.5">
-                  <Flame size={14} className="text-rose-400" /> Hype Moments
+            {/* Stat 4: Total Moments Triggered */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 shadow-xl backdrop-blur-sm">
+              <div className="flex items-center justify-between text-slate-400 mb-1">
+                <span className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5">
+                  <Flame size={14} className="text-rose-400" /> Viral Moments
                 </span>
-                <span className="text-[10px] font-mono text-rose-400">Today</span>
+                <span className="text-[10px] font-mono text-rose-400/80">Session</span>
               </div>
-              <div className="mt-2 flex items-baseline gap-2">
+              <div className="flex items-baseline gap-2 mt-2">
                 <span className="text-2xl sm:text-3xl font-black text-white font-mono">{channelHypes.length}</span>
-                <span className="text-xs text-slate-500 font-mono">captured</span>
+                <span className="text-xs text-slate-500 font-mono">triggers</span>
               </div>
-              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-2">
+              <div className="mt-2 text-[11px] text-slate-400 flex items-center gap-1">
                 <span className="text-emerald-400 font-bold">
-                  {channelHypes.filter(h => h.status === 'passed' || h.status === 'force_passed').length} rendered
+                  {channelHypes.filter((h) => h.status === 'passed').length} passed
                 </span>
-                <span>•</span>
+                <span className="text-slate-600">·</span>
                 <span className="text-slate-500">
-                  {channelHypes.filter(h => h.status === 'rejected').length} filtered
+                  {channelHypes.filter((h) => h.status === 'rejected').length} rejected
                 </span>
               </div>
             </div>
           </div>
 
-          {/* 2 Real-Time Waveform Displays (Dual Grid) */}
+          {/* 4. Real-Time Telemetry Graphs (2-Column Grid) */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* Waveform A: Chat Velocity History */}
-            <div className="bg-[#0E1118] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-3">
+            {/* Graph A: Live Chat Velocity Spikes */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-5 shadow-xl backdrop-blur-sm space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Activity size={16} className="text-[#8FD3FF]" />
-                    <span>Live Chat Velocity Curve</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Rolling 60-datapoint sample (Messages Per Second)
-                  </p>
+                <div className="flex items-center gap-2">
+                  <MessageSquare size={16} className="text-indigo-400" />
+                  <h3 className="text-sm font-bold text-white">Chat Speed Waveform (MPS)</h3>
                 </div>
-                <span className="text-[10px] font-mono text-[#8FD3FF] bg-[#8FD3FF]/10 border border-[#8FD3FF]/20 px-2 py-0.5 rounded-full">
-                  Chat Spike Detector
+                <span className="text-[10px] font-mono text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full">
+                  Recent 5-10 Mins
                 </span>
               </div>
 
-              <TelemetryWaveform
-                data={mpsData.length > 0 ? mpsData : [0, 0]}
-                height={150}
-                strokeColor="#8FD3FF"
-                gradientFrom="rgba(143, 211, 255, 0.3)"
-                gradientTo="rgba(143, 211, 255, 0.0)"
-                unit="MPS"
-                minVal={0}
-                thresholdVal={baselineMps * 1.6}
-                thresholdColor="#F59E0B"
-                yLabels={['Historical (5m ago)', 'Latest']}
-              />
+              <div className="bg-slate-950/70 border border-white/5 rounded-xl p-3 pt-5">
+                <Sparkline
+                  data={mpsData.length > 0 ? mpsData : [0, 0]}
+                  height={130}
+                  color="#818CF8"
+                  fillColor="rgba(129, 140, 248, 0.12)"
+                />
+                <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 mt-2 pt-2 border-t border-white/5">
+                  <span>Oldest</span>
+                  <span className="text-indigo-300 font-bold">Latest: {currentMps} msg/sec</span>
+                  <span>Now</span>
+                </div>
+              </div>
             </div>
 
-            {/* Waveform B: Audio Peak & Screams */}
-            <div className="bg-[#0E1118] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-3">
+            {/* Graph B: Stream Audio Scream/Peak Level Waveform */}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-5 shadow-xl backdrop-blur-sm space-y-3">
               <div className="flex items-center justify-between">
-                <div>
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <Volume2 size={16} className="text-cyan-400" />
-                    <span>Stream Audio Peak Level (dBFS)</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
-                    Audio loudness telemetry normalized from -50 dBFS to 0 dBFS
-                  </p>
+                <div className="flex items-center gap-2">
+                  <Volume2 size={16} className="text-cyan-400" />
+                  <h3 className="text-sm font-bold text-white">Audio Loudness & Scream Peaks</h3>
                 </div>
                 <span className="text-[10px] font-mono text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 px-2 py-0.5 rounded-full">
-                  Scream Detection
+                  Dynamic Volume
                 </span>
               </div>
 
-              <TelemetryWaveform
-                data={audioData.length > 0 ? audioData : [-45, -45]}
-                height={150}
-                strokeColor="#22D3EE"
-                gradientFrom="rgba(34, 211, 238, 0.3)"
-                gradientTo="rgba(34, 211, 238, 0.0)"
-                unit="dBFS"
-                minVal={-50}
-                thresholdVal={-15}
-                thresholdColor="#EF4444"
-                yLabels={['-50 dBFS', '0 dBFS (Max)']}
-              />
+              <div className="bg-slate-950/70 border border-white/5 rounded-xl p-3 pt-5">
+                <Sparkline
+                  data={audioData.length > 0 ? audioData : [0, 0]}
+                  height={130}
+                  color="#22D3EE"
+                  fillColor="rgba(34, 211, 238, 0.12)"
+                />
+                <div className="flex justify-between items-center text-[10px] font-mono text-slate-500 mt-2 pt-2 border-t border-white/5">
+                  <span>-50 dBFS</span>
+                  <span className="text-cyan-300 font-bold">Peak: {audioDb} dBFS</span>
+                  <span>0 dBFS</span>
+                </div>
+              </div>
             </div>
           </div>
 
-          {/* Session Triggered Highlights Table */}
-          <div className="bg-[#0E1118] border border-white/[0.08] rounded-2xl p-5 shadow-xl space-y-3">
+          {/* 5. Trigger History Table for Active Streamer */}
+          <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-5 shadow-xl backdrop-blur-sm space-y-3">
             <div className="flex items-center justify-between">
-              <div>
-                <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                  <Flame size={16} className="text-amber-400" />
-                  <span>Session Hype Candidates &amp; Decisions</span>
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
-                  Moments captured by chat spikes, keyword triggers, or audio screams for @{activeStreamer.channel_id}
-                </p>
+              <div className="flex items-center gap-2">
+                <Flame size={16} className="text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Session Triggered Moments & Decisions</h3>
               </div>
-              <span className="text-xs font-mono text-slate-400">
-                {channelHypes.length} events logged
-              </span>
+              <span className="text-xs text-slate-400">@{activeStreamer.channel_id}</span>
             </div>
 
             {channelHypes.length === 0 ? (
-              <div className="py-10 text-center text-xs text-slate-500 font-mono border border-dashed border-white/[0.06] rounded-xl">
-                No trigger events recorded for this session yet. Waiting for chat acceleration or volume spike...
+              <div className="py-8 text-center text-xs text-slate-500 font-mono">
+                No spike triggers recorded yet for this session. Listening to live chat...
               </div>
             ) : (
-              <div className="overflow-x-auto border border-white/[0.06] rounded-xl">
+              <div className="overflow-x-auto">
                 <table className="w-full text-left text-xs">
                   <thead>
-                    <tr className="bg-[#12151E] text-slate-400 text-[10px] uppercase font-bold border-b border-white/[0.06]">
-                      <th className="py-2.5 px-3">Timestamp</th>
+                    <tr className="border-b border-white/10 text-slate-400 text-[10px] uppercase font-bold">
+                      <th className="py-2.5 px-3">Time</th>
                       <th className="py-2.5 px-3">Trigger Type</th>
                       <th className="py-2.5 px-3">Velocity / Peak</th>
-                      <th className="py-2.5 px-3">Gemini AI Score</th>
-                      <th className="py-2.5 px-3">Pipeline Decision</th>
-                      <th className="py-2.5 px-3">Context / Transcript</th>
+                      <th className="py-2.5 px-3">AI Score</th>
+                      <th className="py-2.5 px-3">Status</th>
+                      <th className="py-2.5 px-3">Transcript Snippet</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-white/[0.04] font-mono">
-                    {channelHypes.slice(0, 15).map((h) => {
-                      const isPassed = h.status === 'passed' || h.status === 'force_passed';
-                      return (
-                        <tr key={h.id} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
-                            {h.created_at ? new Date(h.created_at).toLocaleTimeString() : 'Just now'}
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/[0.05] border border-white/10 text-slate-200">
-                              {h.trigger_type || 'chat_spike'}
-                            </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-white font-bold whitespace-nowrap">
-                            {h.trigger_value ? `${h.trigger_value} MPS` : '--'}
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
-                            {h.virality_score != null ? (
-                              <span
-                                className={`font-bold ${
-                                  h.virality_score >= (h.threshold_value || 65)
-                                    ? 'text-emerald-400'
-                                    : 'text-amber-400'
-                                }`}
-                              >
-                                {h.virality_score}/100
-                              </span>
-                            ) : (
-                              <span className="text-slate-600">--</span>
-                            )}
-                          </td>
-                          <td className="py-2.5 px-3 whitespace-nowrap">
+                  <tbody className="divide-y divide-white/5 font-mono">
+                    {channelHypes.slice(0, 10).map((h) => (
+                      <tr key={h.id} className="hover:bg-white/[0.02] transition-colors">
+                        <td className="py-2.5 px-3 text-slate-400 whitespace-nowrap">
+                          {h.created_at ? new Date(h.created_at).toLocaleTimeString() : 'Just now'}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/5 border border-white/10 text-slate-300">
+                            {h.trigger_type || 'chat_spike'}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-white font-bold whitespace-nowrap">
+                          {h.trigger_value ? `${h.trigger_value} MPS` : '--'}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          {h.virality_score != null ? (
                             <span
-                              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                isPassed
-                                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
-                                  : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+                              className={`font-bold ${
+                                h.virality_score >= (h.threshold_value || 65)
+                                  ? 'text-emerald-400'
+                                  : 'text-amber-400'
                               }`}
                             >
-                              {h.status?.toUpperCase()}
+                              {h.virality_score}/100
                             </span>
-                          </td>
-                          <td className="py-2.5 px-3 text-slate-400 font-sans truncate max-w-[280px]">
-                            {h.transcript_text || h.rejection_reason || 'Evaluating audio...'}
-                          </td>
-                        </tr>
-                      );
-                    })}
+                          ) : (
+                            <span className="text-slate-600">--</span>
+                          )}
+                        </td>
+                        <td className="py-2.5 px-3 whitespace-nowrap">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              h.status === 'passed'
+                                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30'
+                                : h.status === 'force_passed'
+                                ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/30'
+                                : 'bg-rose-500/20 text-rose-300 border border-rose-500/30'
+                            }`}
+                          >
+                            {h.status?.toUpperCase()}
+                          </span>
+                        </td>
+                        <td className="py-2.5 px-3 text-slate-400 font-sans truncate max-w-[260px]">
+                          {h.transcript_text || h.rejection_reason || 'Evaluating audio...'}
+                        </td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -597,10 +468,11 @@ export default function StreamerTelemetryHub() {
           </div>
         </div>
       ) : (
-        <div className="py-16 text-center text-slate-500 text-sm border border-dashed border-white/10 rounded-2xl">
-          Select a channel above to inspect live telemetry.
+        <div className="p-12 text-center text-slate-500 text-sm">
+          Select a streamer above to inspect live waveform telemetry.
         </div>
       )}
     </div>
   );
 }
+
