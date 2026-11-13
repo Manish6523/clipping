@@ -104,7 +104,12 @@ def list_styles() -> List[Dict[str, Any]]:
 
 
 def apply_caption_style(template: Dict[str, Any], style_id: Optional[str]) -> Dict[str, Any]:
-    """A copy of ``template`` whose captions use ``style_id`` (position stays the template's)."""
+    """A copy of ``template`` whose captions use ``style_id`` (position stays the template's).
+
+    No style / "template" -> the template's own default caption style ("caption_style" key), if any.
+    """
+    if not style_id or style_id not in STYLES:
+        style_id = template.get("caption_style")
     if not style_id or style_id not in STYLES:
         return template
     t = copy.deepcopy(template)
@@ -116,6 +121,18 @@ def apply_caption_style(template: Dict[str, Any], style_id: Optional[str]) -> Di
     sub["font_weight"] = "900"
     sub["caption_style"] = style_id
     t[key] = sub
+    return t
+
+
+def apply_styles(template: Dict[str, Any], caption_style: Optional[str] = None,
+                 hook_style: Optional[str] = None) -> Dict[str, Any]:
+    """Caption + hook style for a clip: per-clip choice, else the template's defaults."""
+    from src.compositor.hook_styles import valid as hook_valid
+    t = apply_caption_style(template, caption_style)
+    hs = hook_style if hook_valid(hook_style) else template.get("hook_style")
+    if hook_valid(hs) and t.get("hook_style") != hs:
+        t = dict(t)
+        t["hook_style"] = hs
     return t
 
 

@@ -624,12 +624,14 @@ async def auto_edit_clip(
         time_offset=0.0, max_duration=out_dur, censor_cfg=censor_cfg,
     )
     hook_used = bool(cfg.get("hook_card") and hook_text and hook_text.strip())
+    hook_style = template.get("hook_style") or "classic"
     if hook_used:
         from src.compositor.profanity import censor_text
-        add_hook_card(
-            ass_path, censor_text(hook_text, censor_cfg) if censor_cfg else hook_text,
-            font=sub_cfg.get("font_name") or sub_cfg.get("font") or "Montserrat ExtraBold",
+        from src.compositor.hook_styles import render_hook_card
+        hook_used = render_hook_card(
+            ass_path, censor_text(hook_text, censor_cfg) if censor_cfg else hook_text, hook_style,
             caption_y=float((sub_cfg.get("position") or {}).get("y", 0.76)),
+            font_override=sub_cfg.get("font_name") or sub_cfg.get("font"),
         )
 
     energy = await audio_energy(base)
@@ -650,6 +652,7 @@ async def auto_edit_clip(
         "zoom_times": list(punches),
         "zoom_target": "face" if center else "centre",
         "hook_card": hook_used,
+        "hook_style": hook_style if hook_used else None,
         "sfx": bool(cfg.get("sfx")),
     }
     logger.info("Auto-edited %s: %s", tag, summary)

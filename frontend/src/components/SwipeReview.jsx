@@ -3,9 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Check, Scissors, Zap, Undo2, Volume2, VolumeX, Pencil, LayoutList, PartyPopper, Loader2,
-  Maximize, LayoutTemplate, Type,
+  Maximize, LayoutTemplate, Type, Heading,
 } from 'lucide-react';
 import CaptionStylePicker from './CaptionStylePicker';
+import HookStylePicker from './HookStylePicker';
 import { styleById } from '../lib/captionStyles';
 import axios from 'axios';
 import { getClips, queueClip, discardClip, postClipNow, updateClip } from '../api';
@@ -217,6 +218,8 @@ export default function SwipeReview({ onSwitchClassic }) {
   const [templateSheet, setTemplateSheet] = useState(false);
   const [captionSheet, setCaptionSheet] = useState(false);
   const [captionPick, setCaptionPick] = useState('template');
+  const [hookSheet, setHookSheet] = useState(false);
+  const [hookPick, setHookPick] = useState('template');
   const [templates, setTemplates] = useState(null);
 
   const clips = useMemo(
@@ -377,6 +380,40 @@ export default function SwipeReview({ onSwitchClassic }) {
     setCaptionSheet(true);
   };
 
+  const isAutoEdited = (clip) => {
+    try {
+      const f = typeof clip?.flags === 'string' ? JSON.parse(clip.flags) : clip?.flags;
+      return Array.isArray(f) && f.some((x) => x?.type === 'auto_edited');
+    } catch {
+      return false;
+    }
+  };
+
+  const openHook = async () => {
+    if (!top) return;
+    if (!templates) {
+      axios.get('/api/templates').then((r) => setTemplates(Array.isArray(r.data) ? r.data : [])).catch(() => setTemplates([]));
+    }
+    setHookPick(top.hook_style || 'template');
+    setHookSheet(true);
+  };
+
+  const applyHookStyle = async (clip, style) => {
+    setHookSheet(false);
+    if (!clip || applying[clip.id]) return;
+    setApplying((a) => ({ ...a, [clip.id]: 'new hook card' }));
+    try {
+      const res = await axios.post(`/api/clips/${clip.id}/hook-style`, { style }, { timeout: 600000 });
+      setVideoOverrides((v) => ({ ...v, [clip.id]: res.data.video_url }));
+      flash(`Clip #${clip.id} hook card updated`, 'ok');
+      queryClient.invalidateQueries({ queryKey: ['clips'] });
+    } catch (e) {
+      flash(`Hook change failed: ${e.response?.data?.error?.message || e.response?.data?.error || e.message}`, 'error');
+    } finally {
+      setApplying((a) => { const n = { ...a }; delete n[clip.id]; return n; });
+    }
+  };
+
   const applyCaptionStyle = async (clip, style) => {
     setCaptionSheet(false);
     if (!clip || applying[clip.id]) return;
@@ -485,36 +522,43 @@ export default function SwipeReview({ onSwitchClassic }) {
       )}
 
       {/* Action buttons */}
-      <div className="shrink-0 flex items-center justify-center gap-4 py-3">
+      <div className="shrink-0 flex items-center justify-center gap-2 sm:gap-4 py-3">
         <button type="button" disabled={!top} onClick={() => top && startAction('reject', top)}
-          className="w-14 h-14 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Reject">
-          <X size={26} />
+          <X size={24} />
         </button>
         <button type="button" disabled={!top} onClick={() => top && goEdit(top)}
-          className="w-11 h-11 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Edit">
           <Scissors size={18} />
         </button>
         <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openTemplates}
-          className="w-11 h-11 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/40 text-fuchsia-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/40 text-fuchsia-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Change template">
           <LayoutTemplate size={18} />
         </button>
         <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openCaptions}
-          className="w-11 h-11 rounded-full bg-pink-500/15 border border-pink-500/40 text-pink-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-pink-500/15 border border-pink-500/40 text-pink-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Change caption style">
           <Type size={18} />
         </button>
+        {top && isAutoEdited(top) && (
+          <button type="button" disabled={!!applying[top.id]} onClick={openHook}
+            className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+            aria-label="Change hook card style">
+            <Heading size={18} />
+          </button>
+        )}
         <button type="button" disabled={!top || busy} onClick={() => top && postNow(top)}
-          className="w-11 h-11 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Post now">
           {busy ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
         </button>
         <button type="button" disabled={!top} onClick={() => top && startAction('queue', top)}
-          className="w-14 h-14 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Approve and queue">
-          <Check size={26} />
+          <Check size={24} />
         </button>
       </div>
 
@@ -567,6 +611,28 @@ export default function SwipeReview({ onSwitchClassic }) {
               onClick={() => applyCaptionStyle(top, captionPick)}
               className="mt-3 w-full h-11 rounded-xl bg-pink-600 text-white text-sm font-bold disabled:opacity-40">
               {captionPick === (top.caption_style || 'template') ? 'Current style' : `Apply ${styleById(captionPick).label}`}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {hookSheet && top && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setHookSheet(false)}>
+          <div
+            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
+            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
+            <p className="text-sm font-bold text-white mb-1">Hook title card</p>
+            <p className="text-[11px] text-slate-400 mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered; captions, cut and bleeps stay the same.</p>
+            <HookStylePicker value={hookPick} onChange={setHookPick} compact
+              templateDefault={(templates || []).find((t) => t.name === top.template_name)?.hook_style || 'classic'} />
+            <button type="button"
+              disabled={hookPick === (top.hook_style || 'template')}
+              onClick={() => applyHookStyle(top, hookPick)}
+              className="mt-3 w-full h-11 rounded-xl bg-amber-500 text-black text-sm font-bold disabled:opacity-40">
+              {hookPick === (top.hook_style || 'template') ? 'Current style' : 'Apply hook style'}
             </button>
           </div>
         </div>

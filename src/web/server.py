@@ -967,6 +967,9 @@ class WebUIServer:
         from src.compositor.caption_styles import STYLES as CAPTION_STYLES
         if data.get("caption_style") in CAPTION_STYLES:
             options["caption_style"] = data["caption_style"]
+        from src.compositor.hook_styles import HOOK_STYLES
+        if data.get("hook_style") in HOOK_STYLES:
+            options["hook_style"] = data["hook_style"]
 
         # Auto edit (Quick Clip only): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
         ae = data.get("auto_edit")

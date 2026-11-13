@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import CaptionStylePicker from './CaptionStylePicker';
+import HookStylePicker from './HookStylePicker';
 import { 
   Palette, 
   Save, 
@@ -73,6 +75,9 @@ export default function TemplateStudio() {
   const [captionPositionY, setCaptionPositionY] = useState(76);
   const [uppercase, setUppercase] = useState(true);
   const [showAdvancedTypography, setShowAdvancedTypography] = useState(false);
+  const [showStyleDefaults, setShowStyleDefaults] = useState(false);
+  const [defaultCaptionStyle, setDefaultCaptionStyle] = useState('template'); // 'template' = typography below
+  const [defaultHookStyle, setDefaultHookStyle] = useState('classic');
 
   // Direct channel assignment
   const [assigningStreamer, setAssigningStreamer] = useState('');
@@ -182,6 +187,8 @@ export default function TemplateStudio() {
         setCaptionPositionY(Math.round(target.subtitles.position.y * 100));
       }
     }
+    setDefaultCaptionStyle(target.caption_style || 'template');
+    setDefaultHookStyle(target.hook_style || 'classic');
     setIsDirty(false);
     showToast(`Loaded "${target.name}"`);
   };
@@ -203,6 +210,8 @@ export default function TemplateStudio() {
       setTemplateName(name.trim().toLowerCase().replace(/\s+/g, '_'));
       setDescription('Custom template');
       setLayoutState(PRESET_STARTERS.facecam_top_gameplay_bottom);
+      setDefaultCaptionStyle('template');
+      setDefaultHookStyle('classic');
       setIsDirty(true);
       showToast('Created new template draft');
     }
@@ -242,6 +251,9 @@ export default function TemplateStudio() {
       },
       color_grade: { contrast: 1.03, saturation: 1.05 },
       pacing: { speed_multiplier: 1.02, teaser_preroll: true },
+      // Defaults for clips made with this template (Quick Clip / swipe can override per clip)
+      caption_style: defaultCaptionStyle !== 'template' ? defaultCaptionStyle : undefined,
+      hook_style: defaultHookStyle,
     };
   };
 
@@ -310,6 +322,8 @@ export default function TemplateStudio() {
           setLayoutState(imported.layout);
         }
 
+        if (imported.caption_style) setDefaultCaptionStyle(imported.caption_style);
+        if (imported.hook_style) setDefaultHookStyle(imported.hook_style);
         if (imported.subtitles) {
           if (imported.subtitles.font_name) setFontFamily(imported.subtitles.font_name);
           if (imported.subtitles.font_size) setFontSize(imported.subtitles.font_size);
@@ -980,6 +994,15 @@ export default function TemplateStudio() {
             <Sliders size={11} /> Advanced
           </button>
 
+          <button
+            type="button"
+            onClick={() => setShowStyleDefaults(true)}
+            className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-bold border transition-all shrink-0 bg-pink-500/10 border-pink-400/40 text-pink-200"
+            title="Default caption style and hook title card for clips made with this template"
+          >
+            <Sparkles size={11} /> Styles
+          </button>
+
           {/* Background Mode Toggle: Solid Black vs Blurred 9:16 */}
           <button
             type="button"
@@ -1057,6 +1080,32 @@ export default function TemplateStudio() {
       )}
 
       {/* Advanced Typography Settings Modal */}
+      {showStyleDefaults && (
+        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-4" onClick={() => setShowStyleDefaults(false)}>
+          <div className="bg-[#0E1118] border border-white/[0.15] rounded-t-2xl sm:rounded-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-4 sm:p-5 flex flex-col gap-4 shadow-2xl"
+            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }} onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between pb-3 border-b border-white/10">
+              <div className="flex items-center gap-2">
+                <Sparkles size={16} className="text-pink-300" />
+                <h3 className="text-sm font-bold text-white">Template styles</h3>
+              </div>
+              <button type="button" onClick={() => setShowStyleDefaults(false)} className="text-slate-400 hover:text-white text-xs font-bold">Done</button>
+            </div>
+            <p className="text-[11px] text-slate-400 -mt-2">Every clip made with <b className="text-slate-200">{templateName}</b> uses these unless you pick something else in Quick Clip or swipe review. Remember to save the template.</p>
+            <div>
+              <p className="text-xs font-bold text-slate-200 mb-2">Caption style</p>
+              <CaptionStylePicker value={defaultCaptionStyle} onChange={(v) => { setDefaultCaptionStyle(v); setIsDirty(true); }} compact
+                captionY={captionPositionY / 100} />
+              <p className="text-[10px] text-slate-500 mt-1">"Template default" keeps the font, size and colours set in this studio.</p>
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-200 mb-2">Hook title card (auto edit)</p>
+              <HookStylePicker value={defaultHookStyle} onChange={(v) => { setDefaultHookStyle(v); setIsDirty(true); }} compact allowTemplate={false} />
+            </div>
+          </div>
+        </div>
+      )}
+
       {showAdvancedTypography && (
         <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-[#0E1118] border border-white/[0.15] rounded-2xl max-w-md w-full p-5 flex flex-col gap-4 shadow-2xl animate-in zoom-in-95">

@@ -32,6 +32,7 @@ export function CaptionLine({ style, words, active, height, animKey }) {
       ? `0 0 ${6 * k * 3}px ${style.glow}, 0 0 ${14 * k * 3}px ${style.glow}`
       : style.shadow ? `${style.shadow * k * 1.5}px ${style.shadow * k * 1.5}px 0 rgba(0,0,0,.85)` : undefined,
     fontWeight: 400,
+    textRendering: 'geometricPrecision',
   };
   const anim = style.anim === 'pop' ? 'ac-cap-pop 220ms ease-out' : style.anim === 'bounce' ? 'ac-cap-bounce 260ms ease-out'
     : style.anim === 'fade' ? 'ac-cap-fade 200ms ease-out' : undefined;
@@ -90,29 +91,30 @@ export function CaptionPreview({ styleId, height = 300, background, captionY = 0
 }
 
 /** Style chooser: big live preview + scrollable chips, each with its own mini preview. */
-export default function CaptionStylePicker({ value, onChange, background, captionY, compact = false }) {
+export default function CaptionStylePicker({ value, onChange, background, captionY, compact = false, templateDefault, allowTemplate = true }) {
+  const resolve = (id) => (id === 'template' && templateDefault && templateDefault !== 'template' ? templateDefault : id);
   const current = styleById(value);
   return (
     <div className="space-y-3">
       <div className="flex gap-3 items-center">
-        <CaptionPreview styleId={value} height={compact ? 220 : 260} background={background} captionY={captionY} />
+        <CaptionPreview styleId={resolve(value)} height={compact ? 220 : 260} background={background} captionY={captionY} />
         <div className="min-w-0 space-y-1">
           <div className="flex items-center gap-1.5 text-xs font-bold text-white"><Type size={14} className="text-pink-300" /> {current.label}</div>
-          <p className="text-[11px] text-slate-400 leading-snug">{current.hint}</p>
+          <p className="text-[11px] text-slate-400 leading-snug">{value === 'template' && templateDefault && templateDefault !== 'template' ? `Uses the template's style (${styleById(templateDefault).label})` : current.hint}</p>
           <p className="text-[10px] text-slate-500 leading-snug">Live preview. The video uses the same fonts and colours.</p>
         </div>
       </div>
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x" role="radiogroup" aria-label="Caption style">
-        {CAPTION_STYLES.map((s) => {
+        {CAPTION_STYLES.filter((s) => allowTemplate || s.id !== 'template').map((s) => {
           const on = s.id === value;
           return (
             <button key={s.id} type="button" role="radio" aria-checked={on} onClick={() => onChange(s.id)}
               className={`snap-start shrink-0 rounded-xl border p-1 text-left transition ${on ? 'border-pink-400 bg-pink-500/10' : 'border-white/10 active:bg-white/[0.05]'}`}>
               <div className="relative">
-                <CaptionPreview styleId={s.id} height={124} playing={false} background={background} captionY={0.55} textScale={2.1} />
+                <CaptionPreview styleId={resolve(s.id)} height={124} playing={false} background={background} captionY={0.55} textScale={2.1} />
                 {on && <span className="absolute top-1 right-1 w-5 h-5 rounded-full bg-pink-500 text-white flex items-center justify-center"><Check size={12} /></span>}
               </div>
-              <span className="block text-[10px] font-bold text-slate-200 truncate mt-1 w-[70px]">{s.label}</span>
+              <span className="block text-[10px] font-bold text-slate-200 truncate mt-1 w-[70px]">{allowTemplate ? s.label : (s.id === 'template' ? 'Studio typography' : s.label)}</span>
             </button>
           );
         })}

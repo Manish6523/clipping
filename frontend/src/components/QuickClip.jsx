@@ -6,6 +6,8 @@ import { clipManual } from '../api';
 import YouTubeRangePicker, { youtubeId, youtubeStartParam } from './YouTubeRangePicker';
 import AutoEditOptions, { loadAutoEdit, autoEditPayload } from './AutoEditOptions';
 import CaptionStylePicker from './CaptionStylePicker';
+import HookStylePicker from './HookStylePicker';
+import { loadHookStyle, saveHookStyle } from '../lib/hookStyles';
 import { loadCaptionStyle, saveCaptionStyle } from '../lib/captionStyles';
 
 // Shared text from other apps often looks like "Check this out https://youtu.be/xyz"
@@ -50,6 +52,7 @@ const TIMEOUT_MS = 20 * 60 * 1000;
 export default function QuickClip() {
   const [url, setUrl] = useState('');
   const [templates, setTemplates] = useState([]);
+  const [templateDefaults, setTemplateDefaults] = useState({}); // name -> {caption_style, hook_style}
   const [template, setTemplate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -64,6 +67,8 @@ export default function QuickClip() {
   const [autoEdit, setAutoEdit] = useState(loadAutoEdit);
   const [captionStyle, setCaptionStyle] = useState(loadCaptionStyle);
   const pickCaptionStyle = (id) => { setCaptionStyle(id); saveCaptionStyle(id); };
+  const [hookStyle, setHookStyle] = useState(loadHookStyle);
+  const pickHookStyle = (id) => { setHookStyle(id); saveHookStyle(id); };
 
   // Android share sheet / PWA share_target: /quickclip?url=…&text=…&title=…
   useEffect(() => {
@@ -79,8 +84,10 @@ export default function QuickClip() {
   useEffect(() => {
     axios.get('/api/templates')
       .then((res) => {
-        const list = (Array.isArray(res.data) ? res.data : []).map((t) => t.name).filter(Boolean);
+        const raw = Array.isArray(res.data) ? res.data : [];
+        const list = raw.map((t) => t.name).filter(Boolean);
         setTemplates(list);
+        setTemplateDefaults(Object.fromEntries(raw.filter((t) => t.name).map((t) => [t.name, { caption_style: t.caption_style, hook_style: t.hook_style }])));
         setTemplate((cur) => cur || list[0] || '');
       })
       .catch(() => setTemplates([]));
@@ -146,6 +153,7 @@ export default function QuickClip() {
         time_range: hasRange ? `${start}-${end}` : null,
         auto_edit: autoEditPayload(autoEdit),
         caption_style: captionStyle === 'template' ? undefined : captionStyle,
+        hook_style: autoEdit.enabled && hookStyle !== 'template' ? hookStyle : undefined,
         ...(!hasRange ? (() => {
           const len = LENGTHS.find((l) => l.id === lengthId) || LENGTHS[0];
           return { max_clips: maxClips, min_len: len.min, max_len: len.max, focus: focus.trim() || undefined };
@@ -313,10 +321,18 @@ export default function QuickClip() {
 
           <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
             <p className="text-xs font-bold text-slate-200 mb-2">Caption style</p>
-            <CaptionStylePicker value={captionStyle} onChange={pickCaptionStyle} />
+            <CaptionStylePicker value={captionStyle} onChange={pickCaptionStyle} templateDefault={templateDefaults[template]?.caption_style} />
           </div>
 
           <AutoEditOptions value={autoEdit} onChange={setAutoEdit} />
+
+          {autoEdit.enabled && autoEditPayload(autoEdit)?.hook_card !== false && (
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <p className="text-xs font-bold text-slate-200 mb-2">Hook title card style</p>
+              <HookStylePicker value={hookStyle} onChange={pickHookStyle}
+                templateDefault={templateDefaults[template]?.hook_style || 'classic'} />
+            </div>
+          )}
 
           <button
             type="submit"

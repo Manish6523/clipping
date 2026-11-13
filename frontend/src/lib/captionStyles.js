@@ -29,3 +29,17 @@ export function loadCaptionStyle() {
 export function saveCaptionStyle(id) {
   try { localStorage.setItem(STORE_KEY, id); } catch { /* private mode */ }
 }
+
+/** Font name used by the renderer -> the @font-face family loaded from /fonts. */
+export const FONT_FAMILY = {
+  'Montserrat Black': "'AC Montserrat Black'",
+  'Montserrat ExtraBold': "'AC Montserrat XB'",
+  Anton: "'AC Anton'",
+  Bangers: "'AC Bangers'",
+  'Bebas Neue': "'AC Bebas Neue'",
+  Inter: "'AC Inter'",
+  'Poppins ExtraBold': "'AC Poppins XB'",
+  'Russo One': "'AC Russo One'",
+  'Luckiest Guy': "'AC Luckiest Guy'",
+  'Permanent Marker': "'AC Permanent Marker'",
+};

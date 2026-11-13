@@ -110,9 +110,8 @@ class ClipTrimmer:
 
         template_name = clip.get("template_name", "ishowspeed_gaming")
         template = custom_template if custom_template else load_template(template_name)
-        if clip.get("caption_style"):
-            from src.compositor.caption_styles import apply_caption_style
-            template = apply_caption_style(template, clip["caption_style"])
+        from src.compositor.caption_styles import apply_styles
+        template = apply_styles(template, clip.get("caption_style"), clip.get("hook_style"))
 
         start_time = clip["adjusted_start"]
         end_time = clip["adjusted_end"]

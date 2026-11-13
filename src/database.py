@@ -802,6 +802,20 @@ async def set_clip_caption_style(clip_id: int, style: Optional[str]) -> None:
         await db.commit()
 
 
+async def set_clip_styles(clip_id: int, caption_style: Optional[str] = None, hook_style: Optional[str] = None) -> None:
+    """Per-clip style overrides (None = use the template's defaults)."""
+    async with get_db_connection() as db:
+        await db.execute("UPDATE clips SET caption_style = ?, hook_style = ? WHERE id = ?",
+                         (caption_style, hook_style, clip_id))
+        await db.commit()
+
+
+async def set_clip_hook_style(clip_id: int, style: Optional[str]) -> None:
+    async with get_db_connection() as db:
+        await db.execute("UPDATE clips SET hook_style = ? WHERE id = ?", (style, clip_id))
+        await db.commit()
+
+
 async def get_system_setting(key: str, default: Optional[str] = None) -> Optional[str]:
     """Retrieve dynamic system setting from database with fallback to default."""
     async with get_db_connection() as db:

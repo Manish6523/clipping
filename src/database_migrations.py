@@ -678,6 +678,14 @@ async def migration_v20(db):
     await db.commit()
 
 
+@migration(21, "hook_style per clip")
+async def migration_v21(db):
+    cur = await db.execute("PRAGMA table_info(clips)")
+    if "hook_style" not in {r[1] for r in await cur.fetchall()}:
+        await db.execute("ALTER TABLE clips ADD COLUMN hook_style TEXT")
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

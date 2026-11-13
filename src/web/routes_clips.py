@@ -149,7 +149,7 @@ async def get_clips_list(request: web.Request) -> web.Response:
     cursor = request.query.get("cursor")
 
     query = """
-        SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name, c.caption_style,
+        SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name, c.caption_style, c.hook_style,
                c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end, c.score_breakdown, c.render_version,
                c.status, c.thumbnail_path, c.source_video_path, c.rendered_video_path, c.created_at,
                c.ai_start, c.ai_end, c.flags,
@@ -362,27 +362,53 @@ async def list_caption_styles(request: web.Request) -> web.Response:
     return web.json_response({"styles": list_styles()})
 
 
-async def caption_style_clip(request: web.Request) -> web.Response:
-    """Re-render a clip with another caption style (same layout, words, bleeps and trims)."""
-    from src.compositor.caption_styles import DEFAULT_STYLE, valid
-    from src.database import set_clip_caption_style
+async def list_hook_styles(request: web.Request) -> web.Response:
+    """Full specs, so the dashboard preview draws exactly what the renderer will."""
+    from src.compositor.hook_styles import HOOK_STYLES
+    return web.json_response({"styles": [{"id": k, **v} for k, v in HOOK_STYLES.items()]})
+
+
+def _is_auto_edited(clip: Dict[str, Any]) -> bool:
+    try:
+        flags = json.loads(clip.get("flags") or "[]")
+    except (TypeError, ValueError):
+        return False
+    return any(isinstance(f, dict) and f.get("type") == "auto_edited" for f in (flags if isinstance(flags, list) else []))
+
+
+async def _restyle(request: web.Request, kind: str) -> web.Response:
+    """Re-render a clip with another caption or hook style (same layout, words, bleeps and trims)."""
+    from src.compositor import caption_styles, hook_styles
     clip_id = int(request.match_info["id"])
     try:
         data = await request.json()
     except Exception:
         return make_json_error("INVALID_JSON", "Body must be JSON")
     style = str(data.get("style") or "")
-    if not valid(style):
-        return make_json_error("BAD_STYLE", f"Unknown caption style '{style}'")
+    ok = caption_styles.valid(style) if kind == "caption" else (hook_styles.valid(style) or style == "template")
+    if not ok:
+        return make_json_error("BAD_STYLE", f"Unknown {kind} style '{style}'")
     clip = await get_clip(clip_id)
     if not clip:
         return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    if kind == "hook" and not _is_auto_edited(clip):
+        return make_json_error("NO_HOOK_CARD", "This clip has no hook card - hook cards are added by Quick Clip's auto edit.",
+                               status=409)
     svp = clip.get("source_video_path")
     if not svp or not Path(svp).exists():
-        return make_json_error("SOURCE_MISSING", "The source footage of this clip was deleted, so it can't be re-rendered.", status=409)
+        return make_json_error("SOURCE_MISSING", "The source footage of this clip was deleted, so it can't be re-rendered.",
+                               status=409)
 
-    previous = clip.get("caption_style")
-    await set_clip_caption_style(clip_id, None if style == DEFAULT_STYLE else style)
+    column = "caption_style" if kind == "caption" else "hook_style"
+    previous = clip.get(column)
+    value = None if style in ("template", caption_styles.DEFAULT_STYLE) else style
+
+    async def store(v):
+        async with get_db_connection() as db:
+            await db.execute(f"UPDATE clips SET {column} = ? WHERE id = ?", (v, clip_id))
+            await db.commit()
+
+    await store(value)
     edl = await get_clip_edl(clip_id)
     from src.bot.trimmer import ClipTrimmer
     try:
@@ -391,15 +417,23 @@ async def caption_style_clip(request: web.Request) -> web.Response:
             words_override=(edl or {}).get("words") or None,
         )
     except Exception as e:
-        await set_clip_caption_style(clip_id, previous)
-        logger.error("Caption restyle of clip %d failed: %s", clip_id, e, exc_info=True)
+        await store(previous)
+        logger.error("%s restyle of clip %d failed: %s", kind, clip_id, e, exc_info=True)
         return make_json_error("RENDER_FAILED", f"Render failed: {str(e)[:200]}", status=500)
     if not updated:
-        await set_clip_caption_style(clip_id, previous)
+        await store(previous)
         return make_json_error("RENDER_FAILED", "Source video for this clip is missing", status=409)
     v = updated.get("render_version") or 1
-    return web.json_response({"success": True, "clip_id": clip_id, "caption_style": style,
+    return web.json_response({"success": True, "clip_id": clip_id, f"{kind}_style": style,
                               "video_url": f"/api/clips/{clip_id}/video?v={v}"})
+
+
+async def caption_style_clip(request: web.Request) -> web.Response:
+    return await _restyle(request, "caption")
+
+
+async def hook_style_clip(request: web.Request) -> web.Response:
+    return await _restyle(request, "hook")
 
 
 async def get_clip_words(request: web.Request) -> web.Response:
@@ -696,6 +730,8 @@ def register_clips_routes(app: web.Application):
     app.router.add_post("/api/clips/{id}/retemplate", retemplate_clip)
     app.router.add_post("/api/clips/{id}/caption-style", caption_style_clip)
     app.router.add_get("/api/caption-styles", list_caption_styles)
+    app.router.add_post("/api/clips/{id}/hook-style", hook_style_clip)
+    app.router.add_get("/api/hook-styles", list_hook_styles)
     app.router.add_get("/api/clips/{id}/words", get_clip_words)
     app.router.add_get("/api/clips/{id}/waveform", get_clip_waveform)
     app.router.add_get("/api/clips/{id}/source-info", get_clip_source_info)
