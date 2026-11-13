@@ -499,7 +499,6 @@ class LiveStreamWatcher:
                     "timestamp": timestamp_id,
                 }
                 asyncio.create_task(self.on_viral_moment_detected(str(target_mp4), metadata))
-                asyncio.create_task(self.on_viral_moment_detected(str(target_mp4), metadata))
         else:
             err_msg = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else 'Unknown FFmpeg error'
             logger.error("FFmpeg concat failed for %s (exit code %d): %s", self.channel_id, proc.returncode, err_msg)

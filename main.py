@@ -375,6 +375,10 @@ class AutoClipEngine:
             logger.info("⏳ Processing pipeline is busy. Queueing live moment for %s...", channel_id)
 
         async with self._clip_semaphore:
+            if not Path(video_path).exists():
+                logger.warning("Live highlight file no longer exists (skipped or already cleaned): %s", video_path)
+                return
+
             logger.info("Processing live highlight for creator '%s': %s", channel_id, video_path)
 
             update_pipeline_progress(
