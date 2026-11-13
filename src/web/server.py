@@ -167,6 +167,10 @@ class WebUIServer:
         self.app.router.add_get("/api/settings", self.handle_get_settings)
         self.app.router.add_post("/api/settings", self.handle_save_settings)
         self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
+        self.app.router.add_get("/api/settings/youtube-downloads", self.handle_ytdlp_status)
+        self.app.router.add_post("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_upload)
+        self.app.router.add_delete("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_delete)
+        self.app.router.add_post("/api/settings/youtube-downloads/test", self.handle_ytdlp_test)
         self.app.router.add_get("/api/censor/sfx", self.handle_list_censor_sfx)
         self.app.router.add_post("/api/censor/sfx", self.handle_upload_censor_sfx)
         self.app.router.add_get("/api/censor/sfx/{name}", self.handle_get_censor_sfx)
@@ -1069,6 +1073,63 @@ class WebUIServer:
             s.WHISPER_MODEL = whisper_model
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
+
+    # ------------------------------------------------------------------
+    # YouTube downloads (yt-dlp): status, cookies, test
+    # ------------------------------------------------------------------
+    async def handle_ytdlp_status(self, request: web.Request) -> web.Response:
+        from src.monitor import ytdlp
+        return web.json_response(ytdlp.status())
+
+    async def handle_ytdlp_cookies_upload(self, request: web.Request) -> web.Response:
+        """Store a Netscape-format cookies.txt (exported from a logged-in browser) for yt-dlp."""
+        from src.monitor import ytdlp
+        reader = await request.multipart()
+        field = await reader.next()
+        if field is None or field.name != "file":
+            return web.json_response({"error": "Upload a 'file' field"}, status=400)
+        data = b""
+        while True:
+            chunk = await field.read_chunk(64 * 1024)
+            if not chunk:
+                break
+            data += chunk
+            if len(data) > 2 * 1024 * 1024:
+                return web.json_response({"error": "cookies.txt must be under 2 MB"}, status=400)
+        text = data.decode("utf-8", errors="ignore")
+        looks_netscape = "Netscape HTTP Cookie File" in text or "HTTP Cookie File" in text or "\tTRUE\t" in text or "\tFALSE\t" in text
+        if not looks_netscape or "youtube.com" not in text:
+            return web.json_response({"error": "That doesn't look like a Netscape cookies.txt containing youtube.com cookies. "
+                                               "Export it with a 'Get cookies.txt' browser extension while logged in to YouTube."},
+                                     status=400)
+        target = ytdlp.DEFAULT_COOKIES
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_suffix(".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        os.chmod(tmp, 0o600)  # these are login cookies
+        os.replace(tmp, target)
+        return web.json_response({"success": True, **ytdlp.status()})
+
+    async def handle_ytdlp_cookies_delete(self, request: web.Request) -> web.Response:
+        from src.monitor import ytdlp
+        ytdlp.DEFAULT_COOKIES.unlink(missing_ok=True)
+        return web.json_response({"success": True, **ytdlp.status()})
+
+    async def handle_ytdlp_test(self, request: web.Request) -> web.Response:
+        """Check a link can be fetched from THIS server (no download, metadata + formats only)."""
+        from src.monitor import ytdlp
+        try:
+            data = await request.json()
+        except Exception:
+            data = {}
+        url = str(data.get("url") or "").strip()
+        if not url.startswith(("http://", "https://")):
+            return web.json_response({"error": "Paste a full video URL"}, status=400)
+        rc, out, err = await ytdlp.run(["--simulate", "--print", "%(title)s|%(duration)s|%(format_id)s", url], timeout=90)
+        if rc == 0 and out.strip():
+            title, duration, fmt = (out.decode(errors="ignore").strip().splitlines()[-1].split("|") + ["", "", ""])[:3]
+            return web.json_response({"ok": True, "title": title, "duration": duration, "format": fmt})
+        return web.json_response({"ok": False, "error": ytdlp.explain(err)})
 
     # ------------------------------------------------------------------
     # Profanity censoring: sound effects & preview

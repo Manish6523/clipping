@@ -77,7 +77,11 @@ class Transcriber:
 
     async def extract_audio_wav(self, video_path: str, output_wav: Optional[str] = None) -> str:
         """Extract 16kHz mono PCM audio from video file using FFmpeg."""
+        if "://" in str(video_path):
+            raise RuntimeError(f"Expected a downloaded media file, got a URL: {video_path}")
         v_path = Path(video_path)
+        if not v_path.is_file():
+            raise RuntimeError(f"Media file not found for transcription: {v_path}")
         if output_wav is None:
             output_wav = str(v_path.parent / f"{v_path.stem}_audio.wav")
 
@@ -92,7 +96,10 @@ class Transcriber:
         ]
 
         proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        await proc.communicate()
+        _out, err = await proc.communicate()
+        if proc.returncode != 0 or not Path(output_wav).is_file() or Path(output_wav).stat().st_size == 0:
+            tail = (err or b"").decode(errors="ignore").strip().splitlines()[-1:] or ["no output"]
+            raise RuntimeError(f"Audio extraction failed for {v_path.name}: {tail[0][:200]}")
         return output_wav
 
     async def transcribe(self, audio_or_video_path: str) -> Dict[str, Any]:
@@ -108,14 +115,12 @@ class Transcriber:
         model = self._get_model()
 
         if model == "fallback":
-            return {
-                "text": "Transcription fallback active.",
-                "words": [
-                    {"word": "HIGHLIGHT", "start": 0.0, "end": 1.0, "probability": 0.95},
-                    {"word": "MOMENT", "start": 1.0, "end": 2.0, "probability": 0.95},
-                ],
-                "segments": [{"start": 0.0, "end": 2.0, "text": "HIGHLIGHT MOMENT"}],
-            }
+            # Never invent a transcript: fake words produced clips with nonsense captions/scores.
+            self._model = None  # retry loading next time (e.g. after the model download succeeds)
+            raise RuntimeError(
+                f"Whisper model '{self.model_size}' could not be loaded (not installed, download blocked, "
+                f"or not enough memory). Check the server log; try a smaller model in Settings."
+            )
 
         loop = asyncio.get_running_loop()
 

@@ -1,7 +1,7 @@
 # AutoClipDaemon - Production Dependencies
 aiogram>=3.4.0,<4.0.0
 streamlink>=6.5.0
-yt-dlp>=2024.3.10
+yt-dlp[default]>=2025.11.12  # [default] adds the YouTube challenge solver (yt-dlp-ejs)
 faster-whisper>=1.0.0
 google-genai>=0.1.1
 google-generativeai>=0.5.0

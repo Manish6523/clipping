@@ -9,10 +9,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 import feedparser
 
+from src.monitor import ytdlp
 from config.settings import BUFFER_DIR
 from src.database import is_vod_processed, record_vod, update_vod_status
 
 logger = logging.getLogger(__name__)
+
+MAX_AUDIO_SECONDS = 3 * 3600  # matches the scorer's ~3h window cap
 
 
 class VODWatcher:
@@ -24,6 +27,7 @@ class VODWatcher:
     ):
         self.on_vod_clip_ready = on_vod_clip_ready
         self.is_running = False
+        self.last_error: Optional[str] = None  # explained yt-dlp error of the last section download
 
     async def poll_youtube_channel_rss(self, channel_id: str) -> List[Dict[str, str]]:
         """Fetch latest uploaded videos via public YouTube RSS feed."""
@@ -63,21 +67,10 @@ class VODWatcher:
         Extract YouTube 'Most Replayed' heatmap data using yt-dlp metadata.
         Returns list of peak intervals: [{'start_time': float, 'end_time': float, 'value': float}]
         """
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
-            "--dump-json",
-            "--skip-download",
-            video_url,
-        ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, _ = await proc.communicate()
-
-        if proc.returncode != 0 or not stdout:
+        rc, stdout, err = await ytdlp.run(["--dump-json", "--skip-download", video_url], timeout=120)
+        if rc != 0 or not stdout:
+            # Not fatal (heatmap is only a hint) but worth knowing: usually the same cause as a failed download
+            logger.warning("Heatmap lookup failed for %s: %s", video_url, ytdlp.explain(err))
             return []
 
         try:
@@ -98,27 +91,26 @@ class VODWatcher:
             logger.warning("Could not parse heatmap for %s: %s", video_url, e)
             return []
 
-    async def download_audio_first(self, video_url: str, output_dir: Path) -> Optional[str]:
-        """Download fast audio-only stream (yt-dlp -f ba) for quick transcription."""
-        out_template = str(output_dir / "audio_extract.%(ext)s")
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
-            "-f", "ba",
-            "-x",
-            "--audio-format", "wav",
-            "--download-sections", "*0-600",
-            "--max-filesize", "50M",
-            "--output", out_template,
+    async def download_audio_first(self, video_url: str, output_dir: Path) -> str:
+        """Download the audio track (first 3 hours) for transcription.
+
+        Native format (m4a/opus) - the transcriber converts it to 16 kHz mono itself; a full-length
+        WAV would be ~600 MB/hour. Raises RuntimeError with yt-dlp's explained error on failure
+        (previously it returned None and the URL was then treated as a file path).
+        """
+        output_dir.mkdir(parents=True, exist_ok=True)
+        for old in output_dir.glob("audio_extract.*"):
+            old.unlink(missing_ok=True)
+        rc, _out, err = await ytdlp.run([
+            "-f", "ba/b",
+            "--download-sections", f"*0-{MAX_AUDIO_SECONDS}",
+            "--output", str(output_dir / "audio_extract.%(ext)s"),
             video_url,
-        ]
-
-        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-        await proc.communicate()
-
-        expected_wav = output_dir / "audio_extract.wav"
-        if expected_wav.exists():
-            return str(expected_wav)
-        return None
+        ], timeout=1800)
+        files = sorted(f for f in output_dir.glob("audio_extract.*") if f.suffix not in (".part", ".ytdl") and f.stat().st_size > 0)
+        if rc == 0 and files:
+            return str(files[0])
+        raise RuntimeError(f"Could not download the video's audio: {ytdlp.explain(err)}")
 
     async def download_video_section(
         self,
@@ -131,7 +123,6 @@ class VODWatcher:
         section_arg = f"*{start_time:.2f}-{end_time:.2f}"
         # Prefer direct MP4/M4A streams that allow instantaneous slice extraction without re-encoding
         cmd = [
-            sys.executable, "-m", "yt_dlp",
             # Prefer H.264 (avc1): it plays in every phone browser and renders fast. YouTube otherwise
             # serves AV1/VP9, which most phones can't decode (the editor's source preview stays black).
             "-f", (
@@ -142,18 +133,21 @@ class VODWatcher:
             ),
             "--merge-output-format", "mp4",
             "--download-sections", section_arg,
-            "--no-warnings",
+            "--force-overwrites",
             "--output", str(output_file),
             video_url,
         ]
 
+        self.last_error = None
         try:
-            proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
-            await proc.communicate()
+            rc, _out, err = await ytdlp.run(cmd, timeout=900)
         except Exception as e:
-            logger.error("download_video_section subprocess error: %s", e)
-
-        return output_file.exists() and output_file.stat().st_size > 0
+            rc, err = 1, str(e)
+        ok = rc == 0 and output_file.exists() and output_file.stat().st_size > 0
+        if not ok:
+            self.last_error = ytdlp.explain(err)
+            logger.error("Section download %.1f-%.1fs failed for %s: %s", start_time, end_time, video_url, self.last_error)
+        return ok
 
     async def process_vod(
         self,
@@ -188,7 +182,7 @@ class VODWatcher:
 
             if self.on_vod_clip_ready:
                 await self.on_vod_clip_ready(
-                    audio_path or video_url,
+                    audio_path,
                     {
                         "source_type": "vod",
                         "vod_id": vod_id,
@@ -234,21 +228,11 @@ class VODWatcher:
 
         elif platform == "twitch":
             url = f"https://www.twitch.tv/{channel_id}/videos?filter=archives&sort=time"
-            cmd = [
-                sys.executable, "-m", "yt_dlp",
-                "--dump-json",
-                "--playlist-items", "1",
-                "--skip-download",
-                url,
-            ]
             try:
-                proc = await asyncio.create_subprocess_exec(
-                    *cmd,
-                    stdout=asyncio.subprocess.PIPE,
-                    stderr=asyncio.subprocess.PIPE,
-                )
-                stdout, _ = await proc.communicate()
-                if proc.returncode == 0 and stdout:
+                rc, stdout, err = await ytdlp.run(["--dump-json", "--playlist-items", "1", "--skip-download", url], timeout=120)
+                if rc != 0:
+                    logger.warning("Twitch VOD lookup failed for %s: %s", channel_id, ytdlp.explain(err))
+                if rc == 0 and stdout:
                     info = json.loads(stdout.decode(errors="ignore"))
                     vod_id = str(info.get("id"))
                     title = info.get("title", f"Twitch VOD {vod_id}")

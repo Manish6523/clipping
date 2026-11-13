@@ -89,3 +89,7 @@ Thumbs.db
 
 # Built-in censor sound effects
 !assets/sfx/*.wav
+
+# OAuth tokens & download cookies are credentials - never commit
+config/tokens/
+*cookies*.txt

@@ -34,6 +34,15 @@ echo "[3/6] Installing Python dependencies (requirements.txt)..."
 pip install --upgrade pip setuptools wheel
 pip install -r requirements.txt
 
+# YouTube downloads: yt-dlp must stay current (YouTube changes break old versions) and needs a
+# JavaScript runtime for YouTube's player challenges. Deno is yt-dlp's default; Node.js also works.
+pip install -U "yt-dlp[default]"
+if ! command -v deno &> /dev/null; then
+    echo "[3.1/6] Installing Deno (JavaScript runtime for yt-dlp)..."
+    curl -fsSL https://deno.land/install.sh | sudo DENO_INSTALL=/usr/local sh -s -- -y || \
+        echo "Deno install failed - yt-dlp will fall back to Node.js"
+fi
+
 # 3. Build React Frontend
 echo "[4/6] Building Production React Frontend..."
 cd frontend

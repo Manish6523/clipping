@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import CensorSettings from './CensorSettings';
+import YouTubeDownloads from './YouTubeDownloads';
 
 const WHISPER_MODELS = [
   { id: 'tiny', label: 'tiny — fastest, misses many swears' },
@@ -456,6 +457,8 @@ export default function Settings() {
           />
         </div>
       </div>
+
+      <YouTubeDownloads />
 
       <CensorSettings value={censor} onChange={setCensor} />
 

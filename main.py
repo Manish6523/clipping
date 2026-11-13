@@ -207,9 +207,10 @@ class AutoClipEngine:
 
                 if not downloaded or not slice_source.exists():
                     logger.error("Failed to download targeted manual section.")
-                    update_pipeline_progress("error", channel_id="manual", error="Download failed")
+                    reason = self.vod_watcher.last_error or "Download failed"
+                    update_pipeline_progress("error", channel_id="manual", error=f"Download failed: {reason}")
                     async with get_db_connection() as db:
-                        await db.execute("UPDATE pipeline_runs SET status = 'failed', error_message = 'Download failed' WHERE id = ?", (run_id,))
+                        await db.execute("UPDATE pipeline_runs SET status = 'failed', error_message = ? WHERE id = ?", (reason[:300], run_id))
                         await db.commit()
                     return
 
