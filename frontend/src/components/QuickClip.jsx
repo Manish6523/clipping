@@ -7,6 +7,7 @@ import YouTubeRangePicker, { youtubeId, youtubeStartParam } from './YouTubeRange
 import AutoEditOptions, { loadAutoEdit, autoEditPayload } from './AutoEditOptions';
 import CaptionStylePicker from './CaptionStylePicker';
 import HookStylePicker from './HookStylePicker';
+import CombinedStyleStudio from './CombinedStyleStudio';
 import { loadHookStyle, saveHookStyle } from '../lib/hookStyles';
 import { loadCaptionStyle, saveCaptionStyle } from '../lib/captionStyles';
 
@@ -182,22 +183,51 @@ export default function QuickClip() {
   const running = job?.state === 'running';
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-6 sm:py-12">
-      <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-8 shadow-2xl">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="p-2.5 sm:p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
-            <Zap size={22} />
+    <div className="max-w-7xl mx-auto px-3 sm:px-6 lg:px-8 py-4 sm:py-8">
+      {/* Page Title & Status Banner */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6 bg-slate-900/40 border border-white/5 rounded-2xl p-4 lg:p-6 backdrop-blur-sm">
+        <div className="flex items-center gap-3.5">
+          <div className="p-3 bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-2xl text-amber-400 shadow-inner">
+            <Zap size={24} className="animate-pulse" />
           </div>
-          <div className="min-w-0">
-            <h2 className="text-lg sm:text-xl font-black text-white">Quick Clip</h2>
-            <p className="text-xs text-slate-400">Turn any YouTube or Twitch video into ranked 9:16 Shorts.</p>
+          <div>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-black text-white tracking-tight">Quick Clip Studio</h1>
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/15 border border-indigo-500/30 text-indigo-300">
+                AI Pipeline v3
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-400 mt-0.5">
+              Turn YouTube or Twitch stream VODs into viral, auto-formatted 9:16 Shorts in seconds.
+            </p>
           </div>
         </div>
 
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4 text-xs">
-          <div>
-            <label htmlFor="qc-url" className="block text-slate-300 font-bold mb-1.5 flex items-center gap-1.5">
-              <LinkIcon size={14} /> Video URL
+        {/* Global Action Trigger / Submit Button on Desktop Header */}
+        <div className="hidden lg:flex items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSubmit}
+            disabled={submitting || running || !!rangeError || !url.trim() || !template}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black py-2.5 px-6 rounded-xl text-xs sm:text-sm transition-all shadow-lg shadow-indigo-600/25 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer active:scale-95"
+          >
+            {running || submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+            {submitting ? 'Starting…' : running ? 'Processing…' : hasRange ? 'Generate Short' : `Generate (${maxClips} Clips)`}
+          </button>
+        </div>
+      </div>
+
+      {/* Main Two-Column Responsive Grid: Left Input & Scrubber / Right Customization & Preset Config */}
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-5 lg:gap-8 items-start">
+        {/* Left Column: Media Source, Video Preview & Trimming (7 cols on desktop) */}
+        <div className="lg:col-span-7 flex flex-col gap-5">
+          {/* 1. URL Ingestion Card */}
+          <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl backdrop-blur-sm">
+            <label htmlFor="qc-url" className="text-xs font-bold text-slate-200 mb-2 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <LinkIcon size={14} className="text-indigo-400" /> Source Video URL
+              </span>
+              <span className="text-[11px] text-slate-400 font-normal">YouTube / Twitch VOD</span>
             </label>
             <div className="flex gap-2">
               <input
@@ -205,192 +235,286 @@ export default function QuickClip() {
                 type="url"
                 inputMode="url"
                 required
-                placeholder="https://youtube.com/watch?v=…"
+                placeholder="https://youtube.com/watch?v=… or https://twitch.tv/videos/…"
                 value={url}
                 onChange={(e) => setUrl(e.target.value)}
-                className="flex-1 min-w-0 bg-slate-950 border border-white/10 rounded-lg p-3 text-white text-base sm:text-sm focus:outline-none focus:border-indigo-500"
+                className="flex-1 min-w-0 bg-slate-950/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all placeholder:text-slate-600"
               />
-              <button type="button" onClick={pasteUrl} className="px-3 rounded-lg bg-slate-800 text-slate-200 hover:bg-slate-700 shrink-0" aria-label="Paste URL">
-                <ClipboardPaste size={16} />
+              <button
+                type="button"
+                onClick={pasteUrl}
+                className="px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-all flex items-center gap-1.5 border border-white/5 active:scale-95 shrink-0"
+                title="Paste from clipboard"
+              >
+                <ClipboardPaste size={14} />
+                <span className="hidden sm:inline">Paste</span>
               </button>
             </div>
-          </div>
 
-          {sharedNotice && (
-            <p className="-mt-2 text-[11px] text-emerald-300">Link received from share — scrub below to pick the moment.</p>
-          )}
-
-          {ytId && (
-            <YouTubeRangePicker
-              videoId={ytId}
-              initialTime={urlStart || 0}
-              start={start != null && !Number.isNaN(start) ? start : null}
-              end={end != null && !Number.isNaN(end) ? end : null}
-              onSetStart={(t) => setStartTime(fmtInput(t))}
-              onSetEnd={(t) => setEndTime(fmtInput(t))}
-            />
-          )}
-
-          <div>
-            <label htmlFor="qc-template" className="block text-slate-300 font-bold mb-1.5">Layout template</label>
-            <select
-              id="qc-template"
-              value={template}
-              onChange={(e) => setTemplate(e.target.value)}
-              className="w-full bg-slate-950 border border-white/10 rounded-lg p-3 text-white text-base sm:text-sm"
-            >
-              {templates.length === 0 && <option value="">Loading templates…</option>}
-              {templates.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
-          </div>
-
-          <div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="qc-start" className="block text-slate-300 font-bold mb-1">Start (optional)</label>
-                <input
-                  id="qc-start"
-                  inputMode="decimal"
-                  placeholder="1:30"
-                  value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  className="w-full bg-slate-950 border border-white/10 rounded-lg p-3 text-white text-base sm:text-sm"
-                />
-              </div>
-              <div>
-                <label htmlFor="qc-end" className="block text-slate-300 font-bold mb-1">End (optional)</label>
-                <input
-                  id="qc-end"
-                  inputMode="decimal"
-                  placeholder="2:15"
-                  value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  className="w-full bg-slate-950 border border-white/10 rounded-lg p-3 text-white text-base sm:text-sm"
-                />
-              </div>
-            </div>
-            {rangeError ? (
-              <p className="mt-1.5 text-rose-300">{rangeError}</p>
-            ) : (
-              <p className="mt-1.5 text-slate-500 flex items-start gap-1.5">
-                <Info size={13} className="shrink-0 mt-px" />
-                {hasRange && start !== null && end !== null
-                  ? `Clips exactly ${fmt(start)} → ${fmt(end)} (${Math.round(end - start)}s).`
-                  : 'Leave empty and the AI scans the whole video and makes several ranked clips (needs a Gemini key).'}
+            {sharedNotice && (
+              <p className="mt-2 text-xs font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl flex items-center gap-2">
+                <CheckCircle2 size={14} /> Link loaded from share — scrub below to pick your moment.
               </p>
             )}
           </div>
 
+          {/* 2. Interactive Video Scrubbing & Manual Time Bounds */}
+          <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl backdrop-blur-sm flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Scissors size={15} className="text-amber-400" />
+                <h2 className="text-sm font-bold text-white">Clip Extraction Bounds</h2>
+              </div>
+              <span className="text-[11px] text-slate-400">Optional (Auto AI if empty)</span>
+            </div>
+
+            {ytId && (
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/60 shadow-inner">
+                <YouTubeRangePicker
+                  videoId={ytId}
+                  initialTime={urlStart || 0}
+                  start={start != null && !Number.isNaN(start) ? start : null}
+                  end={end != null && !Number.isNaN(end) ? end : null}
+                  onSetStart={(t) => setStartTime(fmtInput(t))}
+                  onSetEnd={(t) => setEndTime(fmtInput(t))}
+                />
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-3 sm:gap-4">
+              <div>
+                <label htmlFor="qc-start" className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider mb-1.5">
+                  Start Timestamp
+                </label>
+                <input
+                  id="qc-start"
+                  inputMode="decimal"
+                  placeholder="e.g. 1:30"
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600"
+                />
+              </div>
+              <div>
+                <label htmlFor="qc-end" className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider mb-1.5">
+                  End Timestamp
+                </label>
+                <input
+                  id="qc-end"
+                  inputMode="decimal"
+                  placeholder="e.g. 2:15"
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm font-mono focus:outline-none focus:border-indigo-500 transition-all placeholder:text-slate-600"
+                />
+              </div>
+            </div>
+
+            {rangeError ? (
+              <p className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/20 px-3 py-2 rounded-xl flex items-center gap-2">
+                <AlertTriangle size={14} className="shrink-0" /> {rangeError}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-400 bg-white/[0.02] border border-white/5 px-3 py-2 rounded-xl flex items-start gap-2">
+                <Info size={14} className="shrink-0 text-slate-400 mt-0.5" />
+                <span>
+                  {hasRange && start !== null && end !== null
+                    ? `Manual Cut: ${fmt(start)} → ${fmt(end)} (${Math.round(end - start)} seconds length).`
+                    : 'Left empty: Gemini AI scans the full video transcript and generates ranked viral clips automatically.'}
+                </span>
+              </p>
+            )}
+          </div>
+
+          {/* 3. AI Scan Parameters (Shown when no manual range is specified) */}
           {!hasRange && (
-            <div className="space-y-3 p-3 rounded-xl bg-slate-950/60 border border-white/[0.06]">
-              <div>
-                <span className="block text-slate-300 font-bold mb-1.5">Up to how many clips</span>
-                <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Number of clips">
-                  {CLIP_COUNTS.map((n) => (
-                    <button key={n} type="button" role="radio" aria-checked={maxClips === n} onClick={() => setMaxClips(n)}
-                      className={`h-10 rounded-lg text-sm font-bold border ${maxClips === n ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-transparent border-white/10 text-slate-300'}`}>
-                      {n}
-                    </button>
-                  ))}
+            <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl backdrop-blur-sm space-y-4">
+              <div className="flex items-center gap-2 pb-1 border-b border-white/5">
+                <Sparkles size={15} className="text-indigo-400" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-200">AI Viral Discovery Settings</h3>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <span className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider mb-2">Max Clips Count</span>
+                  <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Number of clips">
+                    {CLIP_COUNTS.map((n) => (
+                      <button
+                        key={n}
+                        type="button"
+                        role="radio"
+                        aria-checked={maxClips === n}
+                        onClick={() => setMaxClips(n)}
+                        className={`h-9 rounded-xl text-xs font-bold border transition-all ${
+                          maxClips === n
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                            : 'bg-slate-950/60 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <span className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider mb-2">Target Duration</span>
+                  <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Clip length">
+                    {LENGTHS.map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        role="radio"
+                        aria-checked={lengthId === l.id}
+                        onClick={() => setLengthId(l.id)}
+                        className={`h-9 rounded-xl text-[11px] font-bold border transition-all ${
+                          lengthId === l.id
+                            ? 'bg-indigo-600 border-indigo-500 text-white shadow-md shadow-indigo-600/30'
+                            : 'bg-slate-950/60 border-white/10 text-slate-400 hover:text-white hover:bg-white/5'
+                        }`}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
+
               <div>
-                <span className="block text-slate-300 font-bold mb-1.5">Clip length</span>
-                <div className="grid grid-cols-5 gap-1.5" role="radiogroup" aria-label="Clip length">
-                  {LENGTHS.map((l) => (
-                    <button key={l.id} type="button" role="radio" aria-checked={lengthId === l.id} onClick={() => setLengthId(l.id)}
-                      className={`h-10 rounded-lg text-[11px] font-bold border ${lengthId === l.id ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-transparent border-white/10 text-slate-300'}`}>
-                      {l.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <label htmlFor="qc-focus" className="block text-slate-300 font-bold mb-1">Focus on (optional)</label>
+                <label htmlFor="qc-focus" className="block text-slate-300 font-bold text-[11px] uppercase tracking-wider mb-1.5">
+                  Focus Keyword / Context (Optional)
+                </label>
                 <input
                   id="qc-focus"
                   value={focus}
                   onChange={(e) => setFocus(e.target.value)}
                   maxLength={200}
-                  placeholder="e.g. funny reactions, clutch plays, celebrity encounter"
-                  className="w-full bg-slate-950 border border-white/10 rounded-lg p-3 text-white text-base sm:text-sm"
+                  placeholder="e.g. funny rage moments, ace rounds, storytelling, sudden shock reaction"
+                  className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-xs sm:text-sm focus:outline-none focus:border-indigo-500 placeholder:text-slate-600 transition-all"
                 />
               </div>
             </div>
           )}
+        </div>
 
-          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-            <p className="text-xs font-bold text-slate-200 mb-2">Caption style</p>
-            <CaptionStylePicker value={captionStyle} onChange={pickCaptionStyle} templateDefault={templateDefaults[template]?.caption_style} />
+        {/* Right Column: Template, Styling & Production Configuration (5 cols on desktop) */}
+        <div className="lg:col-span-5 flex flex-col gap-5">
+          {/* 1. Layout Template Card */}
+          <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-6 shadow-xl backdrop-blur-sm">
+            <div className="flex items-center justify-between mb-2">
+              <label htmlFor="qc-template" className="text-xs font-bold text-slate-200">
+                Visual Layout Template
+              </label>
+              <Link to="/templates" className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold transition-colors">
+                Design in Studio →
+              </Link>
+            </div>
+            <select
+              id="qc-template"
+              value={template}
+              onChange={(e) => setTemplate(e.target.value)}
+              className="w-full bg-slate-950 border border-white/10 rounded-xl px-3.5 py-2.5 text-white text-sm focus:outline-none focus:border-indigo-500 transition-all cursor-pointer"
+            >
+              {templates.length === 0 && <option value="">Loading templates…</option>}
+              {templates.map((t) => (
+                <option key={t} value={t} className="bg-slate-900 text-white">
+                  {t}
+                </option>
+              ))}
+            </select>
           </div>
 
-          <AutoEditOptions value={autoEdit} onChange={setAutoEdit} />
+          {/* 2. Unified Style & Auto-Edit Studio (Single 9:16 Phone Preview for Captions, Hook Card & Edits) */}
+          <CombinedStyleStudio
+            captionStyle={captionStyle}
+            onCaptionChange={pickCaptionStyle}
+            hookStyle={hookStyle}
+            onHookChange={pickHookStyle}
+            autoEdit={autoEdit}
+            onAutoEditChange={setAutoEdit}
+            templateDefaultCaption={templateDefaults[template]?.caption_style}
+            templateDefaultHook={templateDefaults[template]?.hook_style || 'classic'}
+          />
 
-          {autoEdit.enabled && autoEditPayload(autoEdit)?.hook_card !== false && (
-            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
-              <p className="text-xs font-bold text-slate-200 mb-2">Hook title card style</p>
-              <HookStylePicker value={hookStyle} onChange={pickHookStyle}
-                templateDefault={templateDefaults[template]?.hook_style || 'classic'} />
-            </div>
-          )}
-
+          {/* 5. Mobile & Bottom Action Submit Trigger */}
           <button
             type="submit"
-            disabled={submitting || running || !!rangeError || !template}
-            className="mt-1 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-3.5 px-6 rounded-xl text-sm transition-all shadow-lg shadow-indigo-600/20 disabled:opacity-50"
+            disabled={submitting || running || !!rangeError || !template || !url.trim()}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white font-black py-3.5 px-6 rounded-2xl text-sm transition-all shadow-xl shadow-indigo-600/25 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer active:scale-95"
           >
-            {running || submitting ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
-            {submitting ? 'Starting…' : running ? 'Working…' : hasRange ? 'Generate Short' : `Find up to ${maxClips} clip${maxClips > 1 ? 's' : ''}`}
+            {running || submitting ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+            {submitting ? 'Starting pipeline…' : running ? 'Clip rendering in background…' : hasRange ? 'Generate Manual Short' : `Generate (${maxClips} Clips)`}
           </button>
-        </form>
 
-        {job && (
-          <div
-            role="status"
-            className={`mt-5 p-3.5 rounded-xl border text-sm ${
-              job.state === 'done' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
-              : job.state === 'error' ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
-              : job.state === 'empty' ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
-              : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-100'
-            }`}
-          >
-            {job.state === 'running' && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-2 font-semibold">
-                  <Loader2 size={16} className="animate-spin shrink-0" />
-                  <span className="min-w-0 break-words">{job.stepName || 'Working…'}</span>
+          {/* Status & Progress Feedback Banner */}
+          {job && (
+            <div
+              role="status"
+              className={`p-4 rounded-2xl border text-sm transition-all shadow-xl ${
+                job.state === 'done'
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-200'
+                  : job.state === 'error'
+                  ? 'bg-rose-500/10 border-rose-500/30 text-rose-200'
+                  : job.state === 'empty'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                  : 'bg-indigo-500/10 border-indigo-500/30 text-indigo-100'
+              }`}
+            >
+              {job.state === 'running' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2.5 font-semibold text-white">
+                    <Loader2 size={16} className="animate-spin text-indigo-400 shrink-0" />
+                    <span className="min-w-0 break-words">{job.stepName || 'Processing video…'}</span>
+                  </div>
+                  <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-indigo-500 to-cyan-400 transition-all duration-500 rounded-full"
+                      style={{ width: `${Math.min(100, ((job.step || 1) / 5) * 100)}%` }}
+                    />
+                  </div>
+                  <p className="text-[11px] text-indigo-200/70">
+                    Background job active. You can browse other tabs — your finished clip will appear in Review Station and Telegram.
+                  </p>
                 </div>
-                <div className="h-1.5 rounded-full bg-white/10 overflow-hidden">
-                  <div className="h-full bg-indigo-400 transition-all duration-500" style={{ width: `${Math.min(100, ((job.step || 1) / 5) * 100)}%` }} />
+              )}
+              {job.state === 'done' && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 size={18} className="text-emerald-400 shrink-0" />
+                    <span className="font-bold text-white">
+                      {/clip\(s\) ready/i.test(job.message || '') ? job.message : `Clip #${job.clipId} is complete.`}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Link
+                      to="/"
+                      className="px-3.5 py-1.5 rounded-xl bg-white/10 hover:bg-white/20 text-white text-xs font-bold transition-all"
+                    >
+                      Review
+                    </Link>
+                    <Link
+                      to={`/clips/${job.clipId}/editor`}
+                      className="px-3.5 py-1.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-black text-xs font-black flex items-center gap-1 transition-all"
+                    >
+                      <Scissors size={13} /> Edit
+                    </Link>
+                  </div>
                 </div>
-                <p className="text-[11px] text-indigo-200/70">You can leave this page — the clip will appear in Review and on Telegram.</p>
-              </div>
-            )}
-            {job.state === 'done' && (
-              <div className="flex flex-wrap items-center gap-2">
-                <CheckCircle2 size={18} className="shrink-0" />
-                <span className="font-semibold">{/clip\(s\) ready/i.test(job.message || '') ? job.message : `Clip #${job.clipId} is ready.`}</span>
-                <span className="flex gap-2 ml-auto">
-                  <Link to="/" className="px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-white text-xs font-bold">Review</Link>
-                  <Link to={`/clips/${job.clipId}/editor`} className="px-3 py-1.5 rounded-lg bg-emerald-500 text-black text-xs font-bold flex items-center gap-1">
-                    <Scissors size={13} /> Edit
-                  </Link>
-                </span>
-              </div>
-            )}
-            {(job.state === 'error' || job.state === 'empty') && (
-              <div className="flex items-start gap-2">
-                <AlertTriangle size={18} className="shrink-0 mt-0.5" />
-                <span className="min-w-0 break-words">
-                  {job.state === 'empty'
-                    ? 'No moment scored above your minimum virality score. Try giving a start/end time, or lower the score in Settings.'
-                    : job.message}
-                </span>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+              )}
+              {(job.state === 'error' || job.state === 'empty') && (
+                <div className="flex items-start gap-2.5">
+                  <AlertTriangle size={18} className="shrink-0 mt-0.5 text-rose-400" />
+                  <span className="min-w-0 break-words text-xs leading-relaxed">
+                    {job.state === 'empty'
+                      ? 'No moment scored above your minimum virality score. Try specifying start/end timestamps, or adjust the minimum score threshold in Settings.'
+                      : job.message}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </form>
     </div>
   );
 }
