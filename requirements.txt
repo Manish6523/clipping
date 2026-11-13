@@ -18,5 +18,6 @@ aiohttp>=3.9.3
 feedparser>=6.0.10
 python-dotenv>=1.0.1
 colorlog>=6.8.0
+tzdata; sys_platform == 'win32'
 
 Pillow>=10.0  # hook card text measurement
