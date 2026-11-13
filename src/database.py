@@ -424,6 +424,9 @@ async def update_clip_status(clip_id: int, status: str) -> None:
     """Update clip workflow status."""
     now = datetime.now(timezone.utc).isoformat()
     async with get_db_connection() as db:
+        if status == "published":
+            # first publish time drives source-footage retention
+            await db.execute("UPDATE clips SET published_at = COALESCE(published_at, ?) WHERE id = ?", (now, clip_id))
         await db.execute(
             "UPDATE clips SET status = ?, updated_at = ? WHERE id = ?",
             (status, now, clip_id),
@@ -789,6 +792,13 @@ async def save_oauth_app_config(client_id: str, client_secret: str, provider: st
             """,
             (provider, client_id.strip(), client_secret.strip()),
         )
+        await db.commit()
+
+
+async def set_clip_caption_style(clip_id: int, style: Optional[str]) -> None:
+    """Caption style preset for a clip (None = the template's own captions)."""
+    async with get_db_connection() as db:
+        await db.execute("UPDATE clips SET caption_style = ? WHERE id = ?", (style, clip_id))
         await db.commit()
 
 

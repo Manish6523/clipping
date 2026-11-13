@@ -149,7 +149,7 @@ async def get_clips_list(request: web.Request) -> web.Response:
     cursor = request.query.get("cursor")
 
     query = """
-        SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name,
+        SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name, c.caption_style,
                c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end, c.score_breakdown, c.render_version,
                c.status, c.thumbnail_path, c.source_video_path, c.rendered_video_path, c.created_at,
                c.ai_start, c.ai_end, c.flags,
@@ -355,6 +355,51 @@ async def retemplate_clip(request: web.Request) -> web.Response:
         "success": True, "clip_id": clip_id, "template_name": template_name,
         "video_url": f"/api/clips/{clip_id}/video?v={v}",
     })
+
+
+async def list_caption_styles(request: web.Request) -> web.Response:
+    from src.compositor.caption_styles import list_styles
+    return web.json_response({"styles": list_styles()})
+
+
+async def caption_style_clip(request: web.Request) -> web.Response:
+    """Re-render a clip with another caption style (same layout, words, bleeps and trims)."""
+    from src.compositor.caption_styles import DEFAULT_STYLE, valid
+    from src.database import set_clip_caption_style
+    clip_id = int(request.match_info["id"])
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Body must be JSON")
+    style = str(data.get("style") or "")
+    if not valid(style):
+        return make_json_error("BAD_STYLE", f"Unknown caption style '{style}'")
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    svp = clip.get("source_video_path")
+    if not svp or not Path(svp).exists():
+        return make_json_error("SOURCE_MISSING", "The source footage of this clip was deleted, so it can't be re-rendered.", status=409)
+
+    previous = clip.get("caption_style")
+    await set_clip_caption_style(clip_id, None if style == DEFAULT_STYLE else style)
+    edl = await get_clip_edl(clip_id)
+    from src.bot.trimmer import ClipTrimmer
+    try:
+        updated = await ClipTrimmer().trim_and_rerender(
+            clip_id=clip_id, delta_start=0.0, delta_end=0.0,
+            words_override=(edl or {}).get("words") or None,
+        )
+    except Exception as e:
+        await set_clip_caption_style(clip_id, previous)
+        logger.error("Caption restyle of clip %d failed: %s", clip_id, e, exc_info=True)
+        return make_json_error("RENDER_FAILED", f"Render failed: {str(e)[:200]}", status=500)
+    if not updated:
+        await set_clip_caption_style(clip_id, previous)
+        return make_json_error("RENDER_FAILED", "Source video for this clip is missing", status=409)
+    v = updated.get("render_version") or 1
+    return web.json_response({"success": True, "clip_id": clip_id, "caption_style": style,
+                              "video_url": f"/api/clips/{clip_id}/video?v={v}"})
 
 
 async def get_clip_words(request: web.Request) -> web.Response:
@@ -649,6 +694,8 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)
     app.router.add_get("/api/clips/{id}/source", serve_clip_source)
     app.router.add_post("/api/clips/{id}/retemplate", retemplate_clip)
+    app.router.add_post("/api/clips/{id}/caption-style", caption_style_clip)
+    app.router.add_get("/api/caption-styles", list_caption_styles)
     app.router.add_get("/api/clips/{id}/words", get_clip_words)
     app.router.add_get("/api/clips/{id}/waveform", get_clip_waveform)
     app.router.add_get("/api/clips/{id}/source-info", get_clip_source_info)

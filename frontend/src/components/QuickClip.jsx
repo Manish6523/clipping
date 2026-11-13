@@ -5,6 +5,8 @@ import { Zap, Link as LinkIcon, Sparkles, Loader2, CheckCircle2, AlertTriangle, 
 import { clipManual } from '../api';
 import YouTubeRangePicker, { youtubeId, youtubeStartParam } from './YouTubeRangePicker';
 import AutoEditOptions, { loadAutoEdit, autoEditPayload } from './AutoEditOptions';
+import CaptionStylePicker from './CaptionStylePicker';
+import { loadCaptionStyle, saveCaptionStyle } from '../lib/captionStyles';
 
 // Shared text from other apps often looks like "Check this out https://youtu.be/xyz"
 const firstUrl = (...vals) => {
@@ -60,6 +62,8 @@ export default function QuickClip() {
   const [lengthId, setLengthId] = useState('auto');
   const [focus, setFocus] = useState('');
   const [autoEdit, setAutoEdit] = useState(loadAutoEdit);
+  const [captionStyle, setCaptionStyle] = useState(loadCaptionStyle);
+  const pickCaptionStyle = (id) => { setCaptionStyle(id); saveCaptionStyle(id); };
 
   // Android share sheet / PWA share_target: /quickclip?url=…&text=…&title=…
   useEffect(() => {
@@ -141,6 +145,7 @@ export default function QuickClip() {
         template,
         time_range: hasRange ? `${start}-${end}` : null,
         auto_edit: autoEditPayload(autoEdit),
+        caption_style: captionStyle === 'template' ? undefined : captionStyle,
         ...(!hasRange ? (() => {
           const len = LENGTHS.find((l) => l.id === lengthId) || LENGTHS[0];
           return { max_clips: maxClips, min_len: len.min, max_len: len.max, focus: focus.trim() || undefined };
@@ -305,6 +310,11 @@ export default function QuickClip() {
               </div>
             </div>
           )}
+
+          <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+            <p className="text-xs font-bold text-slate-200 mb-2">Caption style</p>
+            <CaptionStylePicker value={captionStyle} onChange={pickCaptionStyle} />
+          </div>
 
           <AutoEditOptions value={autoEdit} onChange={setAutoEdit} />
 

@@ -32,6 +32,7 @@ from config.settings import (
     MAX_CONCURRENT_JOBS,
 )
 from src.database import (
+    set_clip_caption_style,
     init_db,
     get_db_connection,
     get_active_channels,
@@ -45,6 +46,7 @@ from src.bot.trimmer import load_template
 from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 from src.compositor.profanity import prepare_censor, censor_text, summarize as summarize_censor, merge_flags
+from src.compositor.caption_styles import apply_caption_style, style_of
 from src.compositor.auto_edit import auto_edit_clip, resolve_config as resolve_auto_edit, summary_flag, pick_hook_text
 from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
@@ -89,6 +91,8 @@ class AutoClipEngine:
             admin_id=ADMIN_CHAT_ID,
             on_manual_clip=self._on_manual_clip,
         )
+        from src.notify import alerts
+        alerts.configure(self.bot)  # problems (blocked downloads, quota, failed uploads, disk) -> Telegram
         self.transcriber = Transcriber()  # follows WHISPER_MODEL setting
         self.scorer = ViralScorer()
         self.calibrated_judge = CalibratedJudge()
@@ -164,7 +168,7 @@ class AutoClipEngine:
         fake_vod_id = f"manual_{timestamp_id}"
         work_dir = Path(RENDER_DIR) / "manual" / fake_vod_id
         work_dir.mkdir(parents=True, exist_ok=True)
-        template = load_template(template_name)
+        template = apply_caption_style(load_template(template_name), (options or {}).get("caption_style"))
 
         run_id = f"run_{fake_vod_id}"
         run_start_time = time.time()
@@ -288,6 +292,8 @@ class AutoClipEngine:
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
                 )
+                if style_of(template):
+                    await set_clip_caption_style(clip_id, style_of(template))
 
                 update_pipeline_progress("completed", channel_id="manual", step=5, step_name=f"Clip #{clip_id} Ready! Sent to Telegram.", clip_id=clip_id)
 
@@ -842,6 +848,8 @@ class AutoClipEngine:
             trigger_json=json.dumps({"type": "vod_heatmap", "vod_start": clip_start, "vod_end": clip_end, "rank": idx}),
             model=cand["model"],
         )
+        if style_of(template):
+            await set_clip_caption_style(clip_id, style_of(template))
 
         from src.web.ws_manager import ws_manager
         await ws_manager.broadcast("clip_created", {
@@ -863,7 +871,7 @@ class AutoClipEngine:
         channel_id = metadata.get("channel_id", "unknown")
         template_name = metadata.get("template_name", "podcast_split")
         video_url = metadata.get("video_url")
-        template = load_template(template_name)
+        template = apply_caption_style(load_template(template_name), metadata.get("caption_style"))
         from src.database import get_effective_min_score
         min_score = await get_effective_min_score(channel_id, template)
 

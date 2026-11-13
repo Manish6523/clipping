@@ -110,6 +110,8 @@ class VODWatcher:
         files = sorted(f for f in output_dir.glob("audio_extract.*") if f.suffix not in (".part", ".ytdl") and f.stat().st_size > 0)
         if rc == 0 and files:
             return str(files[0])
+        from src.notify import alerts
+        await alerts.download_failed(err, video_url)
         raise RuntimeError(f"Could not download the video's audio: {ytdlp.explain(err)}")
 
     async def download_video_section(
@@ -147,6 +149,8 @@ class VODWatcher:
         if not ok:
             self.last_error = ytdlp.explain(err)
             logger.error("Section download %.1f-%.1fs failed for %s: %s", start_time, end_time, video_url, self.last_error)
+            from src.notify import alerts
+            await alerts.download_failed(err, video_url)
         return ok
 
     async def process_vod(

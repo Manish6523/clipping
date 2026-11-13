@@ -155,6 +155,9 @@ class WebUIServer:
         # Serve static rendered video files & posters
         self.app.router.add_static("/renders", path=str(RENDER_DIR), name="renders", show_index=False)
         self.app.router.add_static("/output", path=str(OUTPUT_DIR), name="output_clips", show_index=False)
+        from src.compositor.caption_styles import FONTS_DIR
+        if FONTS_DIR.is_dir():
+            self.app.router.add_static("/fonts", path=str(FONTS_DIR), name="caption_fonts", show_index=False)
 
         # Serve built frontend static assets
         dist_assets = Path(__file__).resolve().parent.parent.parent / "frontend" / "dist" / "assets"
@@ -167,6 +170,9 @@ class WebUIServer:
         self.app.router.add_get("/api/settings", self.handle_get_settings)
         self.app.router.add_post("/api/settings", self.handle_save_settings)
         self.app.router.add_post("/api/settings/test-key", self.handle_test_gemini_key)
+        self.app.router.add_get("/api/settings/maintenance", self.handle_maintenance_get)
+        self.app.router.add_post("/api/settings/maintenance", self.handle_maintenance_save)
+        self.app.router.add_post("/api/settings/test-alert", self.handle_test_alert)
         self.app.router.add_get("/api/settings/youtube-downloads", self.handle_ytdlp_status)
         self.app.router.add_post("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_upload)
         self.app.router.add_delete("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_delete)
@@ -958,6 +964,10 @@ class WebUIServer:
         if isinstance(data.get("focus"), str) and data["focus"].strip():
             options["focus"] = data["focus"].strip()[:200]
 
+        from src.compositor.caption_styles import STYLES as CAPTION_STYLES
+        if data.get("caption_style") in CAPTION_STYLES:
+            options["caption_style"] = data["caption_style"]
+
         # Auto edit (Quick Clip only): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
         ae = data.get("auto_edit")
         if isinstance(ae, dict) and ae.get("enabled", True):
@@ -1073,6 +1083,55 @@ class WebUIServer:
             s.WHISPER_MODEL = whisper_model
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
+
+    # ------------------------------------------------------------------
+    # Storage retention + Telegram alerts
+    # ------------------------------------------------------------------
+    async def _maintenance_payload(self) -> dict:
+        from src.monitor.storage_gc import get_retention_days, disk_status
+        from src.notify import alerts
+        from src.database import get_db_connection
+        async with get_db_connection() as db:
+            cur = await db.execute(
+                "SELECT COUNT(*) FROM clips WHERE status = 'published' AND source_purged_at IS NULL "
+                "AND source_video_path IS NOT NULL")
+            waiting = (await cur.fetchone())[0]
+        bot = alerts._bot
+        return {
+            "source_retention_days": await get_retention_days(),
+            "published_sources_kept": waiting,
+            "disk": disk_status(Path(".")),
+            "telegram_configured": bool(bot and getattr(bot, "bot", None) and getattr(bot, "admin_id", 0)),
+        }
+
+    async def handle_maintenance_get(self, request: web.Request) -> web.Response:
+        return web.json_response(await self._maintenance_payload())
+
+    async def handle_maintenance_save(self, request: web.Request) -> web.Response:
+        from src.database import set_system_setting
+        data = await request.json()
+        try:
+            days = float(data.get("source_retention_days"))
+        except (TypeError, ValueError):
+            return web.json_response({"error": "source_retention_days must be a number"}, status=400)
+        if days < 0 or days > 365:
+            return web.json_response({"error": "source_retention_days must be between 0 and 365"}, status=400)
+        await set_system_setting("source_retention_days", str(days), category="storage",
+                                 description="Days to keep source footage of published clips (0 = forever)")
+        return web.json_response(await self._maintenance_payload())
+
+    async def handle_test_alert(self, request: web.Request) -> web.Response:
+        from src.notify import alerts
+        payload = await self._maintenance_payload()
+        if not payload["telegram_configured"]:
+            return web.json_response({"ok": False, "error": "Telegram isn't configured: set TELEGRAM_BOT_TOKEN and "
+                                                            "ADMIN_CHAT_ID in .env and restart."}, status=400)
+        sent = await alerts.alert("test", "Test alert - problems (blocked downloads, expired cookies, quota, "
+                                          "failed uploads, low disk) will show up here.", key="test", cooldown=0)
+        if not sent:
+            return web.json_response({"ok": False, "error": "Telegram rejected the message - check the bot token, "
+                                                            "and that you've sent /start to the bot."}, status=502)
+        return web.json_response({"ok": True})
 
     # ------------------------------------------------------------------
     # YouTube downloads (yt-dlp): status, cookies, test

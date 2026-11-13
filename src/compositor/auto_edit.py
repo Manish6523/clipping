@@ -16,6 +16,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+
+from src.compositor.caption_styles import fonts_dir_arg
 import os
 import re
 import statistics
@@ -505,7 +507,7 @@ async def finish_clip(
         vf.append(f"zoompan=z='{z}':x='{zx}':y='{zy}':d=1:s=1080x1920:fps={fps:.3f}")
     if ass_path and os.path.exists(ass_path):
         esc = str(Path(ass_path).resolve()).replace("\\", "/").replace(":", "\\:")
-        vf.append(f"subtitles='{esc}'")
+        vf.append(f"subtitles='{esc}'{fonts_dir_arg()}")
     graph = [f"[0:v]{','.join(vf) if vf else 'null'}[vout]"]
 
     inputs = ["-i", str(base)]

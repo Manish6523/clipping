@@ -128,6 +128,13 @@ def generate_ass_subtitles(
 
     is_uppercase = sub_cfg.get("uppercase", True)
 
+    # Caption style mode (see caption_styles.py): highlight | progressive | box | glow
+    mode = sub_cfg.get("mode", "highlight")
+    spacing = float(sub_cfg.get("spacing", 0) or 0)
+    box_color = hex_to_ass_color(sub_cfg.get("box_color") or "#7C3AED", "&H00ED3A7C")
+    glow_color = hex_to_ass_color(sub_cfg.get("glow_color") or "#22D3EE", "&H00EED322")
+    active_glow_color = hex_to_ass_color(sub_cfg.get("active_glow_color") or "#EC4899", "&H009948EC")
+
     out_file = Path(output_path)
     out_file.parent.mkdir(parents=True, exist_ok=True)
 
@@ -181,7 +188,8 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: KineticCaption,{font_name},{font_size},{primary_color},&H000000FF,{outline_color},{back_color},{bold},{italic},0,0,100,100,0,0,1,{outline_width},{shadow_depth},5,{geom['margin_l']},{geom['margin_r']},0,1
+Style: KineticCaption,{font_name},{font_size},{primary_color},&H000000FF,{outline_color},{back_color},{bold},{italic},0,0,100,100,{spacing:g},0,1,{outline_width},{shadow_depth},5,{geom['margin_l']},{geom['margin_r']},0,1
+Style: CaptionBox,{font_name},{font_size},&HFF000000,&H000000FF,{box_color},&HFF000000,{bold},{italic},0,0,100,100,{spacing:g},0,3,{max(10.0, font_size * 0.16):g},0,5,{geom['margin_l']},{geom['margin_r']},0,1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -208,6 +216,33 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             start_str = seconds_to_ass_time(w_start)
             end_str = seconds_to_ass_time(w_end)
 
+            pos_override = f"{{\\an5\\pos({target_x},{target_y})}}"
+            ev = f"{start_str},{end_str}"
+
+            if mode == "box":
+                # Layer 0: same line, invisible text; only the active word keeps its opaque box.
+                parts = []
+                for j, w in enumerate(chunk):
+                    alpha = "&H00&" if i == j else "&HFF&"
+                    tag = animation_tag if i == j else ""
+                    parts.append(f"{tag}{{\\3a{alpha}}}{w['word']}{{\\r}}")
+                dialogue_lines.append(
+                    f"Dialogue: 0,{ev},CaptionBox,,0,0,0,,{pos_override}" + "{\\3a&HFF&} ".join(parts)
+                )
+
+            if mode == "glow":
+                # Layer 0: wide blurred halo in the glow colour (pink on the active word).
+                parts = []
+                for j, w in enumerate(chunk):
+                    col = active_glow_color if i == j else glow_color
+                    tag = animation_tag if i == j else ""
+                    parts.append(f"{tag}{{\\3c{col}\\1a&HFF&}}{w['word']}{{\\r}}")
+                halo = f"{{\\bord{max(8.0, font_size * 0.14):g}\\blur{max(6.0, font_size * 0.12):g}\\shad0}}"
+                dialogue_lines.append(
+                    f"Dialogue: 0,{ev},KineticCaption,,0,0,0,,{pos_override}{halo}" + " ".join(
+                        p.replace("{\\r}", "{\\r" + "}" + halo) for p in parts)
+                )
+
             words_rendered = []
             for j, w in enumerate(chunk):
                 custom_word_color = hex_to_ass_color(w.get("color")) if w.get("color") else None
@@ -217,6 +252,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     words_rendered.append(
                         f"{animation_tag}{{\\c{hl_col}\\b1}}{w['word']}{{\\r}}"
                     )
+                elif mode == "progressive" and j < i:
+                    # Karaoke: words already spoken keep the fill colour
+                    words_rendered.append(f"{{\\c{custom_word_color or highlight_color}}}{w['word']}{{\\r}}")
                 else:
                     # Inactive word
                     base_col = custom_word_color or primary_color
@@ -225,9 +263,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     )
 
             line_text = " ".join(words_rendered)
-            pos_override = f"{{\\an5\\pos({target_x},{target_y})}}"
             dialogue_lines.append(
-                f"Dialogue: 0,{start_str},{end_str},KineticCaption,,0,0,0,,{pos_override}{line_text}"
+                f"Dialogue: 1,{ev},KineticCaption,,0,0,0,,{pos_override}{line_text}"
             )
 
     full_content = header + "\n".join(dialogue_lines) + "\n"

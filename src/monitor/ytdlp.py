@@ -36,6 +36,47 @@ def cookies_path() -> Optional[Path]:
     return None
 
 
+AUTH_COOKIES = {"SID", "HSID", "SSID", "APISID", "SAPISID", "__Secure-1PSID", "__Secure-3PSID", "LOGIN_INFO"}
+
+
+def cookies_expiry(path: Optional[Path] = None) -> Optional[float]:
+    """Earliest expiry (unix time) of the YouTube login cookies in cookies.txt, if any."""
+    path = path or cookies_path()
+    if not path:
+        return None
+    earliest = None
+    try:
+        for line in path.read_text(errors="ignore").splitlines():
+            if line.startswith("#HttpOnly_"):
+                line = line[len("#HttpOnly_"):]
+            elif line.startswith("#") or not line.strip():
+                continue
+            parts = line.split("\t")
+            if len(parts) < 7 or parts[5] not in AUTH_COOKIES:
+                continue
+            try:
+                exp = float(parts[4])
+            except ValueError:
+                continue
+            if exp > 0 and (earliest is None or exp < earliest):
+                earliest = exp
+    except OSError:
+        return None
+    return earliest
+
+
+def is_bot_check(stderr: str) -> bool:
+    low = (stderr or "").lower()
+    return ("confirm you" in low and "bot" in low) or "sign in to confirm" in low
+
+
+def is_blocked(stderr: str) -> bool:
+    """Server-side problems (IP block, rate limit, missing runtime) - not a bad link."""
+    low = (stderr or "").lower()
+    return is_bot_check(stderr) or "http error 429" in low or "too many requests" in low \
+        or "challenge solving failed" in low or "javascript runtime" in low or "requested format is not available" in low
+
+
 def js_runtime_args() -> List[str]:
     """yt-dlp enables Deno by default; if Deno is missing, enable Node.js or Bun instead."""
     if shutil.which("deno"):
@@ -73,7 +114,7 @@ def explain(stderr: str) -> str:
     """Turn yt-dlp's stderr into an actionable one-liner for the dashboard / logs."""
     text = stderr or ""
     low = text.lower()
-    if "confirm you" in low and "bot" in low or "sign in to confirm" in low:
+    if is_bot_check(text):
         return ("YouTube is blocking this server's IP ('confirm you're not a bot'). Upload a cookies.txt "
                 "from a logged-in browser in Settings → YouTube downloads.")
     if "javascript runtime" in low or "js runtime" in low or "challenge solving failed" in low \
@@ -118,5 +159,6 @@ def status() -> dict:
         "js_runtime": runtime,
         "challenge_solver_installed": ejs,
         "cookies": {"present": bool(c), "path": str(c) if c else None,
-                    "updated": c.stat().st_mtime if c else None},
+                    "updated": c.stat().st_mtime if c else None,
+                    "expires": cookies_expiry(c) if c else None},
     }

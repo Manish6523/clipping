@@ -11,6 +11,10 @@ export default defineConfig({
         target: 'http://localhost:8080',
         changeOrigin: true,
       },
+      '/fonts': {
+        target: 'http://localhost:8080',
+        changeOrigin: true,
+      },
       '/renders': {
         target: 'http://localhost:8080',
         changeOrigin: true,

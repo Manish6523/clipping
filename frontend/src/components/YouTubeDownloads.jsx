@@ -87,6 +87,11 @@ export default function YouTubeDownloads() {
             {status.cookies?.present && status.cookies.updated && (
               <span className="text-slate-500">({new Date(status.cookies.updated * 1000).toLocaleDateString()})</span>
             )}
+            {status.cookies?.expires && (
+              <span className={status.cookies.expires * 1000 < Date.now() + 3 * 86400000 ? 'text-rose-300' : 'text-slate-500'}>
+                · expires {new Date(status.cookies.expires * 1000).toLocaleDateString()}
+              </span>
+            )}
           </div>
         </div>
       )}

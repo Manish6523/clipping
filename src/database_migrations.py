@@ -658,6 +658,26 @@ async def migration_v18(db):
     await db.commit()
 
 
+@migration(19, "published_at / source_purged_at for source-footage retention")
+async def migration_v19(db):
+    cur = await db.execute("PRAGMA table_info(clips)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "published_at" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN published_at TIMESTAMP")
+        await db.execute("UPDATE clips SET published_at = updated_at WHERE status = 'published'")
+    if "source_purged_at" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN source_purged_at TIMESTAMP")
+    await db.commit()
+
+
+@migration(20, "caption_style per clip")
+async def migration_v20(db):
+    cur = await db.execute("PRAGMA table_info(clips)")
+    if "caption_style" not in {r[1] for r in await cur.fetchall()}:
+        await db.execute("ALTER TABLE clips ADD COLUMN caption_style TEXT")
+    await db.commit()
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

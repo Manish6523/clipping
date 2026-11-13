@@ -37,6 +37,21 @@ def _is_permanent(error: Optional[str]) -> bool:
     return any(h.replace(" ", "") in e for h in PERMANENT_ERROR_HINTS)
 
 
+async def _alert_upload_failure(clip_id: int, title: str, errors: list) -> None:
+    from src.notify import alerts
+    text = " | ".join(errors)
+    low = text.lower()
+    if any(h in low for h in ("invalid_grant", "token file not found", "unauthorized", "token has been expired")):
+        await alerts.alert("auth", f"YouTube login expired for an account - reconnect it in Channels. "
+                                   f"Clip #{clip_id} \"{title}\" was not uploaded: {text}", key="auth:" + low[:60])
+    elif "quotaexceeded" in low.replace(" ", "") or "uploadlimitexceeded" in low.replace(" ", ""):
+        await alerts.alert("quota", f"YouTube refused clip #{clip_id} \"{title}\": daily limit reached. {text}",
+                           key="quota:refused:" + datetime.now(timezone.utc).date().isoformat())
+    else:
+        await alerts.alert("upload", f"Upload failed for clip #{clip_id} \"{title}\": {text}. "
+                                     f"It's back in Approved - use Post now to retry.", key=f"upload:{clip_id}")
+
+
 def load_template_destinations(template_name: str) -> Dict[str, str]:
     """Retrieve destination account keys for a given template."""
     t_path = Path(TEMPLATES_DIR) / f"{template_name}.json"
@@ -130,6 +145,11 @@ class DripScheduler:
             blocked = await self._quota_blocked(yt_keys[0], account)
             if blocked:
                 await self._defer(queue_id, blocked["until"], blocked["reason"])
+                from src.notify import alerts
+                await alerts.alert("quota", f"YouTube quota is used up for today on @{channel_id} "
+                                            f"({account_key or yt_keys[0]}): {blocked['reason']}. Uploads continue "
+                                            f"automatically after the reset.",
+                                   key=f"quota:{token_project_key(yt_keys[0])}:{blocked['until'].date()}")
                 return
 
         logger.info("Publishing queue #%d (clip #%d, @%s) -> YT %s%s", queue_id, clip_id, channel_id,
@@ -204,6 +224,7 @@ class DripScheduler:
             # A failed upload is not a rejection: keep the clip approved so it can be retried by hand.
             logger.warning("Upload failed for clip #%d (queue #%d): %s", clip_id, queue_id, "; ".join(errors))
             await update_clip_status(clip_id, "approved")
+            await _alert_upload_failure(clip_id, title, errors)
 
         if self.on_post_published and (yt_wanted or ig_wanted) and not retry:
             summary = {

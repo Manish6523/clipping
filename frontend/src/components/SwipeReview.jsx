@@ -3,8 +3,10 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Check, Scissors, Zap, Undo2, Volume2, VolumeX, Pencil, LayoutList, PartyPopper, Loader2,
-  Maximize, LayoutTemplate,
+  Maximize, LayoutTemplate, Type,
 } from 'lucide-react';
+import CaptionStylePicker from './CaptionStylePicker';
+import { styleById } from '../lib/captionStyles';
 import axios from 'axios';
 import { getClips, queueClip, discardClip, postClipNow, updateClip } from '../api';
 import { censorFlagInfo } from '../utils/profanity';
@@ -213,6 +215,8 @@ export default function SwipeReview({ onSwitchClassic }) {
   const [videoOverrides, setVideoOverrides] = useState({});
   const [applying, setApplying] = useState({}); // clipId -> template name
   const [templateSheet, setTemplateSheet] = useState(false);
+  const [captionSheet, setCaptionSheet] = useState(false);
+  const [captionPick, setCaptionPick] = useState('template');
   const [templates, setTemplates] = useState(null);
 
   const clips = useMemo(
@@ -367,6 +371,28 @@ export default function SwipeReview({ onSwitchClassic }) {
     }
   };
 
+  const openCaptions = () => {
+    if (!top) return;
+    setCaptionPick(top.caption_style || 'template');
+    setCaptionSheet(true);
+  };
+
+  const applyCaptionStyle = async (clip, style) => {
+    setCaptionSheet(false);
+    if (!clip || applying[clip.id]) return;
+    setApplying((a) => ({ ...a, [clip.id]: `${styleById(style).label} captions` }));
+    try {
+      const res = await axios.post(`/api/clips/${clip.id}/caption-style`, { style }, { timeout: 600000 });
+      setVideoOverrides((v) => ({ ...v, [clip.id]: res.data.video_url }));
+      flash(`Clip #${clip.id} now has ${styleById(style).label} captions`, 'ok');
+      queryClient.invalidateQueries({ queryKey: ['clips'] });
+    } catch (e) {
+      flash(`Caption change failed: ${e.response?.data?.error?.message || e.response?.data?.error || e.message}`, 'error');
+    } finally {
+      setApplying((a) => { const n = { ...a }; delete n[clip.id]; return n; });
+    }
+  };
+
   const applyTemplate = async (clip, name) => {
     setTemplateSheet(false);
     if (!clip || applying[clip.id]) return;
@@ -475,6 +501,11 @@ export default function SwipeReview({ onSwitchClassic }) {
           aria-label="Change template">
           <LayoutTemplate size={18} />
         </button>
+        <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openCaptions}
+          className="w-11 h-11 rounded-full bg-pink-500/15 border border-pink-500/40 text-pink-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          aria-label="Change caption style">
+          <Type size={18} />
+        </button>
         <button type="button" disabled={!top || busy} onClick={() => top && postNow(top)}
           className="w-11 h-11 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Post now">
@@ -516,6 +547,27 @@ export default function SwipeReview({ onSwitchClassic }) {
                 );
               })}
             </div>
+          </div>
+        </div>
+      )}
+
+      {captionSheet && top && (
+        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setCaptionSheet(false)}>
+          <div
+            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
+            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
+            <p className="text-sm font-bold text-white mb-1">Caption style</p>
+            <p className="text-[11px] text-slate-400 mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered with the same layout, cut and bleeps.</p>
+            <CaptionStylePicker value={captionPick} onChange={setCaptionPick} compact />
+            <button type="button"
+              disabled={captionPick === (top.caption_style || 'template')}
+              onClick={() => applyCaptionStyle(top, captionPick)}
+              className="mt-3 w-full h-11 rounded-xl bg-pink-600 text-white text-sm font-bold disabled:opacity-40">
+              {captionPick === (top.caption_style || 'template') ? 'Current style' : `Apply ${styleById(captionPick).label}`}
+            </button>
           </div>
         </div>
       )}

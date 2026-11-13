@@ -59,3 +59,19 @@
 .cursor-e-resize, .cursor-ew-resize { cursor: ew-resize !important; }
 .cursor-w-resize { cursor: ew-resize !important; }
 
+
+/* Caption style preview fonts (same files libass renders with: assets/fonts) */
+@font-face { font-family: 'AC Montserrat Black'; src: url('/fonts/Montserrat-Black.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Montserrat XB'; src: url('/fonts/Montserrat-ExtraBold.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Russo One'; src: url('/fonts/russo-one-400.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Luckiest Guy'; src: url('/fonts/luckiest-guy-400.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Anton'; src: url('/fonts/anton-400.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Bangers'; src: url('/fonts/bangers-400.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Poppins XB'; src: url('/fonts/poppins-800.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Inter'; src: url('/fonts/inter-700.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Bebas Neue'; src: url('/fonts/bebas-neue-400.ttf'); font-display: swap; }
+@font-face { font-family: 'AC Permanent Marker'; src: url('/fonts/permanent-marker-400.ttf'); font-display: swap; }
+
+@keyframes ac-cap-pop { 0% { transform: scale(1); } 40% { transform: scale(1.18); } 100% { transform: scale(1); } }
+@keyframes ac-cap-bounce { 0% { transform: scale(1) translateY(0); } 40% { transform: scale(1.22) translateY(-6%); } 100% { transform: scale(1) translateY(0); } }
+@keyframes ac-cap-fade { from { opacity: 0.2; } to { opacity: 1; } }

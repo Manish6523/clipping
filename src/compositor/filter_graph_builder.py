@@ -6,6 +6,7 @@ Constructs complex filtergraphs:
 3. Audio pacing/normalization and Subtitle burning (ASS).
 """
 
+from src.compositor.caption_styles import fonts_dir_arg
 import os
 from typing import Dict, Any, List, Optional
 from src.compositor.layout_math import calculate_layer_geometry, to_even
@@ -140,7 +141,7 @@ def build_filter_graph(
     # 5. Burn Subtitles (ASS)
     if ass_path and os.path.exists(ass_path):
         escaped_ass = ass_path.replace("\\", "/").replace(":", "\\:")
-        filters.append(f"{last_v}subtitles='{escaped_ass}'[subbed]")
+        filters.append(f"{last_v}subtitles='{escaped_ass}'{fonts_dir_arg()}[subbed]")
         last_v = "[subbed]"
 
     # 6. Anti-shadowban speed change (audio gets the matching atempo)

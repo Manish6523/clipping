@@ -1,5 +1,6 @@
 """Template-driven FFmpeg compositor with VAAPI hardware acceleration & libx264 CPU fallback."""
 
+from src.compositor.caption_styles import fonts_dir_arg
 import asyncio
 import os
 import shutil
@@ -231,7 +232,7 @@ class FFmpegRenderer:
         # Subtitle burning (.ass)
         if ass_path and os.path.exists(ass_path):
             escaped_ass = escape_ffmpeg_path(ass_path)
-            filters.append(f"{last_v}subtitles='{escaped_ass}'[subbed]")
+            filters.append(f"{last_v}subtitles='{escaped_ass}'{fonts_dir_arg()}[subbed]")
             last_v = "[subbed]"
 
         # Speed change LAST: caption times are source times, so burning them after setpts
