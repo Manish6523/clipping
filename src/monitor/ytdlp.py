@@ -89,7 +89,10 @@ def js_runtime_args() -> List[str]:
 
 
 def base_args() -> List[str]:
-    args = [sys.executable, "-m", "yt_dlp", "--no-warnings"]
+    args = [
+        sys.executable, "-m", "yt_dlp", "--no-warnings",
+        "--extractor-args", "youtube:player_client=android,web",
+    ]
     args += js_runtime_args()
     cookies = cookies_path()
     if cookies:
