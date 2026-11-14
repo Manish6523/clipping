@@ -25,10 +25,13 @@ export default function PublishPanel({ isCompact = false }) {
     setLoading(true);
     try {
       await saveEDL();
-      await postClipNow(clipId);
+      const res = await postClipNow(clipId);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Upload failed');
+      }
       setStatusMsg('Posted successfully!');
     } catch (e) {
-      alert('Posting failed: ' + e.message);
+      alert('Posting failed: ' + (e.response?.data?.error || e.message));
     } finally {
       setLoading(false);
     }

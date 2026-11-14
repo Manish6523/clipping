@@ -260,12 +260,15 @@ export default function ReviewStation({ onStatusChange }) {
     if (!activeClipId) return;
     setLoading(true);
     try {
-      await postClipNow(activeClipId);
+      const res = await postClipNow(activeClipId);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Upload failed');
+      }
       queryClient.invalidateQueries({ queryKey: ['clips'] });
       if (onStatusChange) onStatusChange();
       showFeedback(`Clip #${activeClipId} dispatched for immediate publishing!`);
     } catch (err) {
-      setErrorMsg('Failed to post clip: ' + err.message);
+      setErrorMsg('Failed to post clip: ' + (err.response?.data?.error || err.message));
     } finally {
       setLoading(false);
     }

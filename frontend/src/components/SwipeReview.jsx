@@ -304,7 +304,10 @@ export default function SwipeReview({ onSwitchClassic }) {
     flushPending();
     setBusy(true);
     try {
-      await postClipNow(clip.id);
+      const res = await postClipNow(clip.id);
+      if (res && res.success === false) {
+        throw new Error(res.error || 'Upload failed');
+      }
       setHandled((prev) => new Set(prev).add(clip.id));
       flash(`Clip #${clip.id} is uploading`, 'ok');
       queryClient.invalidateQueries({ queryKey: ['clips'] });

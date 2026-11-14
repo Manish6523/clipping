@@ -826,7 +826,7 @@ class WebUIServer:
         # Same path as scheduled uploads: per-channel privacy, quota guard, retries, IG once per clip
         from src.publisher.scheduler import publish_clip_now
         result = await publish_clip_now(clip_id)
-        if result["success"]:
+        if result.get("success"):
             try:
                 from src.intelligence.learning.feedback import FeedbackLearner
                 await FeedbackLearner.log_feedback(
@@ -838,10 +838,13 @@ class WebUIServer:
                 )
             except Exception as fb_err:
                 logger.warning("Feedback logging failed on publish: %s", fb_err)
-        return web.json_response({
-            **result,
-            "error": None if result["success"] else ("; ".join(result["errors"]) or "Nothing was uploaded"),
-        })
+            return web.json_response(result)
+        else:
+            err_msg = "; ".join(result.get("errors", [])) or "Failed to upload clip: no accounts published"
+            return web.json_response({
+                **result,
+                "error": err_msg,
+            }, status=400)
 
     async def handle_queue_clip(self, request: web.Request) -> web.Response:
         """Enqueue clip to Drip Queue."""
