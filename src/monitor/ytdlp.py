@@ -89,14 +89,19 @@ def js_runtime_args() -> List[str]:
 
 
 def base_args() -> List[str]:
+    cookies = cookies_path()
     args = [
         sys.executable, "-m", "yt_dlp", "--no-warnings",
-        "--extractor-args", "youtube:player_client=android,web",
     ]
-    args += js_runtime_args()
-    cookies = cookies_path()
+    # If cookies are provided, prioritize web,tv,android clients
+    # If no cookies, android,ios avoids bot checks
     if cookies:
+        args += ["--extractor-args", "youtube:player_client=web,tv,android,mweb"]
         args += ["--cookies", str(cookies)]
+    else:
+        args += ["--extractor-args", "youtube:player_client=android,ios,web"]
+
+    args += js_runtime_args()
     return args
 
 
