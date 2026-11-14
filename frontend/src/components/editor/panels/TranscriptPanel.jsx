@@ -42,7 +42,7 @@ export default function TranscriptPanel() {
 
   if (!words.length) {
     return (
-      <div className="text-center py-12 text-[#8B90A0] text-xs">
+      <div className="text-center py-12 text-muted text-xs">
         No word-level transcript available for this clip.
       </div>
     );
@@ -59,12 +59,12 @@ export default function TranscriptPanel() {
           <VolumeX className="w-3.5 h-3.5" />
           {censoredCount} bleeped
         </span>
-        <label className="flex items-center gap-1.5 ml-auto text-[11px] text-[#8B90A0]">
+        <label className="flex items-center gap-1.5 ml-auto text-[11px] text-muted">
           This clip
           <select
             value={clipAudioMode}
             onChange={(e) => setClipCensor({ audio_mode: e.target.value || null })}
-            className="bg-[#0A0B0E] border border-white/[0.08] rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none"
+            className="bg-canvas border border-white/[0.08] rounded-lg px-2 py-1 text-[11px] text-white focus:outline-none"
             aria-label="Censor audio mode for this clip"
           >
             {CLIP_AUDIO_MODES.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
@@ -74,7 +74,7 @@ export default function TranscriptPanel() {
           <button
             type="button"
             onClick={resetWordCensors}
-            className="flex items-center gap-1 text-[11px] text-[#8B90A0] hover:text-white"
+            className="flex items-center gap-1 text-[11px] text-muted hover:text-white"
             title="Clear manual bleep toggles"
           >
             <RotateCcw className="w-3 h-3" /> Auto
@@ -83,10 +83,10 @@ export default function TranscriptPanel() {
       </div>
 
       <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
-        <span className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider">
+        <span className="text-[11px] uppercase font-bold text-muted tracking-wider">
           Tap a word to seek &amp; edit
         </span>
-        <span className="text-[10px] font-mono text-slate-400 font-bold">{words.length} words</span>
+        <span className="text-[11px] font-mono text-slate-400 font-bold">{words.length} words</span>
       </div>
 
       {/* Action bar for the selected word */}
@@ -164,7 +164,7 @@ export default function TranscriptPanel() {
                   : isCensored
                   ? 'bg-rose-500/20 text-rose-200 border-rose-500/50'
                   : isPlayingWord
-                  ? 'bg-[#8FD3FF] text-[#0A0B0E] border-[#8FD3FF] shadow-md shadow-[#8FD3FF]/20 scale-105 z-10'
+                  ? 'bg-accent text-canvas border-accent shadow-md shadow-accent/20 scale-105 z-10'
                   : detectedOnly
                   ? 'bg-amber-500/10 text-amber-200 border-amber-500/30 border-dashed'
                   : 'bg-white/[0.04] text-slate-200 border-white/[0.06] hover:bg-white/[0.08]'

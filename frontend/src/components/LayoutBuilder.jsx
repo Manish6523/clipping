@@ -734,28 +734,28 @@ export default function LayoutBuilder({
     <div className="w-full flex flex-col gap-3 select-none flex-1 min-h-0">
       {/* Action Toolbar Header (Hidden when showToolbar is false) */}
       {showToolbar && (
-        <div className="flex flex-wrap items-center justify-between gap-2 bg-[#0D1017] px-3 py-2 rounded-xl border border-white/[0.08] shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-2 bg-surface px-3 py-2 rounded-xl border border-white/[0.08] shrink-0">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
-              <Layers size={14} className="text-[#8FD3FF]" /> Layout Builder (Schema v2)
+              <Layers size={14} className="text-accent" /> Layout Builder (Schema v2)
             </span>
 
             {/* Preset Starters & Saved Studio Presets */}
-            <div className="flex items-center gap-1 bg-[#13151A] px-2 py-0.5 rounded-lg border border-white/10">
-              <span className="text-[10px] text-slate-400 font-semibold uppercase">Preset:</span>
+            <div className="flex items-center gap-1 bg-surface px-2 py-0.5 rounded-lg border border-white/10">
+              <span className="text-[11px] text-slate-400 font-semibold uppercase">Preset:</span>
               <select
                 onChange={(e) => {
                   if (e.target.value) handleSelectPreset(e.target.value);
                 }}
                 value=""
-                className="bg-transparent text-xs text-[#8FD3FF] font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[260px] truncate"
+                className="bg-transparent text-xs text-accent font-bold focus:outline-none cursor-pointer max-w-[180px] sm:max-w-[260px] truncate"
               >
                 <option value="" disabled className="bg-slate-900 text-slate-400">
                   Choose Preset...
                 </option>
                 {/* 1. Custom Presets from Preset Studio */}
                 {dynamicPresets.length > 0 && (
-                  <optgroup label="Saved Presets" className="bg-slate-900 text-[#8FD3FF] font-bold">
+                  <optgroup label="Saved Presets" className="bg-slate-900 text-accent font-bold">
                     {dynamicPresets.map((p) => (
                       <option key={`db_${p.id}`} value={`db_${p.id}`} className="bg-slate-900 text-white font-normal">
                         {p.name} {p.channel_id ? `(@${p.channel_id})` : ''}
@@ -777,7 +777,7 @@ export default function LayoutBuilder({
 
           <div className="flex items-center gap-2">
             {/* Undo / Redo buttons */}
-            <div className="flex items-center gap-1 bg-[#13151A] p-0.5 rounded-lg border border-white/10">
+            <div className="flex items-center gap-1 bg-surface p-0.5 rounded-lg border border-white/10">
               <button
                 onClick={handleUndo}
                 disabled={history.length === 0}
@@ -813,7 +813,7 @@ export default function LayoutBuilder({
             <button
               onClick={() => handleAddLayer()}
               disabled={layers.length >= 8}
-              className="flex items-center gap-1 bg-gradient-to-r from-[#8FD3FF]/20 to-[#A9B8FF]/20 hover:from-[#8FD3FF]/30 hover:to-[#A9B8FF]/30 border border-[#8FD3FF]/40 text-[#8FD3FF] px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
+              className="flex items-center gap-1 bg-gradient-to-r from-accent/20 to-accent/20 hover:from-accent/30 hover:to-accent/30 border border-accent/40 text-accent px-2.5 py-1 rounded-lg text-xs font-bold transition-all shadow-sm"
             >
               <Plus size={13} /> Add Frame ({layers.length}/8)
             </button>
@@ -828,7 +828,7 @@ export default function LayoutBuilder({
 
             <button
               onClick={() => setEnableSnapping(!enableSnapping)}
-              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${enableSnapping ? 'bg-[#8FD3FF]/15 border-[#8FD3FF]/40 text-[#8FD3FF]' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold border transition-all ${enableSnapping ? 'bg-accent/15 border-accent/40 text-accent' : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
                 }`}
             >
               Snap: {enableSnapping ? 'ON' : 'OFF'}
@@ -849,12 +849,12 @@ export default function LayoutBuilder({
       {/* Main Dual Canvases Row */}
       <div className="grid grid-cols-12 gap-3 items-stretch flex-1 min-h-0 overflow-y-auto lg:overflow-hidden pb-4 lg:pb-0">
         {/* LEFT COLUMN: 16:9 SOURCE CANVAS (Crop Selector) */}
-        <div className="col-span-12 lg:col-span-7 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[320px] lg:min-h-0">
+        <div className="col-span-12 lg:col-span-7 bg-surface border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[320px] lg:min-h-0">
           <div className="flex items-center justify-between shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Monitor size={14} className="text-[#8FD3FF]" /> 16:9 Source Stream (Crop Boundaries)
+              <Monitor size={14} className="text-accent" /> 16:9 Source Stream (Crop Boundaries)
             </span>
-            <span className="text-[10px] font-mono text-slate-500">
+            <span className="text-[11px] font-mono text-slate-500">
               Drag boxes to reposition what gets cropped
             </span>
           </div>
@@ -1007,12 +1007,12 @@ export default function LayoutBuilder({
         </div>
 
         {/* RIGHT COLUMN: 9:16 LIVE OUTPUT COMPOSITE CANVAS */}
-        <div className="col-span-12 lg:col-span-5 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[460px] lg:min-h-0">
+        <div className="col-span-12 lg:col-span-5 bg-surface border border-white/[0.08] rounded-xl p-3 flex flex-col gap-2 shadow-xl min-h-[460px] lg:min-h-0">
           <div className="flex items-center justify-between shrink-0">
             <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
-              <Smartphone size={14} className="text-[#8FD3FF]" /> 9:16 Live Canvas (Output Placement)
+              <Smartphone size={14} className="text-accent" /> 9:16 Live Canvas (Output Placement)
             </span>
-            <span className="text-[10px] font-mono text-slate-500">1080 x 1920</span>
+            <span className="text-[11px] font-mono text-slate-500">1080 x 1920</span>
           </div>
 
           {/* Interactive 9:16 Composite Viewport */}
@@ -1068,7 +1068,7 @@ export default function LayoutBuilder({
                           <div
                             key={hnd}
                             onPointerDown={(e) => handlePointerDown(e, 'dst', layer.id, 'resize', hnd)}
-                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-[#8FD3FF] border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform touch-none ${hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
+                            className={`absolute w-5 h-5 -m-1 sm:w-3 sm:h-3 sm:m-0 bg-accent border-2 border-black rounded-full cursor-${hnd}-resize z-40 shadow hover:scale-125 transition-transform touch-none ${hnd === 'nw' ? '-top-2 -left-2 sm:-top-1.5 sm:-left-1.5' :
                                 hnd === 'ne' ? '-top-2 -right-2 sm:-top-1.5 sm:-right-1.5' :
                                   hnd === 'sw' ? '-bottom-2 -left-2 sm:-bottom-1.5 sm:-left-1.5' :
                                     hnd === 'se' ? '-bottom-2 -right-2 sm:-bottom-1.5 sm:-right-1.5' :
@@ -1093,10 +1093,10 @@ export default function LayoutBuilder({
                   width: `${(captionPos.max_width ?? 0.85) * 100}%`,
                 }}
                 onPointerDown={handleCaptionPointerDown}
-                className="absolute -translate-x-1/2 -translate-y-1/2 z-40 h-10 border border-dashed border-[#8FD3FF]/40 hover:border-[#8FD3FF] hover:bg-[#8FD3FF]/10 cursor-move rounded-lg flex items-center justify-center transition-all group"
+                className="absolute -translate-x-1/2 -translate-y-1/2 z-40 h-10 border border-dashed border-accent/40 hover:border-accent hover:bg-accent/10 cursor-move rounded-lg flex items-center justify-center transition-all group"
                 title="Click or drag to position captions"
               >
-                <span className="text-[9px] font-mono font-bold text-[#8FD3FF] opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 px-1.5 py-0.5 rounded border border-white/10 pointer-events-none">
+                <span className="text-[10.5px] font-mono font-bold text-accent opacity-0 group-hover:opacity-100 transition-opacity bg-black/80 px-1.5 py-0.5 rounded border border-white/10 pointer-events-none">
                   Captions ({Math.round(captionPos.x * 100)}%, {Math.round(captionPos.y * 100)}%)
                 </span>
               </div>
@@ -1107,11 +1107,11 @@ export default function LayoutBuilder({
 
       {/* OPTIONAL LEGACY BOTTOM PANEL (Only rendered if showBottomPanel is true) */}
       {showBottomPanel && (
-        <div className="grid grid-cols-12 gap-4 bg-[#0D1017] border border-white/[0.08] rounded-xl p-3 shadow-xl shrink-0">
+        <div className="grid grid-cols-12 gap-4 bg-surface border border-white/[0.08] rounded-xl p-3 shadow-xl shrink-0">
           <div className="col-span-12 lg:col-span-6 flex flex-col gap-2">
             <div className="flex items-center justify-between pb-1 border-b border-white/[0.06]">
               <span className="text-xs font-bold uppercase tracking-wider text-slate-300 flex items-center gap-2">
-                <Layers size={13} className="text-[#8FD3FF]" /> Stacking Order
+                <Layers size={13} className="text-accent" /> Stacking Order
               </span>
             </div>
             <div className="flex flex-col gap-1 max-h-[160px] overflow-y-auto">
@@ -1119,7 +1119,7 @@ export default function LayoutBuilder({
                 <div
                   key={layer.id}
                   onClick={() => setSelectedLayerId(layer.id)}
-                  className={`p-2 rounded-lg border flex items-center justify-between text-xs ${selectedLayerId === layer.id ? 'bg-[#1A1D24] border-[#8FD3FF]' : 'bg-[#13151A] border-white/5'
+                  className={`p-2 rounded-lg border flex items-center justify-between text-xs ${selectedLayerId === layer.id ? 'bg-raised border-accent' : 'bg-surface border-white/5'
                     }`}
                 >
                   <span className="font-bold text-white">{layer.name}</span>

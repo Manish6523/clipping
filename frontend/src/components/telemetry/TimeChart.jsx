@@ -123,7 +123,7 @@ export default function TimeChart({
         const p = data[hover];
         const left = geo.x(p.t);
         return (
-          <div className="pointer-events-none absolute top-1 z-10 rounded-lg border border-white/10 bg-[#0b0d12]/95 px-2.5 py-1.5 text-[11px] shadow-xl whitespace-nowrap"
+          <div className="pointer-events-none absolute top-1 z-10 rounded-lg border border-white/10 bg-surface/95 px-2.5 py-1.5 text-[11px] shadow-xl whitespace-nowrap"
             style={{ left: Math.min(Math.max(left + 10, 0), width - 150) }}>
             <div className="text-[var(--tl-muted)] mb-0.5">{new Date(p.t * 1000).toLocaleTimeString()}</div>
             {series.map((s) => (

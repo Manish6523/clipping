@@ -29,9 +29,9 @@ export default function LeftPanel() {
   ];
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-2.5 flex flex-col gap-2.5 shadow-xl select-none overflow-hidden">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-2.5 flex flex-col gap-2.5 shadow-xl select-none overflow-hidden">
       {/* Compact Tab Header Bar */}
-      <div className="grid grid-cols-5 gap-1 bg-[#0A0B0E] p-1 rounded-xl border border-white/[0.04] shrink-0">
+      <div className="grid grid-cols-5 gap-1 bg-canvas p-1 rounded-xl border border-white/[0.04] shrink-0">
         {tabs.map((t) => {
           const Icon = t.icon;
           const isActive = activeTab === t.id;
@@ -39,10 +39,10 @@ export default function LeftPanel() {
             <button
               key={t.id}
               onClick={() => setActiveTab(t.id)}
-              className={`flex items-center justify-center gap-1 py-1 rounded-lg text-[10px] font-bold transition-all ${
+              className={`flex items-center justify-center gap-1 py-1 rounded-lg text-[11px] font-bold transition-all ${
                 isActive
-                  ? 'bg-[#1A1D24] text-[#8FD3FF] shadow-sm border border-white/[0.06]'
-                  : 'text-[#8B90A0] hover:text-[#E8EAF0]'
+                  ? 'bg-raised text-accent shadow-sm border border-white/[0.06]'
+                  : 'text-muted hover:text-ink'
               }`}
               title={t.label}
             >
@@ -146,13 +146,13 @@ function LayersShelf() {
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
           Frames ({layers.length}/8)
         </span>
         <button
           onClick={handleAddLayer}
           disabled={layers.length >= 8}
-          className="flex items-center gap-1 bg-[#8FD3FF]/20 hover:bg-[#8FD3FF]/30 border border-[#8FD3FF]/40 text-[#8FD3FF] px-2 py-0.5 rounded text-[10px] font-bold"
+          className="flex items-center gap-1 bg-accent/20 hover:bg-accent/30 border border-accent/40 text-accent px-2 py-0.5 rounded text-[11px] font-bold"
         >
           <Plus size={11} /> Add
         </button>
@@ -170,8 +170,8 @@ function LayersShelf() {
               onClick={() => handleSelectLayer(layer.id)}
               className={`h-7 px-2 rounded-lg border flex items-center justify-between gap-1.5 cursor-pointer transition-all ${
                 isSelected
-                  ? 'bg-[#1A1D24] border-[#8FD3FF] shadow-sm'
-                  : 'bg-[#13151A] border-white/5 hover:border-white/20'
+                  ? 'bg-raised border-accent shadow-sm'
+                  : 'bg-surface border-white/5 hover:border-white/20'
               }`}
             >
               <div className="flex items-center gap-2 min-w-0">
@@ -252,7 +252,7 @@ function TranscriptSubTab() {
 
   return (
     <div className="flex flex-col gap-1.5 leading-relaxed select-text">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
         Interactive Script ({words.length} words)
       </span>
       <div className="flex flex-wrap gap-1">
@@ -295,7 +295,7 @@ function PresetsSubTab() {
 
   return (
     <div className="flex flex-col gap-2">
-      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
+      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
         Layout Presets
       </span>
       {presets.map((p) => (
@@ -316,7 +316,7 @@ function PresetsSubTab() {
               }
             });
           }}
-          className="text-left p-2 rounded-lg bg-[#1A1D24] hover:bg-[#1A1D24]/80 border border-white/5 text-xs text-white"
+          className="text-left p-2 rounded-lg bg-raised hover:bg-raised/80 border border-white/5 text-xs text-white"
         >
           {p.name}
         </button>

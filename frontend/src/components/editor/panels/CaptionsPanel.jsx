@@ -32,13 +32,13 @@ export default function CaptionsPanel({ isCompact = false }) {
     <div className="flex flex-col gap-3 text-xs select-none">
       {/* Font Family Picker */}
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1">
           Font Family
         </label>
         <select
           value={curFont}
           onChange={(e) => updateCaptionStyle({ font: e.target.value })}
-          className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
+          className="w-full bg-raised border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
         >
           {FONTS.map((f) => (
             <option key={f} value={f} className="bg-slate-900 text-white">
@@ -50,7 +50,7 @@ export default function CaptionsPanel({ isCompact = false }) {
 
       {/* Animation Preset */}
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1">
           Karaoke Pop Animation
         </label>
         <div className="grid grid-cols-4 gap-1.5">
@@ -65,7 +65,7 @@ export default function CaptionsPanel({ isCompact = false }) {
               onClick={() => updateCaptionStyle({ animation: anim.id })}
               className={`py-2 rounded-xl text-xs font-bold transition-all border ${
                 curAnimation === anim.id
-                  ? 'bg-[#8FD3FF] text-[#0A0B0E] border-[#8FD3FF]'
+                  ? 'bg-accent text-canvas border-accent'
                   : 'bg-white/[0.04] text-slate-300 border-white/[0.06] hover:bg-white/[0.08]'
               }`}
             >
@@ -78,7 +78,7 @@ export default function CaptionsPanel({ isCompact = false }) {
       {/* Colors: Primary & Active Highlight */}
       <div className="grid grid-cols-2 gap-2">
         <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1.5">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Text Color</span>
+          <span className="text-[11px] text-slate-400 uppercase font-bold">Text Color</span>
           <div className="flex items-center gap-1.5">
             <input
               type="color"
@@ -91,7 +91,7 @@ export default function CaptionsPanel({ isCompact = false }) {
         </div>
 
         <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1.5">
-          <span className="text-[10px] text-slate-400 uppercase font-bold">Karaoke Highlight</span>
+          <span className="text-[11px] text-slate-400 uppercase font-bold">Karaoke Highlight</span>
           <div className="flex items-center gap-1.5">
             <input
               type="color"
@@ -129,7 +129,7 @@ export default function CaptionsPanel({ isCompact = false }) {
             max="90"
             value={curPosY}
             onChange={(e) => updateCaptionPos({ y: Number(e.target.value) / 100 })}
-            className="w-full accent-[#8FD3FF] cursor-pointer"
+            className="w-full accent-accent cursor-pointer"
           />
         </div>
 
@@ -145,7 +145,7 @@ export default function CaptionsPanel({ isCompact = false }) {
                 onClick={() => updateCaptionStyle({ words_per_line: n })}
                 className={`py-1.5 rounded-xl text-xs font-bold transition-all border ${
                   curWordsPerLine === n
-                    ? 'bg-[#8FD3FF] text-[#0A0B0E] border-[#8FD3FF]'
+                    ? 'bg-accent text-canvas border-accent'
                     : 'bg-white/[0.04] text-slate-300 border-white/[0.06]'
                 }`}
               >

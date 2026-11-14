@@ -1,53 +1,121 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   AutoClip design system ("Pulse")
+   One neutral scale, one accent, four status colours. Everything in the app
+   resolves to these tokens - see components/ui for the building blocks.
+   ========================================================================== */
+@theme {
+  /* surfaces + ink */
+  --color-canvas: #0a0b0e;
+  --color-surface: #111319;
+  --color-raised: #171a22;
+  --color-line: rgb(255 255 255 / 0.07);
+  --color-line-strong: rgb(255 255 255 / 0.14);
+  --color-ink: #f0efec;
+  --color-muted: #9b9a92;
+  --color-faint: #7d7c75;
+  /* accent (blue ramp from the validated chart palette) */
+  --color-accent: #7fb6f5;
+  --color-accent-strong: #2a78d6;
+  /* status */
+  --color-good: #34d399;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --color-idle: #94a3b8;
+
+  /* Re-skin: every existing slate/indigo/violet/purple/cyan/sky class lands on the Pulse palette */
+  --color-slate-50: #f6f5f2;
+  --color-slate-100: #f0efec;
+  --color-slate-200: #dddcd5;
+  --color-slate-300: #c3c2b7;
+  --color-slate-400: #9b9a92;
+  --color-slate-500: #7d7c75;
+  --color-slate-600: #4f4e49;
+  --color-slate-700: #2b2d36;
+  --color-slate-800: #1e212a;
+  --color-slate-900: #111319;
+  --color-slate-950: #0a0b0e;
+  --color-zinc-300: #c3c2b7;
+  --color-zinc-400: #9b9a92;
+
+  --color-indigo-50: #eaf3fd;  --color-violet-50: #eaf3fd;  --color-purple-50: #eaf3fd;  --color-cyan-50: #eaf3fd;  --color-sky-50: #eaf3fd;
+  --color-indigo-100: #cde2fb; --color-violet-100: #cde2fb; --color-purple-100: #cde2fb; --color-cyan-100: #cde2fb; --color-sky-100: #cde2fb;
+  --color-indigo-200: #b7d3f6; --color-violet-200: #b7d3f6; --color-purple-200: #b7d3f6; --color-cyan-200: #b7d3f6; --color-sky-200: #b7d3f6;
+  --color-indigo-300: #9ec5f4; --color-violet-300: #9ec5f4; --color-purple-300: #9ec5f4; --color-cyan-300: #9ec5f4; --color-sky-300: #9ec5f4;
+  --color-indigo-400: #7fb6f5; --color-violet-400: #7fb6f5; --color-purple-400: #7fb6f5; --color-cyan-400: #7fb6f5; --color-sky-400: #7fb6f5;
+  --color-indigo-500: #3987e5; --color-violet-500: #3987e5; --color-purple-500: #3987e5; --color-cyan-500: #3987e5; --color-sky-500: #3987e5;
+  --color-indigo-600: #2a78d6; --color-violet-600: #2a78d6; --color-purple-600: #2a78d6; --color-cyan-600: #2a78d6; --color-sky-600: #2a78d6;
+  --color-indigo-700: #256abf; --color-violet-700: #256abf; --color-purple-700: #256abf; --color-cyan-700: #256abf; --color-sky-700: #256abf;
+  --color-indigo-800: #184f95; --color-violet-800: #184f95; --color-purple-800: #184f95; --color-cyan-800: #184f95; --color-sky-800: #184f95;
+  --color-indigo-900: #104281; --color-violet-900: #104281; --color-purple-900: #104281; --color-cyan-900: #104281; --color-sky-900: #104281;
+  --color-indigo-950: #0d2a52; --color-violet-950: #0d2a52; --color-purple-950: #0d2a52; --color-cyan-950: #0d2a52; --color-sky-950: #0d2a52;
+}
+
 @layer base {
   :root {
-    --bg-base: #0A0B0E;
-    --bg-panel: #13151A;
-    --bg-raised: #1A1D24;
-    --border-subtle: rgba(255, 255, 255, 0.06);
-    --accent-gradient: linear-gradient(135deg, #8FD3FF 0%, #A9B8FF 100%);
-    --txt-primary: #E8EAF0;
-    --txt-muted: #8B90A0;
+    color-scheme: dark;
+    --bg-base: #0a0b0e;
+    --bg-panel: #111319;
+    --bg-raised: #171a22;
+    --border-subtle: rgb(255 255 255 / 0.07);
+    --accent-gradient: linear-gradient(135deg, #7fb6f5 0%, #3987e5 100%);
+    --txt-primary: #f0efec;
+    --txt-muted: #9b9a92;
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    /* chart component aliases */
+    --tl-surface: var(--color-surface); --tl-text: var(--color-ink); --tl-muted: var(--color-muted);
+    --tl-grid: rgb(255 255 255 / 0.06); --tl-accent: var(--color-accent); --tl-event: #9085e9;
   }
+
+  html { -webkit-text-size-adjust: 100%; }
 
   body {
     margin: 0;
-    background-color: var(--bg-base);
-    color: var(--txt-primary);
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
     font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     -webkit-font-smoothing: antialiased;
     overflow-x: hidden;
   }
+
+  /* Phones zoom into inputs below 16px - keep them at 16px there, compact above */
+  input, select, textarea { font-size: 16px; }
+  @media (min-width: 640px) { input, select, textarea { font-size: 14px; } }
+
+  :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
+  button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
+  button:disabled { cursor: not-allowed; }
+  ::selection { background: rgb(57 135 229 / 0.4); }
 }
 
-/* Custom scrollbars matching Momo VideoMaker */
-::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.08);
-  border-radius: 9999px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.16);
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
 }
 
-/* Accent button glow */
+/* Custom scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgb(255 255 255 / 0.1); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgb(255 255 255 / 0.2); }
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { scrollbar-width: none; }
+
+/* Legacy accent button (kept for old call sites) */
 .btn-accent {
-  background: linear-gradient(135deg, #8FD3FF 0%, #A9B8FF 100%);
-  color: #0A0B0E;
+  background: linear-gradient(135deg, #7fb6f5 0%, #3987e5 100%);
+  color: #0a0b0e;
   font-weight: 700;
   transition: all 0.15s ease-out;
 }
-.btn-accent:hover {
-  box-shadow: 0 4px 20px rgba(143, 211, 255, 0.35);
-  transform: translateY(-1px);
-}
+.btn-accent:hover { box-shadow: 0 4px 20px rgb(57 135 229 / 0.35); transform: translateY(-1px); }
+
+@keyframes ds-sheet-up { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes ds-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes ds-pulse-ring { 0% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.5); } 100% { box-shadow: 0 0 0 8px rgb(52 211 153 / 0); } }
+.ds-sheet { animation: ds-sheet-up 0.22s ease-out; }
+.ds-fade { animation: ds-fade 0.18s ease-out; }
+.ds-live-dot { animation: ds-pulse-ring 1.6s ease-out infinite; }
 
 /* Explicit cursor utility classes so direction cursors always work */
 .cursor-nw-resize, .cursor-nwse-resize { cursor: nwse-resize !important; }

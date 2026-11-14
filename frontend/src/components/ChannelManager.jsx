@@ -1,39 +1,12 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { 
-  Radio, 
-  Plus, 
-  Trash2, 
-  CheckCircle2, 
-  XCircle, 
-  ExternalLink,
-  Pause, 
-  Play, 
-  Settings, 
-  Flame, 
-  X, 
-  Save, 
-  AlertTriangle,
-  Tag,
-  Folder,
-  Layers,
-  RefreshCw,
-  Search,
-  Filter,
-  Tv,
-  Check,
-  Activity
-} from 'lucide-react';
-import { 
-  getChannels, 
-  addChannel, 
-  removeChannel, 
-  getStreamers, 
-  getTemplates,
-  pauseChannel,
-  resumeChannel,
-  patchChannelSettings
-} from '../api';
 import { Link } from 'react-router-dom';
+import {
+  Radio, Plus, Trash2, CheckCircle2, ExternalLink, Pause, Play, Settings, Save, AlertTriangle, Tag, Layers, RefreshCw, Search, Activity, Eye, Zap,
+} from 'lucide-react';
+import { getChannels, addChannel, removeChannel, getStreamers, getTemplates, pauseChannel, resumeChannel, patchChannelSettings } from '../api';
+import {
+  Page, Panel, Button, IconButton, Input, Select, Textarea, Field, Pill, Badge, Segmented, Sheet, Confirm, Checkbox, EmptyState, Notice, Stat, Dot,
+} from './ui';
 
 const DEFAULT_GROUPS = ['Casual Gaming', 'GTA RP', 'Valorant', 'IRL', 'Shooters', 'Reaction', 'General'];
 
@@ -63,6 +36,8 @@ export default function ChannelManager() {
   const [drawerForm, setDrawerForm] = useState(null);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [isRefreshingAvatar, setIsRefreshingAvatar] = useState(false);
+  const [error, setError] = useState('');
+  const [confirmRemove, setConfirmRemove] = useState(null);
 
   useEffect(() => {
     fetchData();
@@ -130,7 +105,7 @@ export default function ChannelManager() {
       setShowAddModal(false);
       await fetchData();
     } catch (err) {
-      alert('Failed to add channel: ' + (err.response?.data?.error?.message || err.message));
+      setError(`Could not add the streamer: ${err.response?.data?.error?.message || err.message}`);
     } finally {
       setIsAddingLoading(false);
     }
@@ -146,7 +121,7 @@ export default function ChannelManager() {
         await resumeChannel(c.channel_id_or_handle);
         fetchData();
       } catch (err) {
-        alert('Failed to resume: ' + err.message);
+        setError(`Could not resume: ${err.message}`);
       }
     }
   };
@@ -158,7 +133,7 @@ export default function ChannelManager() {
       setPauseModalChannel(null);
       fetchData();
     } catch (err) {
-      alert('Failed to pause: ' + err.message);
+      setError(`Could not pause: ${err.message}`);
     }
   };
 
@@ -229,7 +204,7 @@ export default function ChannelManager() {
       setTimeout(() => setSaveSuccess(false), 2500);
       await fetchData();
     } catch (err) {
-      alert('Save failed: ' + (err.response?.data?.error?.message || err.message));
+      setError(`Save failed: ${err.response?.data?.error?.message || err.message}`);
     }
   };
 
@@ -253,695 +228,224 @@ export default function ChannelManager() {
   };
 
   const handleRemove = async (handle) => {
-    if (!confirm(`Stop monitoring channel "${handle}"?`)) return;
+    setConfirmRemove(null);
     try {
       await removeChannel(handle);
       fetchData();
     } catch (err) {
-      alert('Failed to remove channel: ' + err.message);
+      setError(`Could not remove the streamer: ${err.message}`);
     }
   };
 
+  const setRules = (patch) => setDrawerForm({ ...drawerForm, clip_rules: { ...drawerForm.clip_rules, ...patch } });
+  const setAi = (patch) => setDrawerForm({ ...drawerForm, ai: { ...drawerForm.ai, ...patch } });
+  const liveCount = channels.filter((c) => c.enabled === 1 && (streamers[c.channel_id_or_handle] || {}).is_live).length;
+  const pausedCount = channels.filter((c) => c.enabled !== 1).length;
+
+  const groupOptions = [
+    { value: 'all', label: 'All', count: channels.length },
+    ...availableGroups
+      .map((g) => ({ value: g, label: g, count: channels.filter((c) => (c.group_tag || 'General').toLowerCase() === g.toLowerCase()).length }))
+      .filter((o) => o.count > 0 || o.value.toLowerCase() === selectedGroup.toLowerCase()),
+  ];
+
+  const sorted = [...filteredChannels].sort((a, b) => {
+    const rank = (c) => ((streamers[c.channel_id_or_handle] || {}).is_live && c.enabled === 1 ? 0 : c.enabled === 1 ? 1 : 2);
+    return rank(a) - rank(b);
+  });
+
   return (
-    <div className="max-w-7xl mx-auto px-4 py-6">
-      {/* Top Header Banner */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Radio className="text-rose-500 animate-pulse" />
-            <span className="sm:hidden">Streamers</span>
-            <span className="hidden sm:inline">Monitored Streamers &amp; Channels</span>
-          </h2>
-          <p className="hidden sm:block text-xs text-[#8B90A0] mt-1">
-            Group creators by niche (GTA RP, Casual Gaming, IRL), auto-fetch platform logos, and customize viral detection.
-          </p>
+    <Page title="Streamers" icon={Radio} subtitle="Who the clipper watches. Group creators by niche, tune clip rules and teach the AI each streamer's style."
+      actions={(
+        <>
+          <Link to="/telemetry"><Button icon={Activity}>Live Pulse</Button></Link>
+          <Button variant="primary" icon={Plus} onClick={() => setShowAddModal(true)}>Add streamer</Button>
+        </>
+      )}>
+      {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
+
+      {channels.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Watching" value={channels.length - pausedCount} icon={Eye} />
+          <Stat label="Live now" value={liveCount} tone={liveCount ? 'bad' : 'idle'} icon={Radio} />
+          <Stat label="Paused" value={pausedCount} tone={pausedCount ? 'warn' : 'idle'} icon={Pause} />
         </div>
-        <div className="flex items-center gap-2">
-          <Link
-            to="/telemetry"
-            className="flex items-center gap-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-bold py-2 px-3.5 rounded-xl text-xs transition-all shrink-0 shadow-sm"
-          >
-            <Activity size={15} className="animate-pulse" />
-            <span>Live Pulse &amp; Waveforms</span>
-          </Link>
-          <button
-            onClick={() => setShowAddModal(true)}
-            className="flex items-center gap-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold py-2 px-4 rounded-xl text-xs shadow-lg shadow-indigo-600/25 transition-all shrink-0"
-          >
-            <Plus size={16} /> Add Streamer
-          </button>
+      )}
+
+      <div className="flex flex-col lg:flex-row lg:items-center gap-2">
+        <div className="min-w-0 flex-1"><Segmented value={selectedGroup} onChange={setSelectedGroup} options={groupOptions} size="sm" ariaLabel="Group" /></div>
+        <div className="relative lg:w-72">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-faint" />
+          <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search streamer or handle…" aria-label="Search streamers" className="!pl-8" />
         </div>
       </div>
 
-      {/* Control Bar: Category Group Pills & Search Bar */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 bg-[#0E1118] border border-white/[0.08] p-2.5 rounded-2xl mb-6 shadow-xl">
-        {/* Category Group Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto custom-scrollbar pb-1 lg:pb-0">
-          <button
-            onClick={() => setSelectedGroup('all')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-              selectedGroup === 'all'
-                ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                : 'text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.04]'
-            }`}
-          >
-            <Layers size={13} />
-            <span>All Channels</span>
-            <span className="text-[10px] px-1.5 py-0.2 bg-black/40 rounded-full font-mono">
-              {channels.length}
-            </span>
-          </button>
-
-          {availableGroups.map((grp) => {
-            const count = channels.filter(c => (c.group_tag || 'General').toLowerCase() === grp.toLowerCase()).length;
-            const isSel = selectedGroup.toLowerCase() === grp.toLowerCase();
-            // Only show groups you actually use (defaults remain as suggestions when adding a streamer)
-            if (count === 0 && !isSel) return null;
-            return (
-              <button
-                key={grp}
-                onClick={() => setSelectedGroup(grp)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 ${
-                  isSel
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
-                    : 'text-slate-400 hover:text-white bg-white/[0.03] hover:bg-white/[0.08] border border-white/[0.04]'
-                }`}
-              >
-                <Tag size={12} className={isSel ? 'text-white' : 'text-indigo-400'} />
-                <span>{grp}</span>
-                {count > 0 && (
-                  <span className="text-[10px] px-1.5 py-0.2 bg-black/40 rounded-full font-mono">
-                    {count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Search Input */}
-        <div className="relative min-w-[220px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search streamer or handle..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-[#141722] border border-white/[0.08] text-white rounded-xl pl-8 pr-3 py-1.5 text-xs focus:outline-none focus:border-indigo-500"
-          />
-        </div>
-      </div>
-
-      {/* Streamers Grid / Cards View */}
-      {filteredChannels.length === 0 ? (
-        <div className="bg-[#0E1118] border border-white/[0.08] rounded-2xl p-12 text-center flex flex-col items-center justify-center gap-3">
-          <div className="w-12 h-12 rounded-full bg-white/[0.04] flex items-center justify-center text-slate-500">
-            <Radio size={24} />
-          </div>
-          <span className="text-sm font-bold text-white">No Streamers Found</span>
-          <span className="text-xs text-slate-500 max-w-sm">
-            {selectedGroup !== 'all'
-              ? `No streamers currently assigned to the "${selectedGroup}" group.`
-              : 'Add your first streamer by clicking "+ Add Streamer" above.'}
-          </span>
-        </div>
+      {sorted.length === 0 ? (
+        <Panel>
+          <EmptyState icon={Radio} title="No streamers found"
+            text={selectedGroup !== 'all' ? `Nobody is in the "${selectedGroup}" group yet.` : 'Add your first streamer to start watching for live moments.'}
+            action={<Button variant="primary" icon={Plus} onClick={() => setShowAddModal(true)}>Add streamer</Button>} />
+        </Panel>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-          {[...filteredChannels].sort((a, b) => {
-            // Live first, then active, then paused
-            const rank = (c) => ((streamers[c.channel_id_or_handle] || {}).is_live && c.enabled === 1 ? 0 : c.enabled === 1 ? 1 : 2);
-            return rank(a) - rank(b);
-          }).map((c) => {
-            const streamInfo = streamers[c.channel_id_or_handle] || {};
-            const isLive = streamInfo.is_live;
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+          {sorted.map((c) => {
+            const info = streamers[c.channel_id_or_handle] || {};
+            const isLive = info.is_live;
             const isEnabled = c.enabled === 1;
             const platform = (c.platform || 'twitch').toLowerCase();
-            const groupName = c.group_tag || 'General';
-
+            const name = c.display_name || c.channel_id_or_handle;
             return (
-              <div
-                key={c.id}
-                className={`bg-[#0E1118] border rounded-2xl p-3 sm:p-4 transition-all flex flex-col justify-between shadow-xl relative overflow-hidden group ${
-                  !isEnabled
-                    ? 'border-amber-500/20 opacity-70'
-                    : isLive
-                    ? 'border-rose-500/40 ring-1 ring-rose-500/20'
-                    : 'border-white/[0.08] hover:border-white/20'
-                }`}
-              >
-                {/* Live Indicator Accent Bar */}
-                {isLive && isEnabled && (
-                  <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-rose-500 to-amber-500 animate-pulse" />
-                )}
-
-                {/* Card Top: Avatar + Streamer Info + Platform Badge */}
-                <div>
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-3 min-w-0">
-                      {/* Avatar / Logo with Platform Overlay */}
-                      <div className="relative shrink-0">
-                        {c.avatar_url ? (
-                          <img
-                            src={c.avatar_url}
-                            alt={c.display_name || c.channel_id_or_handle}
-                            className="w-12 h-12 rounded-full object-cover border-2 border-white/[0.12] shadow-md"
-                            onError={(e) => { e.target.style.display = 'none'; }}
-                          />
-                        ) : (
-                          <div className="w-12 h-12 rounded-full bg-gradient-to-br from-indigo-900 to-slate-800 border-2 border-white/[0.12] flex items-center justify-center font-extrabold text-indigo-300 text-sm shadow-md">
-                            {(c.display_name || c.channel_id_or_handle).substring(0, 2).toUpperCase()}
-                          </div>
-                        )}
-                        {/* Platform Pill Icon */}
-                        <span className={`absolute -bottom-1 -right-1 text-[9px] font-black uppercase px-1.5 py-0.2 rounded-full border shadow-sm ${
-                          platform === 'twitch'
-                            ? 'bg-[#9146FF] text-white border-white/20'
-                            : 'bg-[#FF0000] text-white border-white/20'
-                        }`}>
-                          {platform === 'twitch' ? 'TW' : 'YT'}
-                        </span>
-                      </div>
-
-                      {/* Name, Handle, and Group Badge */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-extrabold text-sm text-white truncate">
-                            {c.display_name || c.channel_id_or_handle}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-400 font-mono truncate">
-                          @{c.channel_id_or_handle}
-                        </div>
-                        <div className="mt-1 flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-indigo-300 flex items-center gap-1">
-                            <Tag size={10} /> {groupName}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Live/Paused Status Pill */}
-                    <div className="shrink-0">
-                      {!isEnabled ? (
-                        <span className="px-2 py-0.5 rounded-full bg-amber-500/10 border border-amber-500/30 text-amber-400 font-bold text-[10px] inline-flex items-center gap-1">
-                          PAUSED
-                        </span>
-                      ) : isLive ? (
-                        <span className="px-2 py-0.5 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 font-bold text-[10px] inline-flex items-center gap-1">
-                          <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping" />
-                          LIVE
-                        </span>
+              <Panel key={c.id} tone={!isEnabled ? 'warn' : isLive ? 'bad' : undefined} className={`!p-3.5 flex flex-col gap-3 ${!isEnabled ? 'opacity-75' : ''}`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="relative shrink-0">
+                      {c.avatar_url ? (
+                        <img src={c.avatar_url} alt="" className="w-12 h-12 rounded-full object-cover border border-line-strong" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
                       ) : (
-                        <span className="px-2 py-0.5 rounded-full bg-slate-800 border border-white/[0.06] text-slate-400 font-medium text-[10px]">
-                          Offline
-                        </span>
+                        <div className="w-12 h-12 rounded-full bg-raised border border-line-strong flex items-center justify-center font-semibold text-accent text-sm">{name.substring(0, 2).toUpperCase()}</div>
                       )}
+                      <span className={`absolute -bottom-1 -right-1 text-[9px] font-bold px-1.5 rounded-full text-white border border-surface ${platform === 'twitch' ? 'bg-[#9146FF]' : 'bg-[#e11d48]'}`}>{platform === 'twitch' ? 'TW' : 'YT'}</span>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="font-semibold text-[14px] text-ink truncate">{name}</div>
+                      <div className="text-[11px] text-muted font-mono truncate">@{c.channel_id_or_handle}</div>
+                      <Badge tone="accent" className="mt-1"><Tag size={10} className="mr-1" />{c.group_tag || 'General'}</Badge>
                     </div>
                   </div>
-
-                  {/* Stream Title (if live) or Notes */}
-                  {isLive && streamInfo.title ? (
-                    <div className="text-[11px] text-slate-300 line-clamp-1 italic mb-3 bg-white/[0.02] p-1.5 rounded-lg border border-white/[0.04]">
-                      🔴 {streamInfo.title}
-                    </div>
-                  ) : c.notes ? (
-                    <div className="text-[11px] text-[#8B90A0] line-clamp-1 mb-3">
-                      📝 {c.notes}
-                    </div>
-                  ) : null}
-
-                  {/* Stream & Template Stats Grid */}
-                  <div className={`${isLive ? 'grid' : 'hidden sm:grid'} grid-cols-3 gap-2 bg-[#12151E] p-2 rounded-xl border border-white/[0.04] mb-3`}>
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block">Layout</span>
-                      <span className="text-xs font-mono font-bold text-indigo-300 truncate block" title={c.template_name}>
-                        {c.template_name}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block">Velocity</span>
-                      <span className="text-xs font-mono font-bold text-white block">
-                        {streamInfo.current_mps ? `${streamInfo.current_mps.toFixed(1)} MPS` : '0.0 MPS'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className="text-[9px] uppercase tracking-wider text-slate-500 font-bold block">Clips Today</span>
-                      <span className="text-xs font-mono font-bold text-emerald-400 block">
-                        {c.clips_today || 0}
-                      </span>
-                    </div>
+                  <div className="shrink-0">
+                    {!isEnabled ? <Pill tone="warn">Paused</Pill> : isLive ? <Pill tone="bad"><span className="font-semibold">LIVE</span></Pill> : <Pill tone="idle">Offline</Pill>}
                   </div>
                 </div>
 
-                {/* Card Footer: Action Controls */}
-                <div className="flex items-center justify-between pt-2 border-t border-white/[0.06]">
-                  <a
-                    href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-[11px] font-semibold text-slate-400 hover:text-white flex items-center gap-1 transition-colors py-2"
-                  >
-                    Open Stream <ExternalLink size={11} />
+                {isLive && info.title ? (
+                  <p className="text-xs text-slate-300 line-clamp-1 bg-white/[0.03] rounded-lg px-2.5 py-1.5">{info.title}</p>
+                ) : c.notes ? <p className="text-xs text-muted line-clamp-1">{c.notes}</p> : null}
+
+                <dl className="grid grid-cols-3 gap-2 text-xs">
+                  {[
+                    ['Layout', c.template_name, 'text-accent'],
+                    ['Chat speed', info.current_mps ? `${info.current_mps.toFixed(1)} /s` : '0.0 /s', 'text-ink'],
+                    ['Clips today', c.clips_today || 0, 'text-good'],
+                  ].map(([k, v, cls]) => (
+                    <div key={k} className="rounded-lg bg-canvas px-2 py-1.5 min-w-0">
+                      <dt className="text-[10px] text-faint">{k}</dt>
+                      <dd className={`font-semibold tabular-nums truncate ${cls}`} title={String(v)}>{v}</dd>
+                    </div>
+                  ))}
+                </dl>
+
+                <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-line mt-auto">
+                  <a href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
+                    target="_blank" rel="noreferrer" className="text-[12px] font-medium text-muted hover:text-ink flex items-center gap-1 py-2">
+                    Open stream <ExternalLink size={11} />
                   </a>
-
-                  <div className="flex items-center gap-1.5">
-                    {/* Pause/Resume Toggle */}
-                    <button
-                      onClick={() => handleTogglePause(c)}
-                      className={`px-3 sm:px-2.5 py-2 sm:py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1 ${
-                        isEnabled
-                          ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30'
-                          : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30'
-                      }`}
-                      title={isEnabled ? "Pause Monitoring" : "Resume Monitoring"}
-                    >
-                      {isEnabled ? <Pause size={12} /> : <Play size={12} />}
-                      <span>{isEnabled ? 'Pause' : 'Resume'}</span>
-                    </button>
-
-                    {/* Settings Button */}
-                    <button
-                      onClick={() => openSettings(c)}
-                      className="p-2.5 sm:p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors border border-white/[0.04]"
-                      title="Settings & Persona"
-                    >
-                      <Settings size={14} />
-                    </button>
-
-                    {/* Delete Button */}
-                    <button
-                      onClick={() => handleRemove(c.channel_id_or_handle)}
-                      className="p-2.5 sm:p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                      title="Remove Channel"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                  <div className="flex items-center gap-1">
+                    <Button size="sm" variant={isEnabled ? 'warn' : 'good'} icon={isEnabled ? Pause : Play} onClick={() => handleTogglePause(c)}>{isEnabled ? 'Pause' : 'Resume'}</Button>
+                    <IconButton icon={Settings} label="Settings and AI persona" size="sm" variant="secondary" onClick={() => openSettings(c)} />
+                    <IconButton icon={Trash2} label="Remove streamer" size="sm" className="hover:!text-bad" onClick={() => setConfirmRemove(c.channel_id_or_handle)} />
                   </div>
                 </div>
-              </div>
+              </Panel>
             );
           })}
         </div>
       )}
 
-      {/* PAUSE CONFIRMATION MODAL */}
-      {pauseModalChannel && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
-          <div className="bg-[#0E1118] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-base font-bold text-white mb-2 flex items-center gap-2">
-              <Pause className="text-amber-400" size={18} />
-              Pause Monitoring for {pauseModalChannel.channel_id_or_handle}
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              While paused, the HLS buffer is stopped and no clips or jobs will be processed for this creator.
-            </p>
-
-            <div className="space-y-3 mb-6">
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                  Pause Reason
-                </label>
-                <input
-                  type="text"
-                  value={pauseReason}
-                  onChange={(e) => setPauseReason(e.target.value)}
-                  className="w-full bg-[#141722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
-                />
-              </div>
-
-              <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
-                <input
-                  type="checkbox"
-                  checked={pauseImmediate}
-                  onChange={(e) => setPauseImmediate(e.target.checked)}
-                  className="rounded border-white/20 bg-slate-950 text-indigo-500"
-                />
-                Cancel active in-flight rendering jobs immediately
-              </label>
-            </div>
-
-            <div className="flex items-center justify-end gap-3">
-              <button
-                onClick={() => setPauseModalChannel(null)}
-                className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg text-xs"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmPause}
-                className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs"
-              >
-                Confirm Pause
-              </button>
-            </div>
-          </div>
+      {/* Pause */}
+      <Sheet open={!!pauseModalChannel} onClose={() => setPauseModalChannel(null)} title={`Pause ${pauseModalChannel?.channel_id_or_handle || ''}`}
+        footer={<div className="flex gap-2"><Button block onClick={() => setPauseModalChannel(null)}>Cancel</Button><Button block variant="warn" onClick={confirmPause}>Pause monitoring</Button></div>}>
+        <p className="text-xs text-muted mb-3">While paused, recording stops and no clips or jobs are processed for this streamer.</p>
+        <div className="space-y-3">
+          <Field label="Reason"><Input value={pauseReason} onChange={(e) => setPauseReason(e.target.value)} /></Field>
+          <Checkbox checked={pauseImmediate} onChange={setPauseImmediate} label="Cancel renders that are in progress right now" />
         </div>
-      )}
+      </Sheet>
 
-      {/* SETTINGS & PERSONA SLIDE-OVER DRAWER */}
-      {drawerChannel && drawerForm && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[80] flex justify-end">
-          <div className="w-full max-w-xl bg-[#0E1118] border-l border-white/10 h-full flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
-            {/* Drawer Header */}
-            <div className="p-4 border-b border-white/10 flex items-center justify-between bg-[#12151E]">
-              <div className="flex items-center gap-3">
-                {drawerForm.avatar_url ? (
-                  <img
-                    src={drawerForm.avatar_url}
-                    alt=""
-                    className="w-10 h-10 rounded-full object-cover border border-white/20"
-                  />
-                ) : (
-                  <div className="w-10 h-10 rounded-full bg-indigo-600/30 border border-indigo-400 flex items-center justify-center font-bold text-white text-xs">
-                    {(drawerForm.display_name || 'CH').substring(0, 2).toUpperCase()}
-                  </div>
-                )}
-                <div>
-                  <h3 className="font-extrabold text-sm text-white">
-                    {drawerForm.display_name || drawerChannel.channel_id_or_handle}
-                  </h3>
-                  <p className="text-[11px] text-slate-400 font-mono">
-                    @{drawerChannel.channel_id_or_handle} • {drawerChannel.platform}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => setDrawerChannel(null)}
-                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Drawer Form Body */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-6 custom-scrollbar">
-              {/* Identity & Grouping */}
-              <div className="space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                  <Tag size={12} className="text-indigo-400" /> Channel Group &amp; Identity
-                </span>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Display Name</label>
-                    <input
-                      type="text"
-                      value={drawerForm.display_name}
-                      onChange={(e) => setDrawerForm({ ...drawerForm, display_name: e.target.value })}
-                      className="w-full bg-[#141722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-indigo-400 block mb-1 font-bold">Group / Label</label>
-                    <input
-                      type="text"
-                      value={drawerForm.group_tag || ''}
-                      onChange={(e) => setDrawerForm({ ...drawerForm, group_tag: e.target.value })}
-                      className="w-full bg-[#141722] border border-indigo-500/30 rounded-lg px-3 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                      placeholder="e.g. GTA RP, Casual Gaming, IRL"
-                    />
-                  </div>
-                </div>
-
-                {/* Avatar URL with Auto-Refresh button */}
-                <div>
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="text-[11px] text-slate-400 block">Avatar / Logo Image URL</label>
-                    <button
-                      type="button"
-                      onClick={handleRefreshAvatar}
-                      disabled={isRefreshingAvatar}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-semibold"
-                    >
-                      <RefreshCw size={10} className={isRefreshingAvatar ? 'animate-spin' : ''} />
-                      {isRefreshingAvatar ? 'Fetching...' : 'Auto-Fetch Logo'}
-                    </button>
-                  </div>
-                  <input
-                    type="text"
-                    value={drawerForm.avatar_url || ''}
-                    onChange={(e) => setDrawerForm({ ...drawerForm, avatar_url: e.target.value })}
-                    className="w-full bg-[#141722] border border-white/10 rounded-lg px-3 py-1.5 text-xs font-mono text-slate-300"
-                    placeholder="https://static-cdn.jtvnw.net/..."
-                  />
-                </div>
-
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Active Visual Template</label>
-                  <select
-                    value={drawerForm.template_name}
-                    onChange={(e) => setDrawerForm({ ...drawerForm, template_name: e.target.value })}
-                    className="w-full bg-[#141722] border border-white/10 rounded-lg px-3 py-1.5 text-xs text-white"
-                  >
-                    {templates.map((t) => (
-                      <option key={t.name} value={t.name}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Clip Rules */}
-              <div className="space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">Clip Rules</span>
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Min Length (s)</label>
-                    <input
-                      type="number"
-                      value={drawerForm.clip_rules.min_length}
-                      onChange={(e) => setDrawerForm({
-                        ...drawerForm,
-                        clip_rules: { ...drawerForm.clip_rules, min_length: Number(e.target.value) }
-                      })}
-                      className="w-full bg-[#141722] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Max Length (s)</label>
-                    <input
-                      type="number"
-                      value={drawerForm.clip_rules.max_length}
-                      onChange={(e) => setDrawerForm({
-                        ...drawerForm,
-                        clip_rules: { ...drawerForm.clip_rules, max_length: Number(e.target.value) }
-                      })}
-                      className="w-full bg-[#141722] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-slate-400 block mb-1">Min Score (/100)</label>
-                    <input
-                      type="number"
-                      value={drawerForm.clip_rules.min_score}
-                      onChange={(e) => setDrawerForm({
-                        ...drawerForm,
-                        clip_rules: { ...drawerForm.clip_rules, min_score: Number(e.target.value) }
-                      })}
-                      className="w-full bg-[#141722] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* AI & Context Prompt */}
-              <div className="space-y-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-slate-400">AI Context &amp; Persona Guidelines</span>
-                <div>
-                  <label className="text-[11px] text-slate-400 block mb-1">Creator Persona &amp; Niche</label>
-                  <textarea
-                    rows={2}
-                    value={drawerForm.ai.persona || ''}
-                    onChange={(e) => setDrawerForm({
-                      ...drawerForm,
-                      ai: { ...drawerForm.ai, persona: e.target.value }
-                    })}
-                    className="w-full bg-[#141722] border border-white/10 rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500"
-                    placeholder="e.g. High energy German streamer who unboxes CS cases, screams at rare knives, and talks fast."
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[11px] text-emerald-400 block mb-1">What Makes a GOOD Clip</label>
-                    <textarea
-                      rows={2}
-                      value={drawerForm.ai.good_clip_notes || ''}
-                      onChange={(e) => setDrawerForm({
-                        ...drawerForm,
-                        ai: { ...drawerForm.ai, good_clip_notes: e.target.value }
-                      })}
-                      className="w-full bg-[#141722] border border-emerald-500/20 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-emerald-500"
-                      placeholder="e.g. Unboxing gold knives, sudden rage quits, hilarious voice cracks."
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[11px] text-rose-400 block mb-1">What to AVOID / REJECT</label>
-                    <textarea
-                      rows={2}
-                      value={drawerForm.ai.avoid_notes || ''}
-                      onChange={(e) => setDrawerForm({
-                        ...drawerForm,
-                        ai: { ...drawerForm.ai, avoid_notes: e.target.value }
-                      })}
-                      className="w-full bg-[#141722] border border-rose-500/20 rounded-lg p-2 text-xs text-white focus:outline-none focus:border-rose-500"
-                      placeholder="e.g. Boring inventory sorting, quiet AFK moments, off-topic chat reading."
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="text-[11px] text-amber-400 block mb-1">Inside Jokes &amp; Key Catchphrases</label>
-                  <input
-                    type="text"
-                    value={drawerForm.ai.inside_jokes || ''}
-                    onChange={(e) => setDrawerForm({
-                      ...drawerForm,
-                      ai: { ...drawerForm.ai, inside_jokes: e.target.value }
-                    })}
-                    className="w-full bg-[#141722] border border-amber-500/20 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-amber-500"
-                    placeholder="e.g. gold gold gold, L, W, Cooked, Juicer"
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Drawer Footer */}
-            <div className="p-4 border-t border-white/10 flex items-center justify-between bg-[#12151E]">
-              {saveSuccess ? (
-                <span className="text-xs text-emerald-400 font-bold flex items-center gap-1.5">
-                  <CheckCircle2 size={15} /> Settings Saved &amp; Hot-Reloaded!
-                </span>
-              ) : <div />}
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={() => setDrawerChannel(null)}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-300 rounded-lg text-xs"
-                >
-                  Close
-                </button>
-                <button
-                  onClick={saveSettings}
-                  className="flex items-center gap-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 px-5 rounded-lg text-xs shadow-lg shadow-indigo-600/20"
-                >
-                  <Save size={14} /> Save Settings
-                </button>
-              </div>
-            </div>
+      {/* Settings + AI persona */}
+      <Sheet open={!!(drawerChannel && drawerForm)} onClose={() => setDrawerChannel(null)} wide
+        title={drawerForm ? `${drawerForm.display_name || drawerChannel?.channel_id_or_handle} · ${drawerChannel?.platform}` : ''}
+        footer={drawerForm && (
+          <div className="flex items-center gap-2">
+            {saveSuccess && <span className="text-xs text-good font-semibold flex items-center gap-1.5 mr-auto"><CheckCircle2 size={15} /> Saved &amp; applied</span>}
+            <Button className="ml-auto" onClick={() => setDrawerChannel(null)}>Close</Button>
+            <Button variant="primary" icon={Save} onClick={saveSettings}>Save</Button>
           </div>
-        </div>
-      )}
-
-      {/* ADD STREAMER MODAL */}
-      {showAddModal && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 z-[80]">
-          <div className="bg-[#0E1118] border border-white/10 rounded-2xl max-w-md w-full p-6 shadow-2xl">
-            <h3 className="text-base font-black text-white mb-1 flex items-center gap-2">
-              <Plus className="text-indigo-400" size={18} /> Add Streamer to Monitor
-            </h3>
-            <p className="text-xs text-[#8B90A0] mb-4">
-              We'll automatically fetch their Twitch/YouTube avatar and begin tracking moments.
-            </p>
-
-            <form onSubmit={handleAdd} className="space-y-4">
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                  Channel Handle / Username
-                </label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. ohnepixel or ishowspeed"
-                  value={newChannel}
-                  onChange={(e) => setNewChannel(e.target.value)}
-                  className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
+        )}>
+        {drawerForm && (
+          <div className="space-y-6">
+            <section className="space-y-3">
+              <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted flex items-center gap-1.5"><Tag size={12} /> Identity &amp; group</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label="Display name"><Input value={drawerForm.display_name} onChange={(e) => setDrawerForm({ ...drawerForm, display_name: e.target.value })} /></Field>
+                <Field label="Group / label"><Input value={drawerForm.group_tag || ''} onChange={(e) => setDrawerForm({ ...drawerForm, group_tag: e.target.value })} placeholder="e.g. GTA RP, IRL" /></Field>
               </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                    Platform
-                  </label>
-                  <select
-                    value={newPlatform}
-                    onChange={(e) => setNewPlatform(e.target.value)}
-                    className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
-                  >
-                    <option value="twitch">Twitch</option>
-                    <option value="youtube">YouTube</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                    Layout Template
-                  </label>
-                  <select
-                    value={newTemplate}
-                    onChange={(e) => setNewTemplate(e.target.value)}
-                    className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white"
-                  >
-                    {templates.map((t) => (
-                      <option key={t.name} value={t.name}>{t.name}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              {/* Group / Label Preset & Custom */}
-              <div>
-                <label className="text-[11px] font-bold uppercase tracking-wider text-indigo-400 block mb-1 flex items-center gap-1.5">
-                  <Tag size={12} /> Group / Niche Label
-                </label>
-                <div className="grid grid-cols-3 gap-1.5 mb-2">
-                  {DEFAULT_GROUPS.map((grp) => (
-                    <button
-                      key={grp}
-                      type="button"
-                      onClick={() => { setNewGroupTag(grp); setCustomGroupInput(''); }}
-                      className={`px-2 py-1.5 rounded-lg text-xs font-semibold border transition-all text-center truncate ${
-                        newGroupTag === grp && !customGroupInput
-                          ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
-                          : 'bg-[#141722] text-slate-400 hover:text-white border-white/[0.06]'
-                      }`}
-                    >
-                      {grp}
-                    </button>
-                  ))}
-                </div>
-                <input
-                  type="text"
-                  placeholder="Or type a custom group (e.g. Minecraft, Poker)..."
-                  value={customGroupInput}
-                  onChange={(e) => setCustomGroupInput(e.target.value)}
-                  className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.06]">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 bg-white/5 hover:bg-white/10 text-slate-400 hover:text-white rounded-xl text-xs"
-                >
-                  Cancel
+              <Field label="Avatar image URL" right={(
+                <button type="button" onClick={handleRefreshAvatar} disabled={isRefreshingAvatar} className="text-[11px] text-accent flex items-center gap-1 font-semibold disabled:opacity-50">
+                  <RefreshCw size={11} className={isRefreshingAvatar ? 'animate-spin' : ''} />{isRefreshingAvatar ? 'Fetching…' : 'Auto-fetch'}
                 </button>
-                <button
-                  type="submit"
-                  disabled={isAddingLoading}
-                  className="px-5 py-2 bg-gradient-to-r from-indigo-600 to-violet-600 hover:from-indigo-500 hover:to-violet-500 text-white font-extrabold rounded-xl text-xs shadow-lg shadow-indigo-600/30 flex items-center gap-2"
-                >
-                  {isAddingLoading ? (
-                    <>
-                      <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                      <span>Fetching Avatar...</span>
-                    </>
-                  ) : (
-                    <span>Add Creator</span>
-                  )}
-                </button>
+              )}>
+                <Input mono value={drawerForm.avatar_url || ''} onChange={(e) => setDrawerForm({ ...drawerForm, avatar_url: e.target.value })} placeholder="https://static-cdn.jtvnw.net/…" />
+              </Field>
+              <Field label="Layout template">
+                <Select value={drawerForm.template_name} onChange={(e) => setDrawerForm({ ...drawerForm, template_name: e.target.value })}>
+                  {templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}
+                </Select>
+              </Field>
+            </section>
+
+            <section className="space-y-3">
+              <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted flex items-center gap-1.5"><Zap size={12} /> Clip rules</h4>
+              <div className="grid grid-cols-3 gap-3">
+                <Field label="Min length (s)"><Input type="number" inputMode="numeric" value={drawerForm.clip_rules.min_length} onChange={(e) => setRules({ min_length: Number(e.target.value) })} /></Field>
+                <Field label="Max length (s)"><Input type="number" inputMode="numeric" value={drawerForm.clip_rules.max_length} onChange={(e) => setRules({ max_length: Number(e.target.value) })} /></Field>
+                <Field label="Min score"><Input type="number" inputMode="numeric" value={drawerForm.clip_rules.min_score} onChange={(e) => setRules({ min_score: Number(e.target.value) })} /></Field>
               </div>
-            </form>
+            </section>
+
+            <section className="space-y-3">
+              <h4 className="text-[11px] uppercase tracking-wider font-semibold text-muted">AI context &amp; persona</h4>
+              <Field label="Creator persona & niche"><Textarea rows={2} value={drawerForm.ai.persona || ''} onChange={(e) => setAi({ persona: e.target.value })}
+                placeholder="e.g. High-energy streamer who unboxes CS cases, screams at rare knives and talks fast." /></Field>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <Field label={<span className="text-good">What makes a good clip</span>}><Textarea rows={3} value={drawerForm.ai.good_clip_notes || ''} onChange={(e) => setAi({ good_clip_notes: e.target.value })}
+                  placeholder="e.g. Unboxing gold knives, sudden rage quits, hilarious voice cracks." /></Field>
+                <Field label={<span className="text-bad">What to avoid / reject</span>}><Textarea rows={3} value={drawerForm.ai.avoid_notes || ''} onChange={(e) => setAi({ avoid_notes: e.target.value })}
+                  placeholder="e.g. Inventory sorting, quiet AFK moments, reading off-topic chat." /></Field>
+              </div>
+              <Field label={<span className="text-warn">Inside jokes & catchphrases</span>}><Input value={drawerForm.ai.inside_jokes || ''} onChange={(e) => setAi({ inside_jokes: e.target.value })} placeholder="e.g. gold gold gold, L, W, Cooked" /></Field>
+            </section>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </Sheet>
+
+      {/* Add streamer */}
+      <Sheet open={showAddModal} onClose={() => setShowAddModal(false)} title="Add a streamer"
+        footer={<div className="flex gap-2"><Button block onClick={() => setShowAddModal(false)}>Cancel</Button><Button block variant="primary" type="submit" form="add-streamer" loading={isAddingLoading}>{isAddingLoading ? 'Fetching avatar…' : 'Add streamer'}</Button></div>}>
+        <p className="text-xs text-muted mb-3">We fetch their avatar automatically and start watching for moments.</p>
+        <form id="add-streamer" onSubmit={handleAdd} className="space-y-3.5">
+          <Field label="Channel handle / username"><Input required placeholder="e.g. ishowspeed" value={newChannel} onChange={(e) => setNewChannel(e.target.value)} autoCapitalize="none" autoCorrect="off" /></Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Platform"><Select value={newPlatform} onChange={(e) => setNewPlatform(e.target.value)}><option value="twitch">Twitch</option><option value="youtube">YouTube</option></Select></Field>
+            <Field label="Layout template"><Select value={newTemplate} onChange={(e) => setNewTemplate(e.target.value)}>{templates.map((t) => <option key={t.name} value={t.name}>{t.name}</option>)}</Select></Field>
+          </div>
+          <Field label="Group / niche">
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {DEFAULT_GROUPS.map((grp) => {
+                const on = newGroupTag === grp && !customGroupInput;
+                return (
+                  <button key={grp} type="button" aria-pressed={on} onClick={() => { setNewGroupTag(grp); setCustomGroupInput(''); }}
+                    className={`h-8 px-3 rounded-lg text-xs font-semibold ${on ? 'bg-accent-strong text-white' : 'bg-white/[0.06] text-muted hover:text-ink'}`}>{grp}</button>
+                );
+              })}
+            </div>
+            <Input placeholder="Or type your own (e.g. Minecraft)…" value={customGroupInput} onChange={(e) => setCustomGroupInput(e.target.value)} />
+          </Field>
+        </form>
+      </Sheet>
+
+      <Confirm open={!!confirmRemove} danger title={`Stop watching ${confirmRemove}?`} confirmLabel="Remove"
+        text="Recording stops and the streamer disappears from this list. Clips already made are kept."
+        onCancel={() => setConfirmRemove(null)} onConfirm={() => handleRemove(confirmRemove)} />
+    </Page>
   );
 }

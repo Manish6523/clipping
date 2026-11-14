@@ -47,19 +47,19 @@ export default function MobileToolBar() {
         aria-pressed={isActive}
         className={`min-w-0 flex-1 h-12 px-0.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
           isActive
-            ? 'bg-[#181C26] text-[#8FD3FF] border border-[#8FD3FF]/30 shadow-md shadow-[#8FD3FF]/10'
+            ? 'bg-raised text-accent border border-accent/30 shadow-md shadow-accent/10'
             : 'text-slate-400 active:text-white active:bg-white/[0.04]'
         }`}
       >
         <Icon size={16} />
-        <span className="text-[10px] font-bold tracking-tight truncate max-w-full">{label}</span>
+        <span className="text-[11px] font-bold tracking-tight truncate max-w-full">{label}</span>
       </button>
     );
   };
 
   return (
     <nav
-      className="bg-[#0A0B0E] border-t border-white/[0.08] px-1 pt-1 flex items-stretch gap-0.5 select-none shrink-0 z-30"
+      className="bg-canvas border-t border-white/[0.08] px-1 pt-1 flex items-stretch gap-0.5 select-none shrink-0 z-30"
       style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)' }}
     >
       {advanced && (
@@ -70,7 +70,7 @@ export default function MobileToolBar() {
           aria-label="Back to main tools"
         >
           <ChevronLeft size={16} />
-          <span className="text-[10px] font-bold">Back</span>
+          <span className="text-[11px] font-bold">Back</span>
         </button>
       )}
       {items.map(renderButton)}
@@ -81,7 +81,7 @@ export default function MobileToolBar() {
           className="min-w-0 flex-1 h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 active:text-white"
         >
           <SlidersHorizontal size={16} />
-          <span className="text-[10px] font-bold">More</span>
+          <span className="text-[11px] font-bold">More</span>
         </button>
       )}
     </nav>

@@ -47,7 +47,7 @@ export default function LayerChipStrip() {
   };
 
   return (
-    <div className="h-9 px-3 bg-[#0A0B0E]/90 border-t border-white/[0.04] flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0 select-none z-20">
+    <div className="h-9 px-3 bg-canvas/90 border-t border-white/[0.04] flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0 select-none z-20">
       {layers.map((layer) => {
         const isSelected = selectedLayerId === layer.id;
         return (
@@ -56,7 +56,7 @@ export default function LayerChipStrip() {
             onClick={() => handleSelect(layer.id)}
             className={`h-7 px-2.5 rounded-full flex items-center gap-1.5 text-xs font-bold transition-all shrink-0 border ${
               isSelected
-                ? 'bg-[#181C26] border-[#8FD3FF] text-[#8FD3FF] shadow-md shadow-[#8FD3FF]/20 scale-105'
+                ? 'bg-raised border-accent text-accent shadow-md shadow-accent/20 scale-105'
                 : 'bg-white/[0.04] border-white/[0.08] text-slate-300 hover:text-white'
             }`}
           >
@@ -72,7 +72,7 @@ export default function LayerChipStrip() {
       {layers.length < 8 && (
         <button
           onClick={handleAdd}
-          className="h-7 w-7 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-[#8FD3FF] flex items-center justify-center shrink-0 active:scale-95 transition-transform"
+          className="h-7 w-7 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.08] text-accent flex items-center justify-center shrink-0 active:scale-95 transition-transform"
           title="Add Frame"
         >
           <Plus size={14} />

@@ -5,6 +5,7 @@ import { CaptionLine } from './CaptionStylePicker';
 import { HookCard } from './HookStylePicker';
 import { useHookStyles, hookSample } from '../lib/hookStyles';
 import AutoEditOptions from './AutoEditOptions';
+import { Panel, Segmented } from './ui';
 
 const SAMPLE_WORDS = 'bro he did not just do that no way'.split(' ');
 const VIDEO_H = 1920;
@@ -62,46 +63,14 @@ export default function CombinedStyleStudio({
   const hasHookCard = autoEdit?.enabled && autoEdit?.overrides?.hook_card !== false;
 
   return (
-    <div className="bg-slate-900/60 border border-white/10 rounded-2xl p-4 sm:p-5 shadow-xl backdrop-blur-sm space-y-4">
-      {/* Top Header / Mode Switcher */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-white/5">
-        <div className="flex items-center gap-1 p-1 bg-slate-950/80 border border-white/10 rounded-xl overflow-x-auto no-scrollbar max-w-full">
-          <button
-            type="button"
-            onClick={() => setActiveTab('captions')}
-            className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-              activeTab === 'captions'
-                ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Type size={13} className="text-pink-300" /> Kinetic Captions
-          </button>
-          {hasHookCard && (
-            <button
-              type="button"
-              onClick={() => setActiveTab('hook')}
-              className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shrink-0 ${
-                activeTab === 'hook'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <Heading size={13} className="text-amber-300" /> Hook Title Card
-            </button>
-          )}
-        </div>
-
-        <span className="hidden md:inline-block text-[10px] uppercase font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-2 py-0.5 rounded-full shrink-0">
-          Live Phone Preview
-        </span>
-      </div>
-
+    <Panel title="Look & edit" icon={Wand2} className="space-y-4"
+      right={<Segmented size="sm" value={activeTab} onChange={setActiveTab} ariaLabel="Style type"
+        options={[{ value: 'captions', label: 'Captions', icon: Type }, ...(hasHookCard ? [{ value: 'hook', label: 'Hook card', icon: Heading }] : [])]} />}>
       {/* Unified Single Preview Canvas & Details */}
       <div className="flex gap-4 items-center">
         {/* Single Phone Screen 9:16 Canvas displaying both or currently selected mode */}
         <div
-          className="relative overflow-hidden rounded-2xl border border-white/15 shadow-2xl shrink-0"
+          className="relative overflow-hidden rounded-2xl border border-line-strong shadow-2xl shrink-0"
           style={{
             width: 152,
             height: 270,
@@ -163,38 +132,38 @@ export default function CombinedStyleStudio({
         <div className="min-w-0 flex-1 space-y-2">
           {activeTab === 'captions' ? (
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
                 <Type size={14} className="text-pink-300" /> {currentCaptionSpec.label}
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+              <p className="text-[11px] text-muted mt-1 leading-snug">
                 {captionStyle === 'template' && templateDefaultCaption && templateDefaultCaption !== 'template'
                   ? `Uses template's preset font (${currentCaptionSpec.label})`
                   : currentCaptionSpec.hint}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
+              <p className="text-[10.5px] text-faint mt-0.5">
                 Dynamic karaoke words animated in sync with speaker voice.
               </p>
             </div>
           ) : (
             <div>
-              <div className="flex items-center gap-1.5 text-xs font-bold text-white">
+              <div className="flex items-center gap-1.5 text-xs font-semibold text-ink">
                 <Heading size={14} className="text-amber-300" /> {currentHookSpec?.label || 'Hook Card'}
               </div>
-              <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+              <p className="text-[11px] text-muted mt-1 leading-snug">
                 {currentHookSpec?.hint || 'First 2s visual hook title card.'}
               </p>
-              <p className="text-[10px] text-slate-500 mt-0.5">
+              <p className="text-[10.5px] text-faint mt-0.5">
                 Shown for the first ~2.4s to grab viewer retention on TikTok/Shorts.
               </p>
             </div>
           )}
 
-          <div className="pt-2 border-t border-white/5 flex items-center gap-2">
-            <span className="text-[10px] text-slate-400 font-medium">Quick switch:</span>
+          <div className="pt-2 border-t border-line flex items-center gap-2">
+            <span className="text-[11px] text-muted">Quick switch:</span>
             <button
               type="button"
               onClick={() => setActiveTab(activeTab === 'captions' ? 'hook' : 'captions')}
-              className="text-[10px] font-bold text-indigo-400 hover:text-indigo-300 underline underline-offset-2"
+              className="text-[11px] font-semibold text-accent underline underline-offset-2"
             >
               {activeTab === 'captions' ? 'Configure Hook Card →' : 'Configure Subtitles →'}
             </button>
@@ -204,7 +173,7 @@ export default function CombinedStyleStudio({
 
       {/* Horizontal Carousel Options for Currently Active Tab */}
       <div>
-        <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+        <span className="block text-[11px] font-semibold uppercase tracking-wider text-muted mb-2">
           {activeTab === 'captions' ? 'Choose Subtitle Style' : 'Choose Hook Card Style'}
         </span>
 
@@ -224,7 +193,7 @@ export default function CombinedStyleStudio({
                   aria-checked={on}
                   onClick={() => onCaptionChange(s.id)}
                   className={`snap-start shrink-0 rounded-xl border p-1 text-left transition-all ${
-                    on ? 'border-pink-500 bg-pink-500/10 shadow-sm' : 'border-white/10 hover:border-white/20 bg-slate-950/40'
+                    on ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong bg-canvas'
                   }`}
                 >
                   <div
@@ -241,12 +210,12 @@ export default function CombinedStyleStudio({
                       />
                     </div>
                     {on && (
-                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-pink-500 text-white flex items-center justify-center shadow">
+                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent-strong text-white flex items-center justify-center shadow">
                         <Check size={10} />
                       </span>
                     )}
                   </div>
-                  <span className="block text-[10px] font-bold text-slate-200 truncate mt-1 w-[72px] text-center">
+                  <span className="block text-[10.5px] font-semibold text-slate-200 truncate mt-1 w-[72px] text-center">
                     {s.label}
                   </span>
                 </button>
@@ -261,7 +230,7 @@ export default function CombinedStyleStudio({
               aria-checked={hookStyle === 'template'}
               onClick={() => onHookChange('template')}
               className={`snap-start shrink-0 rounded-xl border p-1 text-left transition-all ${
-                hookStyle === 'template' ? 'border-amber-400 bg-amber-500/10 shadow-sm' : 'border-white/10 hover:border-white/20 bg-slate-950/40'
+                hookStyle === 'template' ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong bg-canvas'
               }`}
             >
               <div
@@ -272,12 +241,12 @@ export default function CombinedStyleStudio({
                   <HookCard spec={hookMap[templateDefaultHook]} height={110 * 1.5} animKey={1} />
                 )}
                 {hookStyle === 'template' && (
-                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center shadow">
+                  <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent-strong text-white flex items-center justify-center shadow">
                     <Check size={10} />
                   </span>
                 )}
               </div>
-              <span className="block text-[10px] font-bold text-slate-200 truncate mt-1 w-[72px] text-center">
+              <span className="block text-[10.5px] font-semibold text-slate-200 truncate mt-1 w-[72px] text-center">
                 Template
               </span>
             </button>
@@ -292,7 +261,7 @@ export default function CombinedStyleStudio({
                   aria-checked={on}
                   onClick={() => onHookChange(h.id)}
                   className={`snap-start shrink-0 rounded-xl border p-1 text-left transition-all ${
-                    on ? 'border-amber-400 bg-amber-500/10 shadow-sm' : 'border-white/10 hover:border-white/20 bg-slate-950/40'
+                    on ? 'border-accent bg-accent/10' : 'border-line hover:border-line-strong bg-canvas'
                   }`}
                 >
                   <div
@@ -301,12 +270,12 @@ export default function CombinedStyleStudio({
                   >
                     <HookCard spec={h} height={110 * 1.5} animKey={1} />
                     {on && (
-                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-amber-500 text-white flex items-center justify-center shadow">
+                      <span className="absolute top-1 right-1 w-4 h-4 rounded-full bg-accent-strong text-white flex items-center justify-center shadow">
                         <Check size={10} />
                       </span>
                     )}
                   </div>
-                  <span className="block text-[10px] font-bold text-slate-200 truncate mt-1 w-[72px] text-center">
+                  <span className="block text-[10.5px] font-semibold text-slate-200 truncate mt-1 w-[72px] text-center">
                     {h.label}
                   </span>
                 </button>
@@ -317,10 +286,10 @@ export default function CombinedStyleStudio({
       </div>
 
       {/* Integrated Auto-Edit Engine (Cuts, Zooms, Pacing) */}
-      <div className="pt-2 border-t border-white/5">
+      <div className="pt-3 border-t border-line">
         <AutoEditOptions value={autoEdit} onChange={onAutoEditChange} />
       </div>
-    </div>
+    </Panel>
   );
 }
 

@@ -675,7 +675,7 @@ export default function MobileStage({
                       'top-1/2 left-0 -translate-y-1/2'
                     }`}
                   >
-                    <div className="w-3.5 h-3.5 bg-[#8FD3FF] border-2 border-black rounded-full shadow-lg" />
+                    <div className="w-3.5 h-3.5 bg-accent border-2 border-black rounded-full shadow-lg" />
                   </div>
                 ))}
               </div>
@@ -691,10 +691,10 @@ export default function MobileStage({
                 width: `${((captionsConfig.position?.max_width ?? 0.85)) * 100}%`,
               }}
               onPointerDown={handleCaptionPointerDown}
-              className="absolute -translate-x-1/2 -translate-y-1/2 z-50 h-12 border border-dashed border-[#8FD3FF]/70 active:border-[#8FD3FF] active:bg-[#8FD3FF]/15 cursor-move rounded-lg flex items-center justify-center transition-all touch-none shadow-lg"
+              className="absolute -translate-x-1/2 -translate-y-1/2 z-50 h-12 border border-dashed border-accent/70 active:border-accent active:bg-accent/15 cursor-move rounded-lg flex items-center justify-center transition-all touch-none shadow-lg"
               title="Drag directly on mobile to reposition subtitles"
             >
-              <span className="absolute -top-2.5 left-2 text-[9px] leading-none font-mono font-bold text-[#8FD3FF] bg-black/85 px-1.5 py-1 rounded border border-white/20 pointer-events-none shadow">
+              <span className="absolute -top-2.5 left-2 text-[10.5px] leading-none font-mono font-bold text-accent bg-black/85 px-1.5 py-1 rounded border border-white/20 pointer-events-none shadow">
                 Subtitles ({Math.round((captionsConfig.position?.y ?? 0.76) * 100)}%)
               </span>
             </div>
@@ -775,11 +775,11 @@ export default function MobileStage({
 
       {/* Floating Coordinate & Dimension Readout during drag */}
       {dragReadout && (
-        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/85 border border-[#8FD3FF]/50 text-white px-3 py-1 rounded-full text-xs font-mono shadow-xl flex items-center gap-2 pointer-events-none animate-in fade-in">
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-40 bg-black/85 border border-accent/50 text-white px-3 py-1 rounded-full text-xs font-mono shadow-xl flex items-center gap-2 pointer-events-none animate-in fade-in">
           <span>X: {dragReadout.x}%</span>
           <span>Y: {dragReadout.y}%</span>
-          <span className="text-[#8FD3FF]">W: {dragReadout.w}%</span>
-          <span className="text-[#8FD3FF]">H: {dragReadout.h}%</span>
+          <span className="text-accent">W: {dragReadout.w}%</span>
+          <span className="text-accent">H: {dragReadout.h}%</span>
         </div>
       )}
 
@@ -787,7 +787,7 @@ export default function MobileStage({
       {selectedLayer && (
         <div 
           onClick={(e) => e.stopPropagation()}
-          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-[#0E1118]/95 backdrop-blur-md border border-white/15 px-2 py-1 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2"
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-30 bg-surface/95 backdrop-blur-md border border-white/15 px-2 py-1 rounded-2xl shadow-2xl flex items-center gap-1.5 animate-in fade-in slide-in-from-bottom-2"
         >
           <div className="flex items-center gap-1 px-1.5 border-r border-white/10 mr-0.5">
             <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: selectedLayer.color }} />
@@ -801,7 +801,7 @@ export default function MobileStage({
               title="Cycle frame under touch"
               className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center text-xs"
             >
-              <Layers size={14} className="text-[#8FD3FF]" />
+              <Layers size={14} className="text-accent" />
             </button>
           )}
 
@@ -837,7 +837,7 @@ export default function MobileStage({
             title="Reset aspect ratio to source crop"
             className="w-9 h-9 rounded-xl bg-white/[0.06] active:bg-white/15 text-white flex items-center justify-center"
           >
-            <RotateCcw size={13} className="text-[#8FD3FF]" />
+            <RotateCcw size={13} className="text-accent" />
           </button>
 
           {/* Visibility */}

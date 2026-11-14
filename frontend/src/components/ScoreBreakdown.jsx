@@ -32,7 +32,7 @@ export default function ScoreBreakdown({ raw, compact = false }) {
           return (
             <div key={it.key} className="flex-1 min-w-0" title={`${it.label}: ${it.value}/${it.max}`}>
               <div className="h-1 rounded-full bg-white/15 overflow-hidden">
-                <div className={`h-full ${pct >= 80 ? 'bg-emerald-400' : pct >= 60 ? 'bg-amber-400' : 'bg-rose-400'}`} style={{ width: `${pct}%` }} />
+                <div className={`h-full ${pct >= 80 ? 'bg-good' : pct >= 60 ? 'bg-warn' : 'bg-bad'}`} style={{ width: `${pct}%` }} />
               </div>
               <div className="text-[9px] text-slate-300 mt-0.5 truncate">{it.label} {it.value}</div>
             </div>
@@ -43,18 +43,18 @@ export default function ScoreBreakdown({ raw, compact = false }) {
   }
   return (
     <div className="space-y-2">
-      <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+      <span className="text-[11px] uppercase font-semibold text-muted block tracking-wider">
         {parsed.kind === 'hfvt' ? 'Score breakdown' : 'Calibrated rubric sub-scores'}
       </span>
       <div className="grid grid-cols-2 gap-2">
         {parsed.items.map((it) => (
-          <div key={it.key} className="bg-white/[0.03] p-2 rounded-lg border border-white/[0.04]">
+          <div key={it.key} className="bg-canvas p-2.5 rounded-xl border border-line">
             <div className="flex items-center justify-between text-xs">
               <span className="text-slate-300 capitalize">{it.label}</span>
-              <span className="font-extrabold text-white font-mono">{it.value}/{it.max}</span>
+              <span className="font-semibold text-ink tabular-nums">{it.value}/{it.max}</span>
             </div>
             <div className="h-1 mt-1 rounded-full bg-white/10 overflow-hidden">
-              <div className="h-full bg-indigo-400" style={{ width: `${Math.round((it.value / it.max) * 100)}%` }} />
+              <div className="h-full bg-accent" style={{ width: `${Math.round((it.value / it.max) * 100)}%` }} />
             </div>
           </div>
         ))}

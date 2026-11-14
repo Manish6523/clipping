@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Wand2, ChevronDown, Zap, Sparkles, Scissors } from 'lucide-react';
+import { Toggle } from './ui';
 
 // Mirrors STYLES in src/compositor/auto_edit.py
 export const AUTO_EDIT_STYLES = {
@@ -56,25 +57,10 @@ export default function AutoEditOptions({ value, onChange }) {
   };
 
   return (
-    <div className={`rounded-xl border p-3 space-y-3 transition-colors ${value.enabled ? 'border-fuchsia-500/40 bg-fuchsia-500/[0.06]' : 'border-white/[0.08] bg-slate-950/60'}`}>
-      <label className="flex items-center justify-between gap-3 cursor-pointer select-none">
-        <span className="flex items-center gap-2 min-w-0">
-          <Wand2 size={16} className="text-fuchsia-300 shrink-0" />
-          <span className="min-w-0">
-            <span className="block text-sm font-bold text-white">Auto edit</span>
-            <span className="block text-[11px] text-slate-400 leading-snug">Cuts dead air, adds a hook card, zooms &amp; polished audio.</span>
-          </span>
-        </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={value.enabled}
-          onClick={() => update({ ...value, enabled: !value.enabled })}
-          className={`relative shrink-0 w-11 h-6 rounded-full transition-colors ${value.enabled ? 'bg-fuchsia-500' : 'bg-slate-700'}`}
-        >
-          <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${value.enabled ? 'translate-x-5' : ''}`} />
-        </button>
-      </label>
+    <div className={`rounded-xl border p-3 space-y-3 transition-colors ${value.enabled ? 'border-accent/30 bg-accent/[0.05]' : 'border-line bg-canvas'}`}>
+      <Toggle checked={value.enabled} onChange={(v) => update({ ...value, enabled: v })}
+        label={<span className="flex items-center gap-2 font-semibold"><Wand2 size={15} className="text-accent shrink-0" /> Auto edit</span>}
+        hint="Cuts dead air, adds a hook card, zooms and polishes the audio." />
 
       {value.enabled && (
         <>
@@ -83,47 +69,32 @@ export default function AutoEditOptions({ value, onChange }) {
               const Icon = st.icon;
               const active = value.style === id;
               return (
-                <button
-                  key={id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  onClick={() => update({ ...value, style: id, overrides: {} })}
-                  className={`p-2 rounded-lg border text-left ${active ? 'border-fuchsia-400 bg-fuchsia-500/15 text-white' : 'border-white/10 text-slate-300'}`}
-                >
-                  <span className="flex items-center gap-1 text-xs font-bold"><Icon size={13} /> {st.label}</span>
-                  <span className="block text-[10px] text-slate-400 leading-tight mt-0.5">{st.hint}</span>
+                <button key={id} type="button" role="radio" aria-checked={active} onClick={() => update({ ...value, style: id, overrides: {} })}
+                  className={`p-2 rounded-xl border text-left transition-colors ${active ? 'border-accent/60 bg-accent/10 text-ink' : 'border-line text-slate-300 hover:bg-white/[0.04]'}`}>
+                  <span className="flex items-center gap-1 text-xs font-semibold"><Icon size={13} className={active ? 'text-accent' : ''} /> {st.label}</span>
+                  <span className="block text-[10.5px] text-muted leading-tight mt-0.5">{st.hint}</span>
                 </button>
               );
             })}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setOpen((o) => !o)}
-            className="w-full flex items-center justify-between text-[11px] font-bold text-slate-300"
-            aria-expanded={open}
-          >
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open}
+            className="w-full flex items-center justify-between text-[11.5px] font-semibold text-slate-300">
             <span>Customize{changed ? ` · ${changed} changed` : ''}</span>
             <ChevronDown size={14} className={`transition-transform ${open ? 'rotate-180' : ''}`} />
           </button>
           {open && (
-            <div className="divide-y divide-white/[0.06]">
+            <div className="divide-y divide-line">
               {FEATURES.map(([key, label]) => (
-                <label key={key} className="flex items-center justify-between gap-3 py-2 cursor-pointer">
-                  <span className="text-xs text-slate-200">{label}</span>
-                  <input
-                    type="checkbox"
-                    checked={!!effective[key]}
-                    onChange={(e) => {
+                <div key={key} className="py-2.5">
+                  <Toggle checked={!!effective[key]} label={<span className="text-xs">{label}</span>}
+                    onChange={(on) => {
                       const overrides = { ...value.overrides };
-                      if (e.target.checked === preset.features[key]) delete overrides[key];
-                      else overrides[key] = e.target.checked;
+                      if (on === preset.features[key]) delete overrides[key];
+                      else overrides[key] = on;
                       update({ ...value, overrides });
-                    }}
-                    className="w-5 h-5 accent-fuchsia-500 shrink-0"
-                  />
-                </label>
+                    }} />
+                </div>
               ))}
             </div>
           )}

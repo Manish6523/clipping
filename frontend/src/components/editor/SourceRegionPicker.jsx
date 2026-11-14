@@ -156,7 +156,7 @@ export default function SourceRegionPicker({ videoRef, onVideoLoaded }) {
   return (
     <div
       ref={containerRef}
-      className="w-full h-full bg-[#0A0B0E] relative overflow-hidden select-none flex items-center justify-center rounded-2xl border border-white/[0.06]"
+      className="w-full h-full bg-canvas relative overflow-hidden select-none flex items-center justify-center rounded-2xl border border-white/[0.06]"
     >
       <video
         ref={videoRef}
@@ -198,7 +198,7 @@ export default function SourceRegionPicker({ videoRef, onVideoLoaded }) {
                 : 'border-amber-400/60 bg-amber-400/10'
             }`}
           >
-            <div className="absolute top-1 left-1 bg-amber-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded shadow pointer-events-none">
+            <div className="absolute top-1 left-1 bg-amber-500 text-black text-[10.5px] font-black px-1.5 py-0.5 rounded shadow pointer-events-none">
               PERSON / FACECAM
             </div>
             {activeBox === 'person' && renderHandles('person')}
@@ -220,7 +220,7 @@ export default function SourceRegionPicker({ videoRef, onVideoLoaded }) {
                 : 'border-cyan-400/60 bg-cyan-400/10'
             }`}
           >
-            <div className="absolute bottom-1 left-1 bg-cyan-500 text-black text-[9px] font-black px-1.5 py-0.5 rounded shadow pointer-events-none">
+            <div className="absolute bottom-1 left-1 bg-cyan-500 text-black text-[10.5px] font-black px-1.5 py-0.5 rounded shadow pointer-events-none">
               MAIN CONTENT / GAMEPLAY
             </div>
             {activeBox === 'content' && renderHandles('content')}

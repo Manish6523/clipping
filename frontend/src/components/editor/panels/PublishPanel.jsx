@@ -50,26 +50,26 @@ export default function PublishPanel({ isCompact = false }) {
   return (
     <div className="flex flex-col gap-3 text-xs select-none">
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1">
           Clip Title
         </label>
         <input
           type="text"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
+          className="w-full bg-raised border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-accent"
         />
       </div>
 
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1">
           Hashtags
         </label>
         <input
           type="text"
           value={tags}
           onChange={(e) => setTags(e.target.value)}
-          className="w-full bg-[#141722] border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#8FD3FF]"
+          className="w-full bg-raised border border-white/10 rounded-xl px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-accent"
         />
       </div>
 

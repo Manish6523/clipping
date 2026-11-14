@@ -8,6 +8,7 @@ import {
   Wifi, WifiOff, ChevronDown, ChevronUp, Database, CircleDot, Timer, ListOrdered,
 } from 'lucide-react';
 import TimeChart from './telemetry/TimeChart';
+import { Page, Panel, Pill as UiPill, Meter, EmptyState, Skeleton } from './ui';
 
 // ---- palette (dark surface; categorical slots from the validated reference palette) ----
 const C = {
@@ -59,52 +60,9 @@ function useTelemetry(minutes) {
 }
 
 // --------------------------------------------------------------------------------------
-function Panel({ title, icon: Icon, right, children, className = '' }) {
-  return (
-    <section className={`rounded-2xl border border-white/[0.07] bg-[var(--tl-surface)] p-3.5 sm:p-4 ${className}`}>
-      {(title || right) && (
-        <header className="flex items-center justify-between gap-2 mb-3">
-          <h2 className="flex items-center gap-2 text-[13px] font-semibold text-[var(--tl-text)]">
-            {Icon && <Icon size={15} className="text-[var(--tl-muted)]" />} {title}
-          </h2>
-          {right}
-        </header>
-      )}
-      {children}
-    </section>
-  );
-}
-
-function Pill({ ok, children, warn, idle }) {
-  const color = idle ? STATUS.idle : ok ? STATUS.good : warn ? STATUS.warn : STATUS.bad;
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white/[0.05] px-2 py-0.5 text-[11px] text-[var(--tl-text)]">
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
-      {children}
-    </span>
-  );
-}
-
-function Meter({ label, value, max, mark, display, hint }) {
-  const pct = Math.max(0, Math.min(1, (value || 0) / max));
-  const markPct = mark != null ? Math.min(1, mark / max) : null;
-  const reached = mark != null && value >= mark;
-  return (
-    <div>
-      <div className="flex items-baseline justify-between text-[12px] mb-1">
-        <span className="text-[var(--tl-muted)]">{label}</span>
-        <span className="text-[var(--tl-text)] font-semibold tabular-nums">{display}</span>
-      </div>
-      <div className="relative h-2 rounded-full bg-white/[0.06]">
-        <div className="absolute inset-y-0 left-0 rounded-full transition-[width] duration-500"
-          style={{ width: `${pct * 100}%`, background: reached ? STATUS.warn : C.chat }} />
-        {markPct != null && (
-          <div className="absolute -top-1 -bottom-1 w-0.5 bg-white/70 rounded" style={{ left: `calc(${markPct * 100}% - 1px)` }} />
-        )}
-      </div>
-      {hint && <p className="text-[10.5px] text-[var(--tl-muted)] mt-1">{hint}</p>}
-    </div>
-  );
+/** Status pill with the older ok/warn/idle flags used throughout this page. */
+function Pill({ ok, warn, idle, children }) {
+  return <UiPill tone={idle ? 'idle' : ok ? 'good' : warn ? 'warn' : 'bad'}>{children}</UiPill>;
 }
 
 // --------------------------------------------------------------------------------------
@@ -132,13 +90,13 @@ function SystemStrip({ system, queue }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
       {items.map((it) => (
-        <div key={it.label} className="rounded-xl border border-white/[0.07] bg-[var(--tl-surface)] px-3 py-2.5">
-          <div className="flex items-center gap-1.5 text-[11px] text-[var(--tl-muted)]">
+        <div key={it.label} className="rounded-xl border border-white/[0.07] bg-surface px-3 py-2.5">
+          <div className="flex items-center gap-1.5 text-[11px] text-muted">
             <it.icon size={13} /> {it.label}
             <span className="ml-auto w-1.5 h-1.5 rounded-full" style={{ background: STATUS[it.tone] }} title={it.tone} />
           </div>
-          <div className="text-[15px] font-semibold text-[var(--tl-text)] tabular-nums mt-0.5">{it.value}</div>
-          <div className="text-[10.5px] text-[var(--tl-muted)] truncate">{it.sub}</div>
+          <div className="text-[15px] font-semibold text-ink tabular-nums mt-0.5">{it.value}</div>
+          <div className="text-[10.5px] text-muted truncate">{it.sub}</div>
         </div>
       ))}
     </div>
@@ -155,17 +113,17 @@ function StreamerTabs({ streamers, selected, onSelect }) {
         return (
           <button key={s.channel_id} type="button" role="tab" aria-selected={on} onClick={() => onSelect(s.channel_id)}
             className={`shrink-0 flex items-center gap-2 rounded-xl border px-2.5 py-1.5 text-left transition ${
-              on ? 'border-[var(--tl-accent)] bg-[var(--tl-accent)]/10' : 'border-white/[0.08] bg-[var(--tl-surface)] hover:bg-white/[0.04]'}`}>
+              on ? 'border-accent bg-accent/10' : 'border-white/[0.08] bg-surface hover:bg-white/[0.04]'}`}>
             <div className="relative">
               {s.stream?.avatar
                 ? <img src={s.stream.avatar} alt="" className="w-7 h-7 rounded-full object-cover" onError={(e) => { e.currentTarget.style.visibility = 'hidden'; }} />
                 : <div className="w-7 h-7 rounded-full bg-white/10 flex items-center justify-center text-[11px] font-bold text-white">{name[0]?.toUpperCase()}</div>}
-              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-[var(--tl-bg)]"
+              <span className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-canvas"
                 style={{ background: s.is_live ? STATUS.bad : STATUS.idle }} />
             </div>
             <div className="min-w-0">
-              <div className="text-[12.5px] font-semibold text-[var(--tl-text)] max-w-[120px] truncate">{name}</div>
-              <div className="text-[10.5px] text-[var(--tl-muted)]">
+              <div className="text-[12.5px] font-semibold text-ink max-w-[120px] truncate">{name}</div>
+              <div className="text-[10.5px] text-muted">
                 {s.is_live ? `LIVE · ${num(s.stream?.viewers)} watching` : 'Offline'}
               </div>
             </div>
@@ -191,7 +149,7 @@ function StreamCard({ s, now }) {
         {s.is_live && st.preview && !imgFailed
           ? <img src={`${st.preview}${st.preview.includes('?') ? '&' : '?'}b=${bust}`} alt="" onError={() => setImgFailed(true)} className="w-full h-full object-cover" />
           : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-[var(--tl-muted)]">
+            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted">
               <Radio size={26} />
               <span className="text-xs">{s.is_live ? 'Live - no preview for this platform' : 'Not live right now'}</span>
               {s.last_live_check && <span className="text-[10.5px]">checked {ago(s.last_live_check, now)}</span>}
@@ -213,12 +171,12 @@ function StreamCard({ s, now }) {
         <div className="flex gap-3">
           {st.category_art && <img src={st.category_art} alt="" className="w-9 h-12 rounded object-cover shrink-0" />}
           <div className="min-w-0">
-            <p className="text-[13.5px] font-semibold text-[var(--tl-text)] leading-snug line-clamp-2">{st.title || (s.is_live ? 'Untitled stream' : `${s.channel_id} is offline`)}</p>
-            <p className="text-[11.5px] text-[var(--tl-muted)] flex items-center gap-1 mt-0.5">
+            <p className="text-[13.5px] font-semibold text-ink leading-snug line-clamp-2">{st.title || (s.is_live ? 'Untitled stream' : `${s.channel_id} is offline`)}</p>
+            <p className="text-[11.5px] text-muted flex items-center gap-1 mt-0.5">
               <Gamepad2 size={12} /> {st.category || '—'} · <span className="capitalize">{s.platform}</span>
-              <a href={s.url} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-[var(--tl-accent)]">open <ExternalLink size={11} /></a>
+              <a href={s.url} target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-accent">open <ExternalLink size={11} /></a>
             </p>
-            {started && <p className="text-[11px] text-[var(--tl-muted)] mt-0.5">Started {new Date(started * 1000).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</p>}
+            {started && <p className="text-[11px] text-muted mt-0.5">Started {new Date(started * 1000).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}</p>}
           </div>
         </div>
         <div className="flex flex-wrap gap-1.5">
@@ -246,7 +204,7 @@ function HypeEngine({ s, now }) {
   const lt = e.last_trigger || {};
   return (
     <Panel title="Hype detector" icon={Flame}
-      right={<span className="flex items-center gap-1.5 text-[11.5px] text-[var(--tl-text)]"><state.icon size={13} style={{ color: state.tone }} />{state.label}</span>}>
+      right={<span className="flex items-center gap-1.5 text-[11.5px] text-ink"><state.icon size={13} style={{ color: state.tone }} />{state.label}</span>}>
       <div className="grid grid-cols-3 gap-2 mb-3.5">
         {[
           ['Chat now', `${e.mps ?? 0}`, 'msg/s'],
@@ -254,9 +212,9 @@ function HypeEngine({ s, now }) {
           ['Ratio', `${e.ratio ?? 0}×`, 'vs normal'],
         ].map(([k, v, u]) => (
           <div key={k} className="rounded-xl bg-white/[0.03] px-2.5 py-2">
-            <div className="text-[10.5px] text-[var(--tl-muted)]">{k}</div>
-            <div className="text-[17px] font-semibold text-[var(--tl-text)] tabular-nums leading-tight">{v}</div>
-            <div className="text-[10px] text-[var(--tl-muted)]">{u}</div>
+            <div className="text-[10.5px] text-muted">{k}</div>
+            <div className="text-[17px] font-semibold text-ink tabular-nums leading-tight">{v}</div>
+            <div className="text-[10px] text-muted">{u}</div>
           </div>
         ))}
       </div>
@@ -272,17 +230,17 @@ function HypeEngine({ s, now }) {
       </div>
       <div className="mt-3.5 grid grid-cols-2 gap-2 text-[11.5px]">
         <div className="rounded-xl bg-white/[0.03] px-2.5 py-2">
-          <div className="text-[var(--tl-muted)]">Triggers this session</div>
-          <div className="text-[var(--tl-text)] font-semibold text-[15px]">{e.triggers_this_session ?? 0}</div>
+          <div className="text-muted">Triggers this session</div>
+          <div className="text-ink font-semibold text-[15px]">{e.triggers_this_session ?? 0}</div>
         </div>
         <div className="rounded-xl bg-white/[0.03] px-2.5 py-2">
-          <div className="text-[var(--tl-muted)]">Last trigger</div>
-          <div className="text-[var(--tl-text)] font-semibold">{ago(e.last_trigger_at, now)}</div>
-          {lt.type && <div className="text-[var(--tl-muted)] truncate">{lt.type.replace('_', ' ')}{lt.ratio ? ` · ${lt.ratio}×` : ''}{lt.peak_db ? ` · ${lt.peak_db} dB` : ''}</div>}
+          <div className="text-muted">Last trigger</div>
+          <div className="text-ink font-semibold">{ago(e.last_trigger_at, now)}</div>
+          {lt.type && <div className="text-muted truncate">{lt.type.replace('_', ' ')}{lt.ratio ? ` · ${lt.ratio}×` : ''}{lt.peak_db ? ` · ${lt.peak_db} dB` : ''}</div>}
         </div>
       </div>
       {e.keywords?.length > 0 && (
-        <p className="mt-3 text-[10.5px] text-[var(--tl-muted)] leading-relaxed">
+        <p className="mt-3 text-[10.5px] text-muted leading-relaxed">
           Hype words: {e.keywords.join(' · ')}
         </p>
       )}
@@ -293,7 +251,7 @@ function HypeEngine({ s, now }) {
 // --------------------------------------------------------------------------------------
 function Legend({ items }) {
   return (
-    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[var(--tl-muted)] mb-1.5">
+    <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted mb-1.5">
       {items.map((it) => (
         <span key={it.label} className="inline-flex items-center gap-1.5">
           {it.kind === 'event'
@@ -316,11 +274,11 @@ function Charts({ s, moments, minutes, setMinutes }) {
         <div className="flex rounded-lg bg-white/[0.05] p-0.5" role="group" aria-label="Time range">
           {[5, 15, 30].map((m) => (
             <button key={m} type="button" onClick={() => setMinutes(m)} aria-pressed={minutes === m}
-              className={`px-2 py-0.5 rounded-md text-[11px] ${minutes === m ? 'bg-white/[0.12] text-white' : 'text-[var(--tl-muted)]'}`}>{m}m</button>
+              className={`px-2 py-0.5 rounded-md text-[11px] ${minutes === m ? 'bg-white/[0.12] text-white' : 'text-muted'}`}>{m}m</button>
           ))}
         </div>
       )}>
-      <h3 className="text-[12px] font-medium text-[var(--tl-text)] mb-1">Chat speed (messages / second)</h3>
+      <h3 className="text-[12px] font-medium text-ink mb-1">Chat speed (messages / second)</h3>
       <Legend items={[
         { label: 'Chat speed', color: C.chat },
         { label: 'Normal pace', color: C.ref, dash: true },
@@ -336,7 +294,7 @@ function Charts({ s, moments, minutes, setMinutes }) {
         markers={markers} formatY={(v) => (v >= 10 ? Math.round(v) : +v.toFixed(1))} unit=" msg/s"
         emptyText={s.is_live ? 'Collecting samples (every 2 s)…' : 'No chat data - streamer is offline'} />
 
-      <h3 className="text-[12px] font-medium text-[var(--tl-text)] mt-4 mb-1">Audio peak (dB)</h3>
+      <h3 className="text-[12px] font-medium text-ink mt-4 mb-1">Audio peak (dB)</h3>
       <Legend items={[
         { label: 'Loudest moment per 10 s', color: C.audio },
         { label: `Scream threshold (${s.engine?.audio_threshold_db} dB)`, color: C.ref, dash: true },
@@ -368,17 +326,17 @@ function MomentCard({ m, now, defaultOpen }) {
           </div>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-[12.5px] font-semibold text-[var(--tl-text)]">
+              <span className="text-[12.5px] font-semibold text-ink">
                 {fin ? fin.label : `${STAGES.find((x) => x.key === m.stage)?.label || m.stage}…`}
               </span>
               {m.score != null && (
-                <span className="text-[11px] rounded bg-white/[0.07] px-1.5 py-0.5 text-[var(--tl-text)] tabular-nums">
+                <span className="text-[11px] rounded bg-white/[0.07] px-1.5 py-0.5 text-ink tabular-nums">
                   score {m.score}{m.min_score != null ? ` / ${m.min_score}` : ''}
                 </span>
               )}
-              <span className="ml-auto text-[11px] text-[var(--tl-muted)] tabular-nums">{clock(m.created_at)}</span>
+              <span className="ml-auto text-[11px] text-muted tabular-nums">{clock(m.created_at)}</span>
             </div>
-            <p className="text-[11.5px] text-[var(--tl-muted)] mt-0.5 truncate">
+            <p className="text-[11.5px] text-muted mt-0.5 truncate">
               {m.title ? `“${m.title}” · ` : ''}{trig.type ? trig.type.replace('_', ' ') : 'hype'}
               {trig.ratio ? ` ${trig.ratio}×` : ''}{trig.peak_db ? ` ${trig.peak_db} dB` : ''}
               {live ? ` · ${fmtDur(now - m.created_at)} so far` : ` · took ${fmtDur((m.updated_at || m.created_at) - m.created_at)}`}
@@ -396,7 +354,7 @@ function MomentCard({ m, now, defaultOpen }) {
               })}
             </ol>
           </div>
-          {open ? <ChevronUp size={15} className="text-[var(--tl-muted)] shrink-0" /> : <ChevronDown size={15} className="text-[var(--tl-muted)] shrink-0" />}
+          {open ? <ChevronUp size={15} className="text-muted shrink-0" /> : <ChevronDown size={15} className="text-muted shrink-0" />}
         </div>
       </button>
       {open && (
@@ -408,17 +366,17 @@ function MomentCard({ m, now, defaultOpen }) {
               const next = m.stages[i + 1];
               return (
                 <li key={i} className="relative text-[11.5px]">
-                  <span className="absolute -left-[19px] top-0.5 w-3 h-3 rounded-full bg-[var(--tl-surface)] border border-white/20 flex items-center justify-center">
+                  <span className="absolute -left-[19px] top-0.5 w-3 h-3 rounded-full bg-surface border border-white/20 flex items-center justify-center">
                     <span className="w-1.5 h-1.5 rounded-full" style={{ background: FINAL[x.stage]?.color || C.chat }} />
                   </span>
-                  <div className="flex items-center gap-1.5 text-[var(--tl-text)]">
-                    <Icon size={12} className="text-[var(--tl-muted)]" />
+                  <div className="flex items-center gap-1.5 text-ink">
+                    <Icon size={12} className="text-muted" />
                     <b className="font-medium">{meta?.label || x.stage}</b>
-                    <span className="text-[var(--tl-muted)] tabular-nums">{clock(x.t)}</span>
-                    {next && <span className="ml-auto text-[var(--tl-muted)] tabular-nums">{fmtDur(next.t - x.t)}</span>}
-                    {!next && live && <span className="ml-auto text-[var(--tl-muted)] tabular-nums">{fmtDur(now - x.t)}…</span>}
+                    <span className="text-muted tabular-nums">{clock(x.t)}</span>
+                    {next && <span className="ml-auto text-muted tabular-nums">{fmtDur(next.t - x.t)}</span>}
+                    {!next && live && <span className="ml-auto text-muted tabular-nums">{fmtDur(now - x.t)}…</span>}
                   </div>
-                  {x.note && <p className="text-[var(--tl-muted)] ml-[18px] break-words">{x.note}</p>}
+                  {x.note && <p className="text-muted ml-[18px] break-words">{x.note}</p>}
                 </li>
               );
             })}
@@ -431,21 +389,21 @@ function MomentCard({ m, now, defaultOpen }) {
                 ['Hype words', trig.keyword_hits_5s ?? (trig.keyword ? 'yes' : '—')],
               ].map(([k, v]) => (
                 <div key={k} className="rounded-lg bg-white/[0.03] px-2 py-1.5">
-                  <div className="text-[var(--tl-muted)]">{k}</div><div className="text-[var(--tl-text)] tabular-nums">{v}</div>
+                  <div className="text-muted">{k}</div><div className="text-ink tabular-nums">{v}</div>
                 </div>
               ))}
             </div>
           )}
           {m.transcribe_seconds != null && (
-            <p className="text-[11px] text-[var(--tl-muted)]">Transcription took <b className="text-[var(--tl-text)]">{fmtDur(m.transcribe_seconds)}</b></p>
+            <p className="text-[11px] text-muted">Transcription took <b className="text-ink">{fmtDur(m.transcribe_seconds)}</b></p>
           )}
           {m.transcript && (
-            <blockquote className="text-[11.5px] text-[var(--tl-text)] bg-white/[0.03] rounded-lg px-2.5 py-2 leading-relaxed">
+            <blockquote className="text-[11.5px] text-ink bg-white/[0.03] rounded-lg px-2.5 py-2 leading-relaxed">
               “{m.transcript}”
             </blockquote>
           )}
           {m.clip_id && (
-            <Link to={`/clips/${m.clip_id}/editor`} className="inline-flex items-center gap-1 text-[12px] font-semibold text-[var(--tl-accent)]">
+            <Link to={`/clips/${m.clip_id}/editor`} className="inline-flex items-center gap-1 text-[12px] font-semibold text-accent">
               Open clip #{m.clip_id} <ExternalLink size={12} />
             </Link>
           )}
@@ -468,9 +426,9 @@ function Moments({ moments, now }) {
   }, [moments]);
   return (
     <Panel title="Hype moments" icon={Zap}
-      right={<span className="text-[11px] text-[var(--tl-muted)]">{counts.total} since restart · {counts.clip} clips · {counts.rejected} rejected · {counts.other} dropped/errors</span>}>
+      right={<span className="text-[11px] text-muted">{counts.total} since restart · {counts.clip} clips · {counts.rejected} rejected · {counts.other} dropped/errors</span>}>
       {moments.length === 0
-        ? <p className="text-[12px] text-[var(--tl-muted)] py-6 text-center">No hype moments yet. When chat explodes, each moment shows up here and you can follow it from trigger to finished clip.</p>
+        ? <p className="text-[12px] text-muted py-6 text-center">No hype moments yet. When chat explodes, each moment shows up here and you can follow it from trigger to finished clip.</p>
         : (
           <ul className="space-y-2 max-h-[560px] overflow-y-auto pr-1">
             {moments.map((m, i) => <MomentCard key={m.id} m={m} now={now} defaultOpen={i === 0 && !m.final} />)}
@@ -492,33 +450,33 @@ function ChatFeed({ s }) {
   }, [feed.length, feed[feed.length - 1]?.t, stick]);
   return (
     <Panel title="Live chat" icon={MessageSquare}
-      right={<span className="text-[11px] text-[var(--tl-muted)] flex items-center gap-2">
+      right={<span className="text-[11px] text-muted flex items-center gap-2">
         <span className="flex items-center gap-1"><Users size={12} /> {num(chat.active_chatters_5m)} active</span>
         <span>{num(chat.total_messages)} msgs</span>
       </span>}>
       {!chat.supported ? (
-        <p className="text-[12px] text-[var(--tl-muted)] py-6 text-center">Chat reading is only supported for Twitch streams.</p>
+        <p className="text-[12px] text-muted py-6 text-center">Chat reading is only supported for Twitch streams.</p>
       ) : (
         <>
           <div ref={ref} onScroll={(e) => { const el = e.currentTarget; setStick(el.scrollHeight - el.scrollTop - el.clientHeight < 40); }}
             className="h-[300px] overflow-y-auto space-y-1 pr-1 text-[12px] leading-snug">
-            {feed.length === 0 && <p className="text-[var(--tl-muted)] text-center pt-10">{chat.connected ? 'Waiting for messages…' : 'Not connected to chat'}</p>}
+            {feed.length === 0 && <p className="text-muted text-center pt-10">{chat.connected ? 'Waiting for messages…' : 'Not connected to chat'}</p>}
             {feed.map((m, i) => (
               <div key={`${m.t}-${i}`} className={`rounded-md px-1.5 py-0.5 ${m.keyword ? 'bg-amber-400/10' : ''}`}>
-                <span className="text-[var(--tl-muted)] tabular-nums text-[10.5px] mr-1.5">{clock(m.t).slice(0, 5)}</span>
-                <b className="font-semibold text-[var(--tl-text)] mr-1">{m.user || 'viewer'}:</b>
-                <span className="text-[var(--tl-text)]/90 break-words">{m.text}</span>
+                <span className="text-muted tabular-nums text-[10.5px] mr-1.5">{clock(m.t).slice(0, 5)}</span>
+                <b className="font-semibold text-ink mr-1">{m.user || 'viewer'}:</b>
+                <span className="text-ink/90 break-words">{m.text}</span>
                 {m.keyword && <Flame size={11} className="inline ml-1 text-amber-300" aria-label="hype word" />}
               </div>
             ))}
           </div>
           {chat.top_tokens?.length > 0 && (
             <div className="mt-2.5">
-              <p className="text-[10.5px] text-[var(--tl-muted)] mb-1">Most used words (last 90 s)</p>
+              <p className="text-[10.5px] text-muted mb-1">Most used words (last 90 s)</p>
               <div className="flex flex-wrap gap-1">
                 {chat.top_tokens.map((t, i) => {
                   const [word, n] = Array.isArray(t) ? t : [t.token ?? t, t.count];
-                  return <span key={i} className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-[var(--tl-text)]">{word}{n ? <span className="text-[var(--tl-muted)]"> ×{n}</span> : null}</span>;
+                  return <span key={i} className="rounded-md bg-white/[0.05] px-1.5 py-0.5 text-[11px] text-ink">{word}{n ? <span className="text-muted"> ×{n}</span> : null}</span>;
                 })}
               </div>
             </div>
@@ -535,11 +493,11 @@ function History({ history, today }) {
   const rows = history || [];
   return (
     <Panel title="History (saved)" icon={Database}
-      right={<button type="button" onClick={() => setOpen((o) => !o)} className="text-[11px] text-[var(--tl-accent)]">{open ? 'Hide' : `Show ${rows.length}`}</button>}>
+      right={<button type="button" onClick={() => setOpen((o) => !o)} className="text-[11px] text-accent">{open ? 'Hide' : `Show ${rows.length}`}</button>}>
       <div className="flex flex-wrap gap-2 text-[11.5px]">
-        {Object.keys(today || {}).length === 0 && <span className="text-[var(--tl-muted)]">Nothing judged today yet.</span>}
+        {Object.keys(today || {}).length === 0 && <span className="text-muted">Nothing judged today yet.</span>}
         {Object.entries(today || {}).map(([ch, d]) => (
-          <span key={ch} className="rounded-lg bg-white/[0.04] px-2 py-1 text-[var(--tl-text)]">
+          <span key={ch} className="rounded-lg bg-white/[0.04] px-2 py-1 text-ink">
             <b>{ch}</b> today: {d.passed || 0} clip{d.passed === 1 ? '' : 's'} · {d.rejected || 0} rejected{d.avg_score != null ? ` (avg score ${d.avg_score})` : ''}
           </span>
         ))}
@@ -547,21 +505,21 @@ function History({ history, today }) {
       {open && (
         <div className="mt-3 overflow-x-auto">
           <table className="w-full text-[11.5px]">
-            <thead className="text-[var(--tl-muted)] text-left">
+            <thead className="text-muted text-left">
               <tr><th className="py-1 pr-2 font-medium">When</th><th className="pr-2 font-medium">Streamer</th><th className="pr-2 font-medium">Result</th><th className="pr-2 font-medium">Score</th><th className="font-medium">Why</th></tr>
             </thead>
             <tbody>
               {rows.map((r) => (
-                <tr key={r.id} className="border-t border-white/[0.05] text-[var(--tl-text)] align-top">
+                <tr key={r.id} className="border-t border-white/[0.05] text-ink align-top">
                   <td className="py-1.5 pr-2 whitespace-nowrap tabular-nums">{r.created_at ? new Date(`${r.created_at.replace(' ', 'T')}Z`).toLocaleString([], { hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' }) : '—'}</td>
                   <td className="pr-2">{r.channel_id}</td>
                   <td className="pr-2 whitespace-nowrap">
                     {r.status === 'passed'
-                      ? <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} style={{ color: STATUS.good }} />{r.clip_id ? <Link className="text-[var(--tl-accent)]" to={`/clips/${r.clip_id}/editor`}>clip #{r.clip_id}</Link> : 'clip'}</span>
+                      ? <span className="inline-flex items-center gap-1"><CheckCircle2 size={12} style={{ color: STATUS.good }} />{r.clip_id ? <Link className="text-accent" to={`/clips/${r.clip_id}/editor`}>clip #{r.clip_id}</Link> : 'clip'}</span>
                       : <span className="inline-flex items-center gap-1"><XCircle size={12} style={{ color: STATUS.idle }} />rejected</span>}
                   </td>
                   <td className="pr-2 tabular-nums">{r.virality_score ?? '—'}{r.threshold_value ? ` / ${Math.round(r.threshold_value)}` : ''}</td>
-                  <td className="text-[var(--tl-muted)] max-w-[260px]">{r.rejection_reason || r.transcript || '—'}</td>
+                  <td className="text-muted max-w-[260px]">{r.rejection_reason || r.transcript || '—'}</td>
                 </tr>
               ))}
             </tbody>
@@ -593,24 +551,16 @@ export default function StreamerTelemetryHub() {
   const stale = dataUpdatedAt && Date.now() - dataUpdatedAt > 8000;
 
   return (
-    <div className="telemetry-root min-h-full bg-[var(--tl-bg)] px-3 sm:px-5 pt-4 pb-28 lg:pb-6 space-y-3 max-w-[1500px] mx-auto">
-      <style>{`
-        .telemetry-root { --tl-bg: #0a0b0e; --tl-surface: #111319; --tl-text: #f0efec; --tl-muted: #9b9a92;
-          --tl-grid: rgba(255,255,255,.06); --tl-accent: #7fb6f5; --tl-event: ${C.event}; }
-      `}</style>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <h1 className="text-[18px] sm:text-[20px] font-bold text-[var(--tl-text)] flex items-center gap-2"><Activity size={20} /> Live Pulse</h1>
-          <p className="text-[11.5px] text-[var(--tl-muted)]">Everything the live clipper sees, updated every 2 seconds.</p>
-        </div>
-        <span className="flex items-center gap-1.5 text-[11px] text-[var(--tl-muted)]">
+    <Page title="Live Pulse" icon={Activity} subtitle="Everything the live clipper sees, updated every 2 seconds."
+      actions={(
+        <span className="flex items-center gap-1.5 text-[11px] text-muted">
           {isError || stale ? <WifiOff size={13} style={{ color: STATUS.bad }} /> : <Wifi size={13} style={{ color: STATUS.good }} />}
           {isError ? 'Connection lost' : stale ? 'Reconnecting…' : 'Live'}
         </span>
-      </div>
+      )}>
 
-      {isError && !data && <Panel><p className="text-[12px] text-[var(--tl-muted)]">Could not load telemetry: {error?.message}</p></Panel>}
-      {isLoading && !data && <div className="h-40 rounded-2xl bg-white/[0.03] animate-pulse" />}
+      {isError && !data && <Panel><p className="text-[12px] text-muted">Could not load telemetry: {error?.message}</p></Panel>}
+      {isLoading && !data && <Skeleton className="h-40" />}
 
       {data && (
         <>
@@ -619,9 +569,9 @@ export default function StreamerTelemetryHub() {
           {streamers.length === 0 ? (
             <Panel>
               <div className="py-10 text-center space-y-2">
-                <Radio size={28} className="mx-auto text-[var(--tl-muted)]" />
-                <p className="text-[13px] text-[var(--tl-text)]">No streamers are being watched.</p>
-                <p className="text-[12px] text-[var(--tl-muted)]">Add a live streamer in <Link to="/channels" className="text-[var(--tl-accent)]">Channels</Link> and it will show up here.</p>
+                <Radio size={28} className="mx-auto text-muted" />
+                <p className="text-[13px] text-ink">No streamers are being watched.</p>
+                <p className="text-[12px] text-muted">Add a live streamer in <Link to="/channels" className="text-accent">Channels</Link> and it will show up here.</p>
               </div>
             </Panel>
           ) : (
@@ -647,6 +597,6 @@ export default function StreamerTelemetryHub() {
           )}
         </>
       )}
-    </div>
+    </Page>
   );
 }

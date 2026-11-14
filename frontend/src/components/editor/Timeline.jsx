@@ -213,14 +213,14 @@ export default function Timeline({ videoRef }) {
     : timelineWidth;
 
   return (
-    <div className="w-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-2xl select-none overflow-hidden">
+    <div className="w-full bg-surface border border-white/[0.06] rounded-2xl flex flex-col shadow-2xl select-none overflow-hidden">
       {/* Header Toolbar Row */}
-      <div className="h-9 px-2 sm:px-3 bg-[#0A0B0E] border-b border-white/[0.04] flex items-center justify-between text-xs text-[#8B90A0] overflow-x-auto custom-scrollbar">
+      <div className="h-9 px-2 sm:px-3 bg-canvas border-b border-white/[0.04] flex items-center justify-between text-xs text-muted overflow-x-auto custom-scrollbar">
         {/* Left Playback & Split Tools */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           <button
             onClick={togglePlay}
-            className="w-6 h-6 rounded-lg bg-[#8FD3FF] hover:bg-[#A9B8FF] text-[#0A0B0E] flex items-center justify-center transition-all shadow-md shadow-[#8FD3FF]/20"
+            className="w-6 h-6 rounded-lg bg-accent hover:bg-accent text-canvas flex items-center justify-center transition-all shadow-md shadow-accent/20"
             title="Play / Pause (Space)"
           >
             {isPlaying ? <Pause size={12} /> : <Play size={12} className="ml-0.5" />}
@@ -228,21 +228,21 @@ export default function Timeline({ videoRef }) {
 
           <button
             onClick={splitSegmentAtPlayhead}
-            className="px-2 py-0.5 rounded-lg bg-[#1A1D24] hover:bg-white/10 text-white font-bold text-[11px] flex items-center gap-1 transition-all border border-white/5"
+            className="px-2 py-0.5 rounded-lg bg-raised hover:bg-white/10 text-white font-bold text-[11px] flex items-center gap-1 transition-all border border-white/5"
             title="Split Clip at Playhead (C)"
           >
-            <Scissors size={12} className="text-[#8FD3FF]" />
+            <Scissors size={12} className="text-accent" />
             <span>Split</span>
           </button>
 
           {/* Speed Presets */}
-          <div className="hidden xs:flex items-center gap-0.5 ml-1 sm:ml-2 bg-[#1A1D24] p-0.5 rounded-lg border border-white/5">
+          <div className="hidden xs:flex items-center gap-0.5 ml-1 sm:ml-2 bg-raised p-0.5 rounded-lg border border-white/5">
             {[1, 1.5, 2].map((s) => (
               <button
                 key={s}
                 onClick={() => handleSpeedChange(s)}
-                className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                  playbackRate === s ? 'bg-[#8FD3FF] text-[#0A0B0E]' : 'text-[#8B90A0] hover:text-white'
+                className={`px-1.5 py-0.5 rounded text-[11px] font-bold ${
+                  playbackRate === s ? 'bg-accent text-canvas' : 'text-muted hover:text-white'
                 }`}
               >
                 {s}x
@@ -264,7 +264,7 @@ export default function Timeline({ videoRef }) {
           <div className="flex items-center gap-1">
             <button
               onClick={() => setPixelsPerSecond((p) => Math.max(25, p - 15))}
-              className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white"
+              className="p-1 rounded hover:bg-white/5 text-muted hover:text-white"
             >
               <ZoomOut size={12} />
             </button>
@@ -274,17 +274,17 @@ export default function Timeline({ videoRef }) {
               max="200"
               value={pixelsPerSecond}
               onChange={(e) => setPixelsPerSecond(Number(e.target.value))}
-              className="w-10 sm:w-14 h-1 accent-[#8FD3FF] cursor-pointer"
+              className="w-10 sm:w-14 h-1 accent-accent cursor-pointer"
             />
             <button
               onClick={() => setPixelsPerSecond((p) => Math.min(200, p + 15))}
-              className="p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white"
+              className="p-1 rounded hover:bg-white/5 text-muted hover:text-white"
             >
               <ZoomIn size={12} />
             </button>
             <button
               onClick={() => setShowShortcuts(!showShortcuts)}
-              className="hidden sm:inline-block p-1 rounded hover:bg-white/5 text-[#8B90A0] hover:text-white ml-0.5"
+              className="hidden sm:inline-block p-1 rounded hover:bg-white/5 text-muted hover:text-white ml-0.5"
               title="Keyboard Shortcuts"
             >
               <HelpCircle size={13} />
@@ -298,16 +298,16 @@ export default function Timeline({ videoRef }) {
         ref={containerRef}
         tabIndex={-1}
         onPointerDown={handlePointerDownTimeline}
-        className="w-full h-[145px] overflow-x-auto overflow-y-hidden relative bg-[#0D0F14] cursor-crosshair select-none focus:outline-none"
+        className="w-full h-[145px] overflow-x-auto overflow-y-hidden relative bg-surface cursor-crosshair select-none focus:outline-none"
       >
         <div style={{ width: `${timelineWidth}px` }} className="h-full relative pointer-events-auto">
           {/* Ticks and Ruler */}
-          <div className="h-5 border-b border-white/[0.06] bg-[#0A0B0E] relative pointer-events-none">
+          <div className="h-5 border-b border-white/[0.06] bg-canvas relative pointer-events-none">
             {Array.from({ length: Math.ceil(duration) + 1 }).map((_, sec) => (
               <div
                 key={sec}
                 style={{ left: `${sec * pixelsPerSecond}px` }}
-                className="absolute top-0 bottom-0 border-l border-white/10 pl-1 text-[9px] font-mono text-[#8B90A0]"
+                className="absolute top-0 bottom-0 border-l border-white/10 pl-1 text-[10.5px] font-mono text-muted"
               >
                 {sec}s
               </div>
@@ -323,21 +323,21 @@ export default function Timeline({ videoRef }) {
             }}
             className={`absolute left-0 top-0 bottom-0 w-4 z-40 cursor-ew-resize flex flex-col items-center justify-center rounded-l shadow-xl transition-colors group ${
               draggingEdge?.edge === 'in' 
-                ? 'bg-[#8FD3FF] ring-2 ring-[#8FD3FF]/50 scale-105' 
+                ? 'bg-accent ring-2 ring-accent/50 scale-105' 
                 : 'bg-indigo-600 hover:bg-indigo-500'
             }`}
             title="Drag outward to extend clip start, inward to shorten"
           >
             <div className="w-0.5 h-7 bg-white rounded-full group-hover:scale-110 transition-transform" />
             {draggingEdge?.edge === 'in' && (
-              <div className="absolute -top-6 left-0 bg-[#8FD3FF] text-[#0A0B0E] font-mono text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
+              <div className="absolute -top-6 left-0 bg-accent text-canvas font-mono text-[10.5px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
                 {draggingEdge.currStart.toFixed(1)}s
               </div>
             )}
           </div>
 
           {/* Video Segment Strip Track with Real Filmstrip Thumbnails */}
-          <div className="h-10 my-1 mx-3 rounded-lg bg-[#1A1D24] border border-white/[0.08] relative overflow-hidden flex items-center pointer-events-auto">
+          <div className="h-10 my-1 mx-3 rounded-lg bg-raised border border-white/[0.08] relative overflow-hidden flex items-center pointer-events-auto">
             {edl?.segments?.map((seg) => {
               const segStart = (seg.src_in - startOffset) * pixelsPerSecond;
               const segW = (seg.src_out - seg.src_in) * pixelsPerSecond;
@@ -355,7 +355,7 @@ export default function Timeline({ videoRef }) {
                     left: `${segStart}px`,
                     width: `${segW}px`,
                   }}
-                  className="h-full border border-indigo-500/40 rounded overflow-hidden relative flex items-center justify-between text-[10px] font-mono text-white group cursor-pointer"
+                  className="h-full border border-indigo-500/40 rounded overflow-hidden relative flex items-center justify-between text-[11px] font-mono text-white group cursor-pointer"
                 >
                   <div className="absolute inset-0 flex pointer-events-none opacity-40">
                     {Array.from({ length: thumbCount }).map((_, i) => (
@@ -394,21 +394,21 @@ export default function Timeline({ videoRef }) {
             }}
             className={`absolute right-0 top-0 bottom-0 w-4 z-40 cursor-ew-resize flex flex-col items-center justify-center rounded-r shadow-xl transition-colors group ${
               draggingEdge?.edge === 'out' 
-                ? 'bg-[#8FD3FF] ring-2 ring-[#8FD3FF]/50 scale-105' 
+                ? 'bg-accent ring-2 ring-accent/50 scale-105' 
                 : 'bg-indigo-600 hover:bg-indigo-500'
             }`}
             title="Drag outward to extend clip end, inward to shorten"
           >
             <div className="w-0.5 h-7 bg-white rounded-full group-hover:scale-110 transition-transform" />
             {draggingEdge?.edge === 'out' && (
-              <div className="absolute -top-6 right-0 bg-[#8FD3FF] text-[#0A0B0E] font-mono text-[9px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
+              <div className="absolute -top-6 right-0 bg-accent text-canvas font-mono text-[10.5px] font-black px-1.5 py-0.5 rounded shadow-lg whitespace-nowrap animate-in fade-in">
                 {draggingEdge.currEnd.toFixed(1)}s
               </div>
             )}
           </div>
 
           {/* Audio Waveform Canvas Track */}
-          <div className="h-7 mx-3 rounded bg-[#13151A] overflow-hidden relative pointer-events-none">
+          <div className="h-7 mx-3 rounded bg-surface overflow-hidden relative pointer-events-none">
             <canvas
               ref={waveformCanvasRef}
               width={timelineWidth}
@@ -446,12 +446,12 @@ export default function Timeline({ videoRef }) {
                     left: `${wStart}px`,
                     width: `${wWidth}px`,
                   }}
-                  className={`h-full rounded text-[9px] font-mono flex items-center justify-center px-0.5 border transition-all cursor-pointer ${
+                  className={`h-full rounded text-[10.5px] font-mono flex items-center justify-center px-0.5 border transition-all cursor-pointer ${
                     w.deleted
                       ? 'bg-rose-950/40 border-rose-500/40 text-rose-500 line-through opacity-50'
                       : isCurrent
-                      ? 'bg-[#8FD3FF] text-[#0A0B0E] font-bold border-white'
-                      : 'bg-white/5 border-white/5 text-[#8B90A0] hover:text-white hover:bg-white/10'
+                      ? 'bg-accent text-canvas font-bold border-white'
+                      : 'bg-white/5 border-white/5 text-muted hover:text-white hover:bg-white/10'
                   }`}
                   title={`${textContent} (${w.start.toFixed(1)}s - ${w.end.toFixed(1)}s) • Right-click to toggle jump-cut delete`}
                 >
@@ -470,9 +470,9 @@ export default function Timeline({ videoRef }) {
             style={{
               transform: `translateX(${playheadX}px)`,
             }}
-            className="absolute top-0 bottom-0 w-0.5 bg-[#8FD3FF] z-40 pointer-events-none shadow-[0_0_10px_#8FD3FF]"
+            className="absolute top-0 bottom-0 w-0.5 bg-accent z-40 pointer-events-none shadow-[0_0_10px_#8FD3FF]"
           >
-            <div className="w-2.5 h-2.5 bg-[#8FD3FF] rounded-full -ml-1 -top-1 absolute shadow-md" />
+            <div className="w-2.5 h-2.5 bg-accent rounded-full -ml-1 -top-1 absolute shadow-md" />
           </div>
         </div>
       </div>
@@ -480,8 +480,8 @@ export default function Timeline({ videoRef }) {
       {/* Keyboard Shortcuts Overlay Modal */}
       {showShortcuts && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-[80] p-4">
-          <div className="bg-[#13151A] border border-white/10 rounded-2xl p-5 max-w-sm w-full text-xs text-[#E8EAF0] shadow-2xl">
-            <h4 className="font-bold text-sm mb-3 text-[#8FD3FF]">Keyboard Shortcuts Guide</h4>
+          <div className="bg-surface border border-white/10 rounded-2xl p-5 max-w-sm w-full text-xs text-ink shadow-2xl">
+            <h4 className="font-bold text-sm mb-3 text-accent">Keyboard Shortcuts Guide</h4>
             <div className="space-y-1.5 font-mono">
               <div className="flex justify-between"><span>Space</span><span className="text-slate-400">Play / Pause</span></div>
               <div className="flex justify-between"><span>← / →</span><span className="text-slate-400">Step 1 Frame (1/30s)</span></div>
@@ -497,7 +497,7 @@ export default function Timeline({ videoRef }) {
             </div>
             <button
               onClick={() => setShowShortcuts(false)}
-              className="mt-4 w-full py-2 bg-[#8FD3FF] text-black font-bold rounded-lg"
+              className="mt-4 w-full py-2 bg-accent text-black font-bold rounded-lg"
             >
               Close
             </button>

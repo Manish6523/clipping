@@ -162,9 +162,9 @@ export default function ClipEditorPage() {
 
   if (loading) {
     return (
-      <div className="h-screen w-screen bg-[#0A0B0E] flex flex-col items-center justify-center gap-4 text-[#8B90A0]">
-        <div className="w-10 h-10 border-2 border-[#8FD3FF] border-t-transparent rounded-full animate-spin" />
-        <span className="text-xs font-mono tracking-wider text-[#8FD3FF]">
+      <div className="h-screen w-screen bg-canvas flex flex-col items-center justify-center gap-4 text-muted">
+        <div className="w-10 h-10 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-mono tracking-wider text-accent">
           LOADING CLIP EDL &amp; SOURCE MEDIA...
         </span>
       </div>
@@ -177,7 +177,7 @@ export default function ClipEditorPage() {
   if (isPhone && !isLandscape) {
     return (
       <div 
-        className="h-[100dvh] w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col overflow-hidden select-none"
+        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-hidden select-none"
         style={{ overscrollBehavior: 'none' }}
       >
         {/* 1. Mobile Top Bar (48dp) */}
@@ -241,7 +241,7 @@ export default function ClipEditorPage() {
 
         {/* Full Timeline Modal Sheet if expanded */}
         {fullTimelineOpen && (
-          <div className="fixed inset-x-0 bottom-0 top-12 bg-[#0E1118]/98 backdrop-blur-2xl border-t border-white/10 z-50 flex flex-col p-3 shadow-2xl">
+          <div className="fixed inset-x-0 bottom-0 top-12 bg-surface/98 backdrop-blur-2xl border-t border-white/10 z-50 flex flex-col p-3 shadow-2xl">
             <div className="flex items-center justify-between pb-2 border-b border-white/10">
               <span className="font-extrabold text-xs text-white">Full Timeline &amp; Word Cuts</span>
               <button
@@ -266,7 +266,7 @@ export default function ClipEditorPage() {
   if (isPhone && isLandscape) {
     return (
       <div 
-        className="h-[100dvh] w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col overflow-hidden select-none"
+        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-hidden select-none"
         style={{ overscrollBehavior: 'none' }}
       >
         {/* Slim Top Bar (36dp) */}
@@ -310,7 +310,7 @@ export default function ClipEditorPage() {
 
           {/* Side Drawer for Tool Panel */}
           {activePanel && (
-            <div className="w-80 h-full border-l border-white/10 bg-[#0E1118] shrink-0 z-40">
+            <div className="w-80 h-full border-l border-white/10 bg-surface shrink-0 z-40">
               <PanelHost 
                 mode="landscape"
                 activePanel={activePanel}
@@ -321,7 +321,7 @@ export default function ClipEditorPage() {
         </div>
 
         {/* Bottom Timeline + Toolbar Strip */}
-        <div className="h-14 shrink-0 flex items-center border-t border-white/[0.06] bg-[#0A0B0E]">
+        <div className="h-14 shrink-0 flex items-center border-t border-white/[0.06] bg-canvas">
           <div className="flex-1 h-full">
             <MobileTimelineStrip videoRef={videoRef} onExpandTimeline={() => setFullTimelineOpen(true)} />
           </div>
@@ -337,25 +337,25 @@ export default function ClipEditorPage() {
   // 3. DESKTOP & TABLET LAYOUT: 3 Columns with shared panels
   // =========================================================================
   return (
-    <div className="h-screen w-screen bg-[#0A0B0E] text-[#E8EAF0] flex flex-col md:flex-row overflow-hidden">
+    <div className="h-screen w-screen bg-canvas text-ink flex flex-col md:flex-row overflow-hidden">
       {/* Slim 48px Far-Left Icon Rail */}
-      <aside className="hidden md:flex w-12 bg-[#0A0B0E] border-r border-white/[0.06] flex-col items-center justify-between py-4 select-none shrink-0 z-40">
+      <aside className="hidden md:flex w-12 bg-canvas border-r border-white/[0.06] flex-col items-center justify-between py-4 select-none shrink-0 z-40">
         <div className="flex flex-col items-center gap-5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-[#8FD3FF] to-[#A9B8FF] flex items-center justify-center text-[#0A0B0E] font-black text-sm shadow-md shadow-[#8FD3FF]/20">
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-canvas font-black text-sm shadow-md shadow-accent/20">
             M
           </div>
           <nav className="flex flex-col items-center gap-3">
-            <button className="p-2 rounded-xl text-[#8FD3FF] bg-white/[0.06]">
+            <button className="p-2 rounded-xl text-accent bg-white/[0.06]">
               <FolderKanban size={15} />
             </button>
-            <button className="p-2 rounded-xl text-[#8B90A0] hover:text-white transition-all">
+            <button className="p-2 rounded-xl text-muted hover:text-white transition-all">
               <Palette size={15} />
             </button>
           </nav>
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <button className="p-2 rounded-xl text-[#8B90A0] hover:text-white transition-all">
+          <button className="p-2 rounded-xl text-muted hover:text-white transition-all">
             <Settings size={15} />
           </button>
         </div>

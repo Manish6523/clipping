@@ -1,51 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import ChannelPublishing from './ChannelPublishing';
-import { 
-  Video, 
-  Key, 
-  Plus, 
-  Trash2, 
-  CheckCircle2, 
-  AlertTriangle, 
-  ExternalLink, 
-  ArrowRight, 
-  RefreshCw,
-  Users,
-  Share2,
-  FileJson,
-  Layers,
-  Radio,
-  PlaySquare,
-  Sliders,
-  Globe,
-  Lock,
-  Eye,
-  SlidersHorizontal
-} from 'lucide-react';
+import { Plus, Trash2, CheckCircle2, AlertTriangle, ExternalLink, Share2, FileJson, Radio, Key } from 'lucide-react';
+import {
+  getYouTubeAppConfig, saveYouTubeAppConfig, getYouTubeAuthUrl, getYouTubeAccounts, patchYouTubeAccountConfig,
+  deleteYouTubeAccount, importYouTubeAccount, getYouTubeMappings, setYouTubeMappings, getChannels,
+} from '../api';
+import {
+  Page, Panel, Segmented, Button, IconButton, Input, Textarea, Field, Pill, Notice, EmptyState, Sheet, Confirm, Checkbox,
+} from './ui';
 
-const YoutubeIcon = ({ size = 20, className = "" }) => (
-  <svg
-    width={size}
-    height={size}
-    viewBox="0 0 24 24"
-    fill="currentColor"
-    className={className}
-  >
-    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z"/>
+const YoutubeIcon = ({ size = 20, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className} aria-hidden="true">
+    <path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" />
   </svg>
 );
-import {
-  getYouTubeAppConfig,
-  saveYouTubeAppConfig,
-  getYouTubeAuthUrl,
-  getYouTubeAccounts,
-  patchYouTubeAccountConfig,
-  deleteYouTubeAccount,
-  importYouTubeAccount,
-  getYouTubeMappings,
-  setYouTubeMappings,
-  getChannels
-} from '../api';
 
 export default function AccountsManager() {
   const [appConfig, setAppConfig] = useState({ client_id: '', has_secret: false });
@@ -60,6 +28,8 @@ export default function AccountsManager() {
   const [newAccountKey, setNewAccountKey] = useState('');
   const [isAuthorizing, setIsAuthorizing] = useState(false);
   const [feedback, setFeedback] = useState(null);
+  const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(null);
   const [activeTab, setActiveTab] = useState('accounts'); // 'accounts' | 'mappings' | 'oauth_setup'
 
   // Manual Import modal
@@ -79,6 +49,7 @@ export default function AccountsManager() {
   }, []);
 
   const showToast = (msg) => {
+    setError('');
     setFeedback(msg);
     setTimeout(() => setFeedback(null), 4000);
   };
@@ -104,7 +75,7 @@ export default function AccountsManager() {
   const handleSaveAppConfig = async (e) => {
     e.preventDefault();
     if (!clientIdInput.trim() || !clientSecretInput.trim()) {
-      alert('Both Client ID and Client Secret are required.');
+      setError('Both Client ID and Client Secret are required.');
       return;
     }
     try {
@@ -114,18 +85,18 @@ export default function AccountsManager() {
       loadAll();
       showToast('Google OAuth Credentials Saved!');
     } catch (err) {
-      alert('Failed to save OAuth credentials: ' + err.message);
+      setError(`Could not save the credentials: ${err.message}`);
     }
   };
 
   const handleStartOAuth = async () => {
     const key = newAccountKey.trim().toLowerCase().replace(/[^a-z0-9_]/g, '_');
     if (!key) {
-      alert('Please enter a unique key for this YouTube account (e.g. main_channel, clips_hub)');
+      setError('Enter a unique key for this YouTube account first (for example main_channel).');
       return;
     }
     if (!appConfig.client_id || !appConfig.has_secret) {
-      alert('Please configure your Google OAuth Client ID & Secret in the Setup tab first.');
+      setError('Add your Google OAuth Client ID and Secret in the Google app tab first.');
       setActiveTab('oauth_setup');
       return;
     }
@@ -136,25 +107,25 @@ export default function AccountsManager() {
       // Redirect to Google OAuth consent
       window.location.href = auth_url;
     } catch (err) {
-      alert('Could not start OAuth: ' + (err.response?.data?.error || err.message));
+      setError(`Could not start sign-in: ${err.response?.data?.error || err.message}`);
       setIsAuthorizing(false);
     }
   };
 
   const handleDeleteAccount = async (key) => {
-    if (!window.confirm(`Disconnect and remove YouTube account "${key}"?`)) return;
+    setConfirmDelete(null);
     try {
       await deleteYouTubeAccount(key);
       showToast(`Account "${key}" disconnected.`);
       loadAll();
     } catch (err) {
-      alert('Delete failed: ' + err.message);
+      setError(`Could not remove the account: ${err.message}`);
     }
   };
 
   const handleImportJson = async () => {
     if (!importKey.trim() || !importJsonText.trim()) {
-      alert('Please provide both an account key and valid JSON credentials.');
+      setError('Provide both an account key and the token JSON.');
       return;
     }
     try {
@@ -166,7 +137,7 @@ export default function AccountsManager() {
       showToast(`Imported account "${importKey}"!`);
       loadAll();
     } catch (err) {
-      alert('Invalid JSON or import error: ' + err.message);
+      setError(`Invalid JSON or import error: ${err.message}`);
     }
   };
 
@@ -187,7 +158,7 @@ export default function AccountsManager() {
       setMappings(updated);
       showToast(`Updated mappings for ${streamerHandle}`);
     } catch (err) {
-      alert('Failed to update mapping: ' + err.message);
+      setError(`Could not update the mapping: ${err.message}`);
     }
   };
 
@@ -197,434 +168,150 @@ export default function AccountsManager() {
       showToast(`Updated settings for "${accountKey}"`);
       loadAll();
     } catch (err) {
-      alert('Failed to update account settings: ' + err.message);
+      setError(`Could not update the account: ${err.message}`);
     }
   };
 
+  const tabs = [
+    { value: 'accounts', label: 'Accounts', icon: () => <YoutubeIcon size={13} />, count: accounts.length },
+    { value: 'mappings', label: 'Mappings', icon: Share2 },
+    { value: 'oauth_setup', label: 'Google app', icon: Key },
+  ];
+  const isMapped = (handle, key) => mappings.some((m) => m.streamer_handle.toLowerCase() === handle.toLowerCase() && m.account_key === key);
+
   return (
-    <div className="w-full max-w-7xl mx-auto px-4 py-6 text-slate-100 select-none animate-in fade-in duration-300">
-      {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.08]">
-        <div className="flex items-center gap-3">
-          <div className="hidden sm:flex w-10 h-10 rounded-2xl bg-gradient-to-tr from-rose-500 to-red-600 items-center justify-center text-white shadow-lg shadow-rose-500/25">
-            <YoutubeIcon size={22} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-black text-white tracking-tight">
-                <span className="sm:hidden">Distribution</span>
-                <span className="hidden sm:inline">YouTube & Multi-Account Distribution</span>
-              </h1>
-              {feedback && (
-                <span className="flex items-center gap-1 text-xs font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2.5 py-0.5 rounded-full animate-in fade-in">
-                  <CheckCircle2 size={12} /> {feedback}
-                </span>
-              )}
-            </div>
-            <p className="hidden sm:block text-xs text-slate-400 mt-0.5">
-              Connect multiple YouTube channels and map streamers to broadcast highlights automatically.
-            </p>
-          </div>
-        </div>
+    <Page title="Distribution" icon={() => <YoutubeIcon size={20} />}
+      subtitle="Connect YouTube channels, choose which streamer posts where, and set each channel's schedule."
+      actions={<Segmented value={activeTab} onChange={setActiveTab} options={tabs} ariaLabel="Section" />}>
+      {feedback && <Notice tone="good" icon={CheckCircle2}>{feedback}</Notice>}
+      {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
 
-        {/* Tab Switcher (Scrollable horizontally on mobile) */}
-        <div className="grid grid-cols-3 md:flex md:items-center gap-1 bg-[#0E121B] p-1 rounded-xl border border-white/[0.08] w-full md:w-auto">
-          <button
-            onClick={() => setActiveTab('accounts')}
-            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
-              activeTab === 'accounts'
-                ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <YoutubeIcon size={14} className="shrink-0" /><span className="md:hidden">Accounts ({accounts.length})</span><span className="hidden md:inline">Connected Accounts ({accounts.length})</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('mappings')}
-            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
-              activeTab === 'mappings'
-                ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Share2 size={14} className="shrink-0" /><span className="md:hidden">Mappings</span><span className="hidden md:inline">Streamer Mappings</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('oauth_setup')}
-            className={`px-2 md:px-3 py-2 md:py-1.5 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 min-w-0 whitespace-nowrap ${
-              activeTab === 'oauth_setup'
-                ? 'bg-[#8FD3FF] text-[#0A0D14] shadow-md shadow-[#8FD3FF]/20'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            <Key size={14} className="shrink-0" /><span className="md:hidden">Google app</span><span className="hidden md:inline">Google App Credentials</span>
-          </button>
-        </div>
-      </div>
-
-      {/* TAB 1: CONNECTED ACCOUNTS */}
       {activeTab === 'accounts' && (
-        <div className="mt-6 space-y-6">
-          {/* Connect New Account Card */}
-          <div className="bg-[#0E121B] border border-white/[0.08] rounded-2xl p-5 shadow-xl">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-3">
-              <Plus size={16} className="text-[#8FD3FF]" /> Connect a YouTube Channel
-            </h3>
-            <div className="flex flex-col sm:flex-row items-center gap-3">
-              <div className="relative flex-1 w-full">
-                <input
-                  type="text"
-                  placeholder="Account Key (e.g. main_channel, speed_shorts, gaming_clips)"
-                  value={newAccountKey}
-                  onChange={(e) => setNewAccountKey(e.target.value)}
-                  className="w-full bg-[#141824] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-[#8FD3FF]"
-                />
-              </div>
-
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                <button
-                  onClick={handleStartOAuth}
-                  disabled={isAuthorizing}
-                  className="flex-1 sm:flex-none px-4 py-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-bold flex items-center justify-center gap-2 shadow-lg shadow-red-600/20 transition-all cursor-pointer disabled:opacity-50"
-                >
-                  <YoutubeIcon size={16} />
-                  {isAuthorizing ? 'Redirecting to Google...' : 'Sign in with YouTube'}
-                </button>
-
-                <button
-                  onClick={() => setShowImportModal(true)}
-                  className="px-3 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer border border-white/[0.08]"
-                  title="Import token JSON manually"
-                >
-                  <FileJson size={14} /> Import JSON
-                </button>
+        <>
+          <Panel title="Connect a YouTube channel" icon={Plus}>
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Input value={newAccountKey} onChange={(e) => setNewAccountKey(e.target.value)} placeholder="Account key, e.g. chaos_live"
+                aria-label="Account key" className="flex-1" />
+              <div className="flex gap-2">
+                <Button variant="primary" className="flex-1 sm:flex-none !bg-[#e11d48] hover:!bg-[#be123c]" loading={isAuthorizing} onClick={handleStartOAuth}>
+                  <YoutubeIcon size={16} /> {isAuthorizing ? 'Opening Google…' : 'Sign in with YouTube'}
+                </Button>
+                <Button icon={FileJson} onClick={() => setShowImportModal(true)} title="Import a token file manually">Import</Button>
               </div>
             </div>
-          </div>
+          </Panel>
 
-          {/* Accounts Grid */}
-          <div>
-            <h3 className="text-xs uppercase font-extrabold tracking-wider text-slate-400 mb-3">
-              Active YouTube Destinations
-            </h3>
-            {accounts.length === 0 ? (
-              <div className="bg-[#0E121B] border border-white/[0.08] rounded-2xl p-10 text-center text-slate-500">
-                <YoutubeIcon size={36} className="mx-auto mb-2 text-slate-600 opacity-60" />
-                <p className="text-xs">No YouTube accounts connected yet.</p>
-                <p className="text-[11px] text-slate-600 mt-1">Connect your first channel above to start automated uploading.</p>
-              </div>
-            ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {accounts.map((acc) => (
-                  <div
-                    key={acc.account_key}
-                    className="bg-[#0E121B] border border-white/[0.08] hover:border-white/20 rounded-2xl p-4 flex flex-col justify-between transition-all group"
-                  >
-                    <div>
-                      <div className="flex items-center justify-between gap-2 mb-3">
-                        <div className="flex items-center gap-2.5">
-                          {acc.thumbnail_url ? (
-                            <img
-                              src={acc.thumbnail_url}
-                              alt={acc.channel_title}
-                              referrerPolicy="no-referrer"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                              className="w-9 h-9 rounded-full border border-white/10 object-cover"
-                            />
-                          ) : null}
-                          {(!acc.thumbnail_url) && (
-                            <div className="w-9 h-9 rounded-full bg-red-600/20 text-red-400 border border-red-500/30 flex items-center justify-center font-bold text-xs">
-                              YT
-                            </div>
-                          )}
-                          <div>
-                            <div className="text-xs font-bold text-white group-hover:text-[#8FD3FF] transition-colors truncate max-w-[160px]">
-                              {acc.channel_title}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              key: <span className="text-amber-400 font-bold">{acc.account_key}</span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <button
-                          onClick={() => handleDeleteAccount(acc.account_key)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 transition-colors"
-                          title="Disconnect account"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+          {accounts.length === 0 ? (
+            <Panel><EmptyState icon={() => <YoutubeIcon size={30} className="mx-auto" />} title="No YouTube channels connected" text="Connect your first channel above to start automatic uploading." /></Panel>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3 items-start">
+              {accounts.map((acc) => (
+                <Panel key={acc.account_key} className="!p-3.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {acc.thumbnail_url ? (
+                        <img src={acc.thumbnail_url} alt="" referrerPolicy="no-referrer" onError={(e) => { e.currentTarget.style.display = 'none'; }}
+                          className="w-10 h-10 rounded-full border border-line-strong object-cover shrink-0" />
+                      ) : (
+                        <div className="w-10 h-10 rounded-full bg-bad/15 text-bad flex items-center justify-center shrink-0"><YoutubeIcon size={18} /></div>
+                      )}
+                      <div className="min-w-0">
+                        <div className="text-[13.5px] font-semibold text-ink truncate">{acc.channel_title}</div>
+                        <div className="text-[11px] text-muted font-mono truncate">{acc.account_key}{acc.custom_url ? ` · ${acc.custom_url}` : ''}</div>
                       </div>
-
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 bg-white/[0.03] p-2 rounded-xl border border-white/[0.04]">
-                        <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                        <span className="font-semibold text-emerald-400">Authenticated & Ready</span>
-                        {acc.custom_url && (
-                          <span className="ml-auto text-slate-500 font-mono truncate max-w-[120px]">
-                            {acc.custom_url}
-                          </span>
-                        )}
-                      </div>
-
-                      <ChannelPublishing acc={acc} onUpdate={(changes) => handleUpdateAccountSettings(acc.account_key, changes)} />
                     </div>
-
-                    <div className="mt-3 pt-2.5 border-t border-white/[0.06] flex items-center justify-between text-[11px] text-slate-400">
-                      <span>Mapped to:</span>
-                      <span className="font-bold text-white">
-                        {mappings.filter((m) => m.account_key === acc.account_key).length} streamers
-                      </span>
-                    </div>
+                    <IconButton icon={Trash2} label="Disconnect account" size="sm" className="hover:!text-bad" onClick={() => setConfirmDelete(acc.account_key)} />
                   </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
+                  <div className="flex items-center justify-between mt-3">
+                    <Pill tone="good">Connected</Pill>
+                    <span className="text-[11px] text-muted">{mappings.filter((m) => m.account_key === acc.account_key).length} streamer(s) mapped</span>
+                  </div>
+                  <ChannelPublishing acc={acc} onUpdate={(changes) => handleUpdateAccountSettings(acc.account_key, changes)} />
+                </Panel>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
-      {/* TAB 2: STREAMER MAPPINGS (1-to-MANY) */}
       {activeTab === 'mappings' && (
-        <div className="mt-6 space-y-6">
-          <div className="bg-[#0E121B] border border-white/[0.08] rounded-2xl p-5">
-            <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-1">
-              <Share2 size={16} className="text-[#8FD3FF]" /> Streamer-to-YouTube Distribution Matrix
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              <span className="md:hidden">Tap a channel to send that streamer's clips there.</span>
-              <span className="hidden md:inline">Check which YouTube channel(s) should automatically receive clips when generated for each streamer. One streamer can upload to multiple channels simultaneously!</span>
-            </p>
-
-            {channels.length === 0 ? (
-              <p className="text-xs text-slate-500 py-6 text-center">No streamers registered in Channels & Live yet.</p>
-            ) : accounts.length === 0 ? (
-              <div className="p-6 text-center text-slate-500">
-                <AlertTriangle size={24} className="mx-auto mb-2 text-amber-400" />
-                <p className="text-xs text-amber-300 font-bold">Please connect at least one YouTube Account first.</p>
-                <button
-                  onClick={() => setActiveTab('accounts')}
-                  className="mt-3 px-3 py-1.5 rounded-lg bg-[#8FD3FF] text-[#0A0D14] text-xs font-bold"
-                >
-                  Go to Connected Accounts
-                </button>
-              </div>
-            ) : (
-              <>
-              {/* Phone: one card per streamer with toggle chips */}
-              <div className="md:hidden space-y-2">
-                {channels.map((ch) => {
-                  const handle = ch.channel_id_or_handle;
-                  const mapped = accounts.filter((acc) => mappings.some(
-                    (m) => m.streamer_handle.toLowerCase() === handle.toLowerCase() && m.account_key === acc.account_key
-                  ));
-                  return (
-                    <div key={handle} className="rounded-xl bg-white/[0.02] border border-white/[0.06] p-3">
-                      <div className="flex items-center justify-between gap-2 mb-2">
-                        <span className="font-bold text-white text-sm truncate">{ch.display_name || handle}</span>
-                        <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 uppercase shrink-0">{ch.platform}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {accounts.map((acc) => {
-                          const on = mapped.includes(acc);
-                          return (
-                            <button
-                              key={acc.account_key}
-                              type="button"
-                              onClick={() => toggleStreamerAccountMapping(handle, acc.account_key)}
-                              aria-pressed={on}
-                              className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${
-                                on ? 'bg-[#8FD3FF] text-[#0A0D14] border-[#8FD3FF]' : 'bg-transparent text-slate-300 border-white/15'
-                              }`}
-                            >
-                              {on ? '✓ ' : ''}{acc.channel_title}
-                            </button>
-                          );
-                        })}
-                      </div>
-                      {mapped.length === 0 && <p className="text-[11px] text-amber-300/80 mt-2">Not posting anywhere yet</p>}
+        <Panel title="Which channel does each streamer post to?" icon={Share2}>
+          <p className="text-xs text-muted mb-3">Tick the YouTube channels that should receive clips for each streamer. One streamer can post to several channels - each channel gets its own scheduled copy.</p>
+          {channels.length === 0 ? (
+            <EmptyState icon={Radio} title="No streamers yet" text="Add a streamer under Channels first." className="!py-6" />
+          ) : accounts.length === 0 ? (
+            <EmptyState icon={AlertTriangle} title="Connect a YouTube channel first" action={<Button variant="primary" onClick={() => setActiveTab('accounts')}>Go to accounts</Button>} className="!py-6" />
+          ) : (
+            <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+              {channels.map((ch) => {
+                const handle = ch.channel_id_or_handle;
+                const mappedCount = accounts.filter((a) => isMapped(handle, a.account_key)).length;
+                return (
+                  <div key={handle} className="rounded-xl bg-canvas border border-line p-3">
+                    <div className="flex items-center justify-between gap-2 mb-2">
+                      <span className="font-semibold text-ink text-[13px] truncate">{ch.display_name || handle}</span>
+                      <Pill dot={false} className="uppercase !text-[10px]">{ch.platform}</Pill>
                     </div>
-                  );
-                })}
-              </div>
-              <div className="hidden md:block overflow-x-auto custom-scrollbar">
-                <table className="w-full text-left text-xs min-w-[500px]">
-                  <thead>
-                    <tr className="border-b border-white/[0.08] text-slate-400 uppercase text-[10px] font-mono">
-                      <th className="py-3 px-4">Streamer Channel</th>
-                      {accounts.map((acc) => (
-                        <th key={acc.account_key} className="py-3 px-4 text-center">
-                          <div className="font-bold text-white">{acc.channel_title}</div>
-                          <div className="text-[9px] text-amber-400 font-mono">({acc.account_key})</div>
-                        </th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/[0.04]">
-                    {channels.map((ch) => {
-                      const handle = ch.channel_id_or_handle;
-                      return (
-                        <tr key={handle} className="hover:bg-white/[0.02] transition-colors">
-                          <td className="py-3.5 px-4 font-bold text-white flex items-center gap-2">
-                            <Radio size={14} className="text-[#8FD3FF]" />
-                            <span>{handle}</span>
-                            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 uppercase">
-                              {ch.platform}
-                            </span>
-                          </td>
-
-                          {accounts.map((acc) => {
-                            const isChecked = mappings.some(
-                              (m) =>
-                                m.streamer_handle.toLowerCase() === handle.toLowerCase() &&
-                                m.account_key === acc.account_key
-                            );
-
-                            return (
-                              <td key={acc.account_key} className="py-3.5 px-4 text-center">
-                                <label className="inline-flex items-center cursor-pointer">
-                                  <input
-                                    type="checkbox"
-                                    checked={isChecked}
-                                    onChange={() => toggleStreamerAccountMapping(handle, acc.account_key)}
-                                    className="w-4 h-4 rounded bg-[#141824] border-white/20 text-[#8FD3FF] focus:ring-0 focus:ring-offset-0 cursor-pointer accent-[#8FD3FF]"
-                                  />
-                                </label>
-                              </td>
-                            );
-                          })}
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              </>
-            )}
-          </div>
-        </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {accounts.map((acc) => {
+                        const on = isMapped(handle, acc.account_key);
+                        return (
+                          <button key={acc.account_key} type="button" aria-pressed={on} onClick={() => toggleStreamerAccountMapping(handle, acc.account_key)}
+                            className={`h-9 px-3 rounded-xl text-xs font-semibold border transition-colors ${on ? 'bg-accent-strong border-accent-strong text-white' : 'border-line-strong text-slate-300 hover:bg-white/[0.05]'}`}>
+                            {on ? '✓ ' : ''}{acc.channel_title}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {mappedCount === 0 && <p className="text-[11px] text-warn mt-2">Not posting anywhere yet</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Panel>
       )}
 
-      {/* TAB 3: OAUTH APP SETUP */}
       {activeTab === 'oauth_setup' && (
-        <div className="mt-6 max-w-2xl bg-[#0E121B] border border-white/[0.08] rounded-2xl p-6 shadow-xl">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2 mb-2">
-            <Key size={16} className="text-[#8FD3FF]" /> Google Cloud OAuth App Credentials
-          </h3>
-          <p className="text-xs text-slate-400 mb-5 leading-relaxed">
-            To enable the 1-click <b>"Sign in with YouTube"</b> flow, configure your OAuth Client ID and Secret from the{' '}
-            <a
-              href="https://console.cloud.google.com/apis/credentials"
-              target="_blank"
-              rel="noreferrer"
-              className="text-[#8FD3FF] underline hover:text-white inline-flex items-center gap-1"
-            >
+        <Panel title="Google Cloud OAuth app" icon={Key} className="max-w-2xl">
+          <p className="text-xs text-muted mb-4 leading-relaxed">
+            To use one-tap <b className="text-slate-300">Sign in with YouTube</b>, add the OAuth Client ID and Secret from the{' '}
+            <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noreferrer" className="text-accent inline-flex items-center gap-1 underline underline-offset-2">
               Google Cloud Console <ExternalLink size={11} />
             </a>.
           </p>
-
-          <form onSubmit={handleSaveAppConfig} className="space-y-4">
-            <div>
-              <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">
-                OAuth 2.0 Client ID
-              </label>
-              <input
-                type="text"
-                value={clientIdInput}
-                onChange={(e) => setClientIdInput(e.target.value)}
-                placeholder="xxxx-xxxxxxxxxx.apps.googleusercontent.com"
-                className="w-full bg-[#141824] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-[#8FD3FF]"
-              />
+          <form onSubmit={handleSaveAppConfig} className="space-y-3.5">
+            <Field label="OAuth client ID">
+              <Input mono value={clientIdInput} onChange={(e) => setClientIdInput(e.target.value)} placeholder="xxxx-xxxxxxxx.apps.googleusercontent.com" autoComplete="off" />
+            </Field>
+            <Field label="OAuth client secret">
+              <Input mono type="password" value={clientSecretInput} onChange={(e) => setClientSecretInput(e.target.value)} autoComplete="off"
+                placeholder={appConfig.has_secret ? '•••••••• (leave blank to keep the saved secret)' : 'GOCSPX-…'} />
+            </Field>
+            <div className="rounded-xl bg-canvas border border-line p-3 text-[11.5px] text-muted">
+              Authorised redirect URI to register in Google Console:
+              <div className="mt-1.5 font-mono text-good select-all bg-surface p-2 rounded-lg break-all">{`${window.location.origin}/api/youtube/oauth2callback`}</div>
             </div>
-
-            <div>
-              <label className="block text-[11px] uppercase font-bold text-slate-400 mb-1">
-                OAuth 2.0 Client Secret
-              </label>
-              <input
-                type="password"
-                value={clientSecretInput}
-                onChange={(e) => setClientSecretInput(e.target.value)}
-                placeholder={appConfig.has_secret ? '•••••••••••••••• (Leave blank to keep existing)' : 'GOCSPX-xxxxxxxxxxxxx'}
-                className="w-full bg-[#141824] border border-white/10 rounded-xl px-3.5 py-2 text-xs text-white placeholder-slate-600 font-mono focus:outline-none focus:border-[#8FD3FF]"
-              />
-            </div>
-
-            <div className="p-3 bg-white/[0.03] border border-white/[0.06] rounded-xl text-[11px] text-slate-400">
-              <span className="font-bold text-white">Authorized redirect URI to register in Google Console:</span>
-              <div className="mt-1 font-mono text-emerald-400 select-all bg-black/40 p-1.5 rounded">
-                http://localhost:8080/api/youtube/oauth2callback
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between pt-2">
-              <button
-                type="submit"
-                className="px-5 py-2 rounded-xl bg-[#8FD3FF] hover:bg-[#A9B8FF] text-[#0A0D14] text-xs font-black shadow-lg shadow-[#8FD3FF]/20 transition-all cursor-pointer"
-              >
-                Save Credentials
-              </button>
-              {configSuccess && (
-                <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                  <CheckCircle2 size={14} /> Saved!
-                </span>
-              )}
+            <div className="flex items-center gap-3">
+              <Button type="submit" variant="primary">Save credentials</Button>
+              {configSuccess && <span className="text-xs font-semibold text-good flex items-center gap-1"><CheckCircle2 size={14} /> Saved</span>}
             </div>
           </form>
-        </div>
+        </Panel>
       )}
 
-      {/* Manual JSON Import Modal */}
-      {showImportModal && (
-        <div className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-[#0E121B] border border-white/10 rounded-2xl p-6 max-w-lg w-full shadow-2xl animate-in zoom-in-95">
-            <h3 className="text-sm font-bold text-white mb-2 flex items-center gap-2">
-              <FileJson size={16} className="text-[#8FD3FF]" /> Import OAuth Token JSON
-            </h3>
-            <p className="text-xs text-slate-400 mb-4">
-              Paste the contents of your existing token file (containing <code className="text-amber-400">refresh_token</code>, <code className="text-amber-400">client_id</code>, etc.).
-            </p>
-
-            <div className="space-y-3">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">Account Key</label>
-                <input
-                  type="text"
-                  placeholder="e.g. main_channel"
-                  value={importKey}
-                  onChange={(e) => setImportKey(e.target.value)}
-                  className="w-full bg-[#141824] border border-white/10 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-400 mb-1">Token JSON</label>
-                <textarea
-                  rows={6}
-                  placeholder='{"client_id": "...", "client_secret": "...", "refresh_token": "..."}'
-                  value={importJsonText}
-                  onChange={(e) => setImportJsonText(e.target.value)}
-                  className="w-full bg-[#141824] border border-white/10 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-[#8FD3FF]"
-                />
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 mt-5">
-              <button
-                onClick={() => setShowImportModal(false)}
-                className="px-4 py-2 rounded-xl bg-white/[0.06] hover:bg-white/10 text-slate-300 text-xs font-bold"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleImportJson}
-                className="px-4 py-2 rounded-xl bg-[#8FD3FF] text-[#0A0D14] text-xs font-bold shadow-md shadow-[#8FD3FF]/20"
-              >
-                Import Account
-              </button>
-            </div>
-          </div>
+      <Sheet open={showImportModal} onClose={() => setShowImportModal(false)} title="Import OAuth token JSON"
+        footer={<div className="flex gap-2"><Button block onClick={() => setShowImportModal(false)}>Cancel</Button><Button block variant="primary" onClick={handleImportJson}>Import account</Button></div>}>
+        <p className="text-xs text-muted mb-3">Paste the contents of an existing token file (with <code className="font-mono text-slate-300">refresh_token</code>, <code className="font-mono text-slate-300">client_id</code> …).</p>
+        <div className="space-y-3">
+          <Field label="Account key"><Input value={importKey} onChange={(e) => setImportKey(e.target.value)} placeholder="e.g. main_channel" /></Field>
+          <Field label="Token JSON"><Textarea rows={6} className="font-mono !text-xs" value={importJsonText} onChange={(e) => setImportJsonText(e.target.value)} placeholder='{"client_id": "...", "client_secret": "...", "refresh_token": "..."}' /></Field>
         </div>
-      )}
-    </div>
+      </Sheet>
+
+      <Confirm open={!!confirmDelete} danger title={`Disconnect "${confirmDelete}"?`} confirmLabel="Disconnect"
+        text="The saved login for this YouTube channel is removed. Clips already uploaded stay on YouTube; queued ones for this channel won't post."
+        onCancel={() => setConfirmDelete(null)} onConfirm={() => handleDeleteAccount(confirmDelete)} />
+    </Page>
   );
 }

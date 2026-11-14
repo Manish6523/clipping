@@ -12,6 +12,7 @@ import axios from 'axios';
 import { getClips, queueClip, discardClip, postClipNow, updateClip } from '../api';
 import { censorFlagInfo } from '../utils/profanity';
 import ScoreBreakdown from './ScoreBreakdown';
+import { Sheet, Button, EmptyState } from './ui';
 
 const REASONS = [
   { code: 'boring', label: 'Boring' },
@@ -102,7 +103,7 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
 
   return (
     <div
-      className={`absolute inset-0 rounded-3xl overflow-hidden bg-black border border-white/10 shadow-2xl select-none ${isTop ? 'z-20' : 'z-10 pointer-events-none'}`}
+      className={`absolute inset-0 rounded-3xl overflow-hidden bg-black border border-line-strong shadow-2xl select-none ${isTop ? 'z-20' : 'z-10 pointer-events-none'}`}
       style={style}
       onPointerDown={isTop ? onPointerDown : undefined}
       onPointerMove={isTop ? onPointerMove : undefined}
@@ -126,9 +127,9 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
       )}
 
       {/* Swipe stamps */}
-      <div className="absolute top-6 left-5 px-3 py-1 rounded-xl border-4 border-emerald-400 text-emerald-300 font-black text-2xl rotate-[-12deg] pointer-events-none" style={{ opacity: queueOpacity }}>QUEUE</div>
-      <div className="absolute top-6 right-5 px-3 py-1 rounded-xl border-4 border-rose-500 text-rose-400 font-black text-2xl rotate-[12deg] pointer-events-none" style={{ opacity: rejectOpacity }}>REJECT</div>
-      <div className="absolute bottom-40 inset-x-0 mx-auto w-max px-3 py-1 rounded-xl border-4 border-sky-400 text-sky-300 font-black text-2xl pointer-events-none" style={{ opacity: editOpacity }}>EDIT</div>
+      <div className="absolute top-6 left-5 px-3 py-1 rounded-xl border-4 border-good text-good font-black text-2xl rotate-[-12deg] pointer-events-none" style={{ opacity: queueOpacity }}>QUEUE</div>
+      <div className="absolute top-6 right-5 px-3 py-1 rounded-xl border-4 border-bad text-bad font-black text-2xl rotate-[12deg] pointer-events-none" style={{ opacity: rejectOpacity }}>REJECT</div>
+      <div className="absolute bottom-40 inset-x-0 mx-auto w-max px-3 py-1 rounded-xl border-4 border-accent text-accent font-black text-2xl pointer-events-none" style={{ opacity: editOpacity }}>EDIT</div>
 
       {/* Top chips */}
       <div className="absolute top-3 inset-x-3 flex items-center justify-between gap-2 pointer-events-none">
@@ -141,7 +142,7 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
               {censor.slur ? '⚠️ slur' : `🔇 ${censor.count}`}
             </span>
           )}
-          <span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-[11px] font-black font-mono text-amber-300">
+          <span className="px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-[11px] font-semibold tabular-nums text-warn">
             {unscored ? 'unscored' : `🔥 ${clip.virality_score}`}
           </span>
         </span>
@@ -450,16 +451,8 @@ export default function SwipeReview({ onSwitchClassic }) {
     <div className="flex flex-col px-3 pt-2 h-[calc(100dvh-56px-64px-env(safe-area-inset-bottom))] min-h-[480px]">
       {/* Header */}
       <div className="flex items-center justify-between mb-2 shrink-0">
-        <div className="text-sm font-bold text-white">
-          {isLoading ? 'Loading…' : `${clips.length} to review`}
-        </div>
-        <button
-          type="button"
-          onClick={() => { flushPending(); onSwitchClassic?.(); }}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/[0.05] border border-white/10 text-xs text-slate-300"
-        >
-          <LayoutList size={14} /> Classic view
-        </button>
+        <h1 className="text-[15px] font-semibold text-ink">{isLoading ? 'Loading…' : `${clips.length} to review`}</h1>
+        <Button size="sm" icon={LayoutList} onClick={() => { flushPending(); onSwitchClassic?.(); }}>Classic view</Button>
       </div>
 
       {/* Card stack */}
@@ -468,13 +461,11 @@ export default function SwipeReview({ onSwitchClassic }) {
           <div className="absolute inset-0 flex items-center justify-center"><Loader2 className="animate-spin text-slate-500" /></div>
         )}
         {!isLoading && !top && (
-          <div className="absolute inset-0 rounded-3xl border border-dashed border-white/10 flex flex-col items-center justify-center text-center p-6 gap-3">
-            <PartyPopper className="text-amber-300" size={36} />
-            <p className="text-white font-bold">All caught up</p>
-            <p className="text-xs text-slate-400">New clips appear here automatically while streams are live.</p>
-            <Link to="/quickclip" className="mt-2 px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold flex items-center gap-1.5">
-              <Zap size={15} /> Quick Clip a video
-            </Link>
+          <div className="absolute inset-0 rounded-3xl border border-dashed border-line-strong flex flex-col items-center justify-center text-center p-6 gap-3">
+            <PartyPopper className="text-warn" size={36} />
+            <p className="text-ink font-semibold">All caught up</p>
+            <p className="text-xs text-muted">New clips appear here automatically while streams are live.</p>
+            <Link to="/quickclip"><Button variant="primary" icon={Zap}>Quick Clip a video</Button></Link>
           </div>
         )}
         {next && <ClipCard key={next.id} clip={next} isTop={false} muted videoUrl={videoOverrides[next.id]} />}
@@ -506,7 +497,7 @@ export default function SwipeReview({ onSwitchClassic }) {
               onBlur={saveTitle}
               onKeyDown={(e) => { if (e.key === 'Enter') saveTitle(); if (e.key === 'Escape') setEditingTitle(false); }}
               maxLength={100}
-              className="flex-1 min-w-0 bg-slate-950 border border-indigo-500 rounded-xl px-3 py-2 text-base text-white focus:outline-none"
+              className="flex-1 min-w-0 bg-canvas border border-accent/60 rounded-xl px-3 py-2 text-base text-ink focus:outline-none"
             />
           ) : (
             <button
@@ -514,8 +505,8 @@ export default function SwipeReview({ onSwitchClassic }) {
               onClick={() => { setTitleDraft(titleOf(top)); setEditingTitle(true); }}
               className="flex-1 min-w-0 text-left flex items-center gap-2"
             >
-              <span className="text-sm font-semibold text-white line-clamp-2">{titleOf(top)}</span>
-              <Pencil size={13} className="text-slate-500 shrink-0" />
+              <span className="text-[13.5px] font-semibold text-ink line-clamp-2 leading-snug">{titleOf(top)}</span>
+              <Pencil size={13} className="text-faint shrink-0" />
             </button>
           )}
         </div>
@@ -524,139 +515,115 @@ export default function SwipeReview({ onSwitchClassic }) {
       {/* Action buttons */}
       <div className="shrink-0 flex items-center justify-center gap-2 sm:gap-4 py-3">
         <button type="button" disabled={!top} onClick={() => top && startAction('reject', top)}
-          className="w-12 h-12 rounded-full bg-rose-500/15 border border-rose-500/40 text-rose-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-12 h-12 rounded-full bg-bad/15 border border-bad/40 text-bad flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Reject">
           <X size={24} />
         </button>
         <button type="button" disabled={!top} onClick={() => top && goEdit(top)}
-          className="w-10 h-10 rounded-full bg-sky-500/15 border border-sky-500/40 text-sky-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-accent/15 border border-accent/40 text-accent flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Edit">
           <Scissors size={18} />
         </button>
         <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openTemplates}
-          className="w-10 h-10 rounded-full bg-fuchsia-500/15 border border-fuchsia-500/40 text-fuchsia-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-white/[0.07] border border-line-strong text-slate-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Change template">
           <LayoutTemplate size={18} />
         </button>
         <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openCaptions}
-          className="w-10 h-10 rounded-full bg-pink-500/15 border border-pink-500/40 text-pink-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-white/[0.07] border border-line-strong text-slate-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Change caption style">
           <Type size={18} />
         </button>
         {top && isAutoEdited(top) && (
           <button type="button" disabled={!!applying[top.id]} onClick={openHook}
-            className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+            className="w-10 h-10 rounded-full bg-warn/15 border border-warn/40 text-warn flex items-center justify-center active:scale-90 transition disabled:opacity-30"
             aria-label="Change hook card style">
             <Heading size={18} />
           </button>
         )}
         <button type="button" disabled={!top || busy} onClick={() => top && postNow(top)}
-          className="w-10 h-10 rounded-full bg-amber-500/15 border border-amber-500/40 text-amber-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-warn/15 border border-warn/40 text-warn flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Post now">
           {busy ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
         </button>
         <button type="button" disabled={!top} onClick={() => top && startAction('queue', top)}
-          className="w-12 h-12 rounded-full bg-emerald-500/15 border border-emerald-500/40 text-emerald-300 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
+          className="w-12 h-12 rounded-full bg-good/15 border border-good/40 text-good flex items-center justify-center active:scale-90 transition disabled:opacity-30"
           aria-label="Approve and queue">
           <Check size={24} />
         </button>
       </div>
 
-      {templateSheet && top && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setTemplateSheet(false)}>
-          <div
-            className="absolute inset-x-0 bottom-0 max-h-[75vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
-            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
-            <p className="text-sm font-bold text-white mb-1">Change layout</p>
-            <p className="text-[11px] text-slate-400 mb-3">Re-renders clip #{top.id} with the template you tap. Captions and bleeps are kept.</p>
-            {!templates && <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-slate-500" /></div>}
-            {templates && templates.length === 0 && <p className="text-xs text-slate-500">No templates found.</p>}
+      <Sheet open={templateSheet && !!top} onClose={() => setTemplateSheet(false)} title="Change layout">
+        {top && (
+          <>
+            <p className="text-xs text-muted mb-3">Re-renders clip #{top.id} with the layout you tap. Captions and bleeps are kept.</p>
+            {!templates && <div className="py-8 flex justify-center"><Loader2 className="animate-spin text-muted" /></div>}
+            {templates && templates.length === 0 && <EmptyState title="No templates found" className="!py-6" />}
             <div className="grid grid-cols-3 gap-2">
               {(templates || []).map((t) => {
                 const current = t.name === top.template_name;
                 return (
-                  <button
-                    key={t.name}
-                    type="button"
-                    onClick={() => !current && applyTemplate(top, t.name)}
-                    className={`rounded-xl border p-1.5 text-left ${current ? 'border-fuchsia-400 bg-fuchsia-500/10' : 'border-white/10 active:bg-white/[0.05]'}`}
-                  >
+                  <button key={t.name} type="button" onClick={() => !current && applyTemplate(top, t.name)}
+                    className={`rounded-xl border p-1.5 text-left transition-colors ${current ? 'border-accent bg-accent/10' : 'border-line active:bg-white/[0.05]'}`}>
                     <TemplatePreview layout={t.layout} captionY={t.subtitles?.position?.y} />
-                    <span className="block text-[10px] font-bold text-slate-200 truncate mt-1">{t.name}</span>
-                    {current && <span className="block text-[9px] text-fuchsia-300 font-bold">CURRENT</span>}
+                    <span className="block text-[10.5px] font-semibold text-slate-200 truncate mt-1">{t.name}</span>
+                    {current && <span className="block text-[9.5px] text-accent font-semibold">CURRENT</span>}
                   </button>
                 );
               })}
             </div>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
 
-      {captionSheet && top && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setCaptionSheet(false)}>
-          <div
-            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
-            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
-            <p className="text-sm font-bold text-white mb-1">Caption style</p>
-            <p className="text-[11px] text-slate-400 mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered with the same layout, cut and bleeps.</p>
+      <Sheet open={captionSheet && !!top} onClose={() => setCaptionSheet(false)} title="Caption style" wide
+        footer={top && (
+          <Button block size="lg" variant="primary" disabled={captionPick === (top.caption_style || 'template')} onClick={() => applyCaptionStyle(top, captionPick)}>
+            {captionPick === (top.caption_style || 'template') ? 'Current style' : `Apply ${styleById(captionPick).label}`}
+          </Button>
+        )}>
+        {top && (
+          <>
+            <p className="text-xs text-muted mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered with the same layout, cut and bleeps.</p>
             <CaptionStylePicker value={captionPick} onChange={setCaptionPick} compact />
-            <button type="button"
-              disabled={captionPick === (top.caption_style || 'template')}
-              onClick={() => applyCaptionStyle(top, captionPick)}
-              className="mt-3 w-full h-11 rounded-xl bg-pink-600 text-white text-sm font-bold disabled:opacity-40">
-              {captionPick === (top.caption_style || 'template') ? 'Current style' : `Apply ${styleById(captionPick).label}`}
-            </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
 
-      {hookSheet && top && (
-        <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm" onClick={() => setHookSheet(false)}>
-          <div
-            className="absolute inset-x-0 bottom-0 max-h-[85vh] overflow-y-auto rounded-t-3xl bg-[#0E121B] border-t border-white/10 p-4"
-            style={{ paddingBottom: 'calc(16px + env(safe-area-inset-bottom))' }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="w-10 h-1.5 rounded-full bg-white/15 mx-auto mb-3" />
-            <p className="text-sm font-bold text-white mb-1">Hook title card</p>
-            <p className="text-[11px] text-slate-400 mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered; captions, cut and bleeps stay the same.</p>
+      <Sheet open={hookSheet && !!top} onClose={() => setHookSheet(false)} title="Hook title card" wide
+        footer={top && (
+          <Button block size="lg" variant="primary" disabled={hookPick === (top.hook_style || 'template')} onClick={() => applyHookStyle(top, hookPick)}>
+            {hookPick === (top.hook_style || 'template') ? 'Current style' : 'Apply hook style'}
+          </Button>
+        )}>
+        {top && (
+          <>
+            <p className="text-xs text-muted mb-3">Preview a style, then apply. Clip #{top.id} is re-rendered; captions, cut and bleeps stay the same.</p>
             <HookStylePicker value={hookPick} onChange={setHookPick} compact
               templateDefault={(templates || []).find((t) => t.name === top.template_name)?.hook_style || 'classic'} />
-            <button type="button"
-              disabled={hookPick === (top.hook_style || 'template')}
-              onClick={() => applyHookStyle(top, hookPick)}
-              className="mt-3 w-full h-11 rounded-xl bg-amber-500 text-black text-sm font-bold disabled:opacity-40">
-              {hookPick === (top.hook_style || 'template') ? 'Current style' : 'Apply hook style'}
-            </button>
-          </div>
-        </div>
-      )}
+          </>
+        )}
+      </Sheet>
 
       {/* Undo / reason sheet */}
       {pending && (
-        <div className="fixed inset-x-3 z-50 rounded-2xl bg-[#121620]/95 backdrop-blur border border-white/10 shadow-2xl p-3"
+        <div className="fixed inset-x-3 z-50 rounded-2xl bg-surface/95 backdrop-blur border border-line-strong shadow-2xl p-3 ds-sheet"
           style={{ bottom: 'calc(72px + env(safe-area-inset-bottom))' }}>
           <div className="flex items-center justify-between gap-2">
-            <span className="text-sm text-white font-semibold">
+            <span className="text-[13px] text-ink font-semibold">
               {pending.type === 'reject' ? `Rejected #${pending.clip.id}` : `Queued #${pending.clip.id}`}
             </span>
-            <button type="button" onClick={undo} className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-white/10 text-white text-xs font-bold">
+            <button type="button" onClick={undo} className="flex items-center gap-1 px-3 h-9 rounded-xl bg-white/10 text-ink text-xs font-semibold">
               <Undo2 size={14} /> Undo
             </button>
           </div>
           {pending.type === 'reject' && (
             <div className="mt-2">
-              <p className="text-[11px] text-slate-400 mb-1.5">Why? (teaches the AI)</p>
+              <p className="text-[11px] text-muted mb-1.5">Why? (teaches the AI)</p>
               <div className="flex flex-wrap gap-1.5">
                 {REASONS.map((r) => (
                   <button key={r.code} type="button" onClick={() => setReason(r.code)}
-                    className="px-2.5 py-1.5 rounded-lg bg-white/[0.06] border border-white/10 text-xs text-slate-200 active:bg-rose-500/30">
+                    className="px-3 h-9 rounded-xl bg-white/[0.07] text-xs text-slate-200 active:bg-bad/30">
                     {r.label}
                   </button>
                 ))}
@@ -668,7 +635,7 @@ export default function SwipeReview({ onSwitchClassic }) {
 
       {toast && !pending && (
         <div className={`fixed inset-x-6 z-50 rounded-xl px-3 py-2 text-sm text-center shadow-xl ${
-          toast.tone === 'error' ? 'bg-rose-600 text-white' : toast.tone === 'ok' ? 'bg-emerald-600 text-white' : 'bg-slate-800 text-white'}`}
+          toast.tone === 'error' ? 'bg-bad text-canvas font-semibold' : toast.tone === 'ok' ? 'bg-good text-canvas font-semibold' : 'bg-raised text-ink border border-line-strong'}`}
           style={{ bottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           {toast.msg}
         </div>

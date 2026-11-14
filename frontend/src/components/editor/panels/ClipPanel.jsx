@@ -50,7 +50,7 @@ export default function ClipPanel({ isCompact = false }) {
           <div className="font-extrabold text-white text-sm truncate max-w-[220px]">
             {clip?.title || 'Clip Overview'}
           </div>
-          <div className="text-[11px] text-[#8B90A0] font-mono mt-0.5">
+          <div className="text-[11px] text-muted font-mono mt-0.5">
             Channel: @{clip?.channel_id || 'streamer'}
           </div>
         </div>
@@ -61,7 +61,7 @@ export default function ClipPanel({ isCompact = false }) {
 
       {/* Length Presets */}
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1.5">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1.5">
           Target Duration
         </label>
         <div className="grid grid-cols-4 gap-1.5">
@@ -71,8 +71,8 @@ export default function ClipPanel({ isCompact = false }) {
               onClick={() => handleSetDuration(sec)}
               className={`py-2 rounded-xl text-xs font-bold transition-all border ${
                 Math.round(duration) === sec
-                  ? 'bg-[#8FD3FF] text-[#0A0B0E] border-[#8FD3FF]'
-                  : 'bg-white/[0.04] text-[#E8EAF0] border-white/[0.06] hover:bg-white/[0.08]'
+                  ? 'bg-accent text-canvas border-accent'
+                  : 'bg-white/[0.04] text-ink border-white/[0.06] hover:bg-white/[0.08]'
               }`}
             >
               {sec}s
@@ -83,12 +83,12 @@ export default function ClipPanel({ isCompact = false }) {
 
       {/* Start / End Timestamp Steppers */}
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1.5">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1.5">
           Boundary Window
         </label>
         <div className="grid grid-cols-2 gap-2 font-mono">
           <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
-            <span className="text-[10px] text-slate-400 font-sans">Start Point</span>
+            <span className="text-[11px] text-slate-400 font-sans">Start Point</span>
             <div className="flex items-center justify-between">
               <span className="text-white font-bold">{curStart.toFixed(1)}s</span>
               <div className="flex items-center gap-1">
@@ -109,7 +109,7 @@ export default function ClipPanel({ isCompact = false }) {
           </div>
 
           <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
-            <span className="text-[10px] text-slate-400 font-sans">End Point</span>
+            <span className="text-[11px] text-slate-400 font-sans">End Point</span>
             <div className="flex items-center justify-between">
               <span className="text-white font-bold">{curEnd.toFixed(1)}s</span>
               <div className="flex items-center gap-1">
@@ -133,7 +133,7 @@ export default function ClipPanel({ isCompact = false }) {
 
       {/* Nudge Window Buttons */}
       <div>
-        <label className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider block mb-1.5">
+        <label className="text-[11px] uppercase font-bold text-muted tracking-wider block mb-1.5">
           Nudge Segment
         </label>
         <div className="grid grid-cols-4 gap-1.5 font-mono text-xs">

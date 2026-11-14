@@ -8,6 +8,7 @@ import { getStatus, getPipelineStatus, getAuthConfig } from './api';
 import { eventStream } from './services/eventStream';
 import HypeMomentToasts from './components/HypeMomentToasts';
 import MobileTabBar from './components/MobileTabBar';
+import { Spinner, Button } from './components/ui';
 import SwipeReview from './components/SwipeReview';
 import { useLayoutMode } from './hooks/useLayoutMode';
 import { notifyClipReady } from './services/pwa';
@@ -106,7 +107,7 @@ function AppLayout() {
   };
 
   return (
-    <div className="min-h-screen bg-[#080B11] text-slate-100 flex flex-col font-sans">
+    <div className="min-h-screen bg-canvas text-ink flex flex-col font-sans">
       <Navbar 
         pendingCount={status.pending_clips_count || 0} 
         activePipelines={activePipelines} 
@@ -117,7 +118,7 @@ function AppLayout() {
       <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0">
         <Suspense fallback={
           <div className="flex items-center justify-center min-h-[400px]">
-            <div className="w-8 h-8 border-2 border-[#8FD3FF] border-t-transparent rounded-full animate-spin" />
+            <Spinner size={28} />
           </div>
         }>
           <Outlet context={{ onStatusChange: fetchSystemStatus }} />
@@ -151,13 +152,7 @@ function ReviewStationWrapper() {
     <>
       {isPhone && (
         <div className="px-3 pt-2 flex justify-end">
-          <button
-            type="button"
-            onClick={() => switchTo('swipe')}
-            className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-bold"
-          >
-            Swipe mode
-          </button>
+          <Button size="sm" variant="primary" onClick={() => switchTo('swipe')}>Swipe mode</Button>
         </div>
       )}
       <ReviewStation />
@@ -225,8 +220,8 @@ export default function App() {
       {/* Dedicated Full-Screen Clip Editor Route */}
       <Route path="/clips/:clipId/editor" element={
         <Suspense fallback={
-          <div className="min-h-screen bg-[#0A0B0E] flex items-center justify-center">
-            <div className="w-8 h-8 border-2 border-[#8FD3FF] border-t-transparent rounded-full animate-spin" />
+          <div className="min-h-screen bg-canvas flex items-center justify-center">
+            <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
           </div>
         }>
           <ClipEditorPage />

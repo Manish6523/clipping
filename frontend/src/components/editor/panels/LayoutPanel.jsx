@@ -188,18 +188,18 @@ export default function LayoutPanel({ isCompact = false }) {
   return (
     <div className="flex flex-col gap-3 text-xs select-none">
       {/* Template & Preset Selector */}
-      <div className="bg-[#141722] border border-white/10 rounded-xl p-2.5 flex flex-col gap-2">
-        <label className="text-[10px] uppercase font-bold text-[#8FD3FF] tracking-wider flex items-center gap-1.5">
+      <div className="bg-raised border border-white/10 rounded-xl p-2.5 flex flex-col gap-2">
+        <label className="text-[11px] uppercase font-bold text-accent tracking-wider flex items-center gap-1.5">
           <Bookmark size={12} /> Apply Template / Preset
         </label>
         
         {/* Streamer Templates dropdown */}
         <div>
-          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Streamer Template</label>
+          <label className="text-[10.5px] uppercase font-bold text-slate-400 block mb-1">Streamer Template</label>
           <select
             value={selectedTemplateName}
             onChange={(e) => handleApplyTemplate(e.target.value)}
-            className="w-full bg-[#0E1118] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+            className="w-full bg-surface border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
           >
             <option value="">Select a template...</option>
             {templates.map((t) => (
@@ -212,13 +212,13 @@ export default function LayoutPanel({ isCompact = false }) {
 
         {/* Standard Starters dropdown */}
         <div>
-          <label className="text-[9px] uppercase font-bold text-slate-400 block mb-1">Standard Starter Layout</label>
+          <label className="text-[10.5px] uppercase font-bold text-slate-400 block mb-1">Standard Starter Layout</label>
           <select
             onChange={(e) => {
               if (e.target.value) handleApplyStarter(e.target.value);
             }}
             defaultValue=""
-            className="w-full bg-[#0E1118] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
+            className="w-full bg-surface border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white cursor-pointer"
           >
             <option value="" disabled>Choose a starter layout...</option>
             {Object.values(PRESET_STARTERS).map((starter) => (
@@ -233,15 +233,15 @@ export default function LayoutPanel({ isCompact = false }) {
       {/* Layer List Section */}
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <span className="text-[10px] uppercase font-bold text-[#8B90A0] tracking-wider flex items-center gap-1.5">
-            <Layers size={13} className="text-[#8FD3FF]" /> Frames ({layers.length}/8)
+          <span className="text-[11px] uppercase font-bold text-muted tracking-wider flex items-center gap-1.5">
+            <Layers size={13} className="text-accent" /> Frames ({layers.length}/8)
           </span>
           <button
             onClick={handleAddLayer}
             disabled={layers.length >= 8}
             className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-[11px] border border-white/5 disabled:opacity-40"
           >
-            <Plus size={12} className="text-[#8FD3FF]" />
+            <Plus size={12} className="text-accent" />
             <span>Add</span>
           </button>
         </div>
@@ -255,7 +255,7 @@ export default function LayoutPanel({ isCompact = false }) {
                 onClick={() => handleSelectLayer(layer.id)}
                 className={`flex items-center justify-between px-3 py-2 rounded-xl border transition-all cursor-pointer ${
                   isSelected
-                    ? 'bg-[#181C26] border-[#8FD3FF] shadow-md shadow-[#8FD3FF]/10 text-white'
+                    ? 'bg-raised border-accent shadow-md shadow-accent/10 text-white'
                     : 'bg-white/[0.03] border-white/[0.06] text-slate-300 hover:bg-white/[0.06]'
                 }`}
               >
@@ -312,25 +312,25 @@ export default function LayoutPanel({ isCompact = false }) {
         <div className="border-t border-white/[0.08] pt-2.5 flex flex-col gap-2.5">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-[10px] uppercase font-bold text-[#8FD3FF] tracking-wider">
+              <span className="text-[11px] uppercase font-bold text-accent tracking-wider">
                 Editing {selectedLayer.name}
               </span>
             </div>
-            <div className="flex items-center gap-1 font-mono text-[10px] text-slate-400">
+            <div className="flex items-center gap-1 font-mono text-[11px] text-slate-400">
               <span>{Math.round((selectedLayer.src?.w || 1) * 100)}% x {Math.round((selectedLayer.src?.h || 1) * 100)}%</span>
             </div>
           </div>
 
           {/* Aspect Ratio Lock & Reset */}
           <div>
-            <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Aspect Ratio Control</label>
+            <label className="text-[11px] text-slate-400 uppercase font-bold block mb-1">Aspect Ratio Control</label>
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => updateSelectedLayer({ aspect_lock: !selectedLayer.aspect_lock })}
                 className={`py-1.5 px-2 rounded-xl border flex items-center justify-center gap-1.5 font-bold text-xs transition-all ${
                   selectedLayer.aspect_lock
-                    ? 'bg-[#181C26] border-[#8FD3FF] text-[#8FD3FF]'
+                    ? 'bg-raised border-accent text-accent'
                     : 'bg-white/[0.04] border-white/10 text-slate-400 hover:text-white'
                 }`}
               >
@@ -364,11 +364,11 @@ export default function LayoutPanel({ isCompact = false }) {
           {/* Quick Fit Mode & Shape */}
           <div className="grid grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Fit Mode</label>
+              <label className="text-[11px] text-slate-400 uppercase font-bold block mb-1">Fit Mode</label>
               <select
                 value={selectedLayer.fit || 'cover'}
                 onChange={(e) => updateSelectedLayer({ fit: e.target.value })}
-                className="w-full bg-[#141722] border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white"
+                className="w-full bg-raised border border-white/10 rounded-xl px-2.5 py-1.5 text-xs text-white"
               >
                 <option value="cover">Cover (Crop)</option>
                 <option value="contain">Contain (Letterbox)</option>
@@ -377,12 +377,12 @@ export default function LayoutPanel({ isCompact = false }) {
             </div>
 
             <div>
-              <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Shape</label>
-              <div className="grid grid-cols-2 gap-1 bg-[#141722] p-1 rounded-xl border border-white/10">
+              <label className="text-[11px] text-slate-400 uppercase font-bold block mb-1">Shape</label>
+              <div className="grid grid-cols-2 gap-1 bg-raised p-1 rounded-xl border border-white/10">
                 <button
                   onClick={() => updateSelectedLayer({ style: { ...(selectedLayer.style || {}), shape: 'rect' } })}
                   className={`py-1 rounded-lg font-bold text-xs flex items-center justify-center gap-1 ${
-                    (selectedLayer.style?.shape || 'rect') === 'rect' ? 'bg-[#8FD3FF] text-[#0A0B0E]' : 'text-slate-400 hover:text-white'
+                    (selectedLayer.style?.shape || 'rect') === 'rect' ? 'bg-accent text-canvas' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Square size={11} /> Rect
@@ -390,7 +390,7 @@ export default function LayoutPanel({ isCompact = false }) {
                 <button
                   onClick={() => updateSelectedLayer({ style: { ...(selectedLayer.style || {}), shape: 'circle' } })}
                   className={`py-1 rounded-lg font-bold text-xs flex items-center justify-center gap-1 ${
-                    selectedLayer.style?.shape === 'circle' ? 'bg-[#8FD3FF] text-[#0A0B0E]' : 'text-slate-400 hover:text-white'
+                    selectedLayer.style?.shape === 'circle' ? 'bg-accent text-canvas' : 'text-slate-400 hover:text-white'
                   }`}
                 >
                   <Circle size={11} /> Circle
@@ -401,7 +401,7 @@ export default function LayoutPanel({ isCompact = false }) {
 
           {/* Precision Nudge Pad */}
           <div>
-            <label className="text-[10px] text-slate-400 uppercase font-bold block mb-1">Nudge Placement</label>
+            <label className="text-[11px] text-slate-400 uppercase font-bold block mb-1">Nudge Placement</label>
             <div className="grid grid-cols-4 gap-1.5 font-mono text-xs">
               <button
                 onClick={() => handleNudge(-0.02, 0)}
@@ -441,7 +441,7 @@ export default function LayoutPanel({ isCompact = false }) {
             </button>
 
             {advancedOpen && (
-              <div className="p-3 bg-[#0E1118] space-y-2.5 border-t border-white/[0.06]">
+              <div className="p-3 bg-surface space-y-2.5 border-t border-white/[0.06]">
                 <div>
                   <div className="flex justify-between text-[11px] mb-1">
                     <span className="text-slate-400">Corner Radius</span>
@@ -455,7 +455,7 @@ export default function LayoutPanel({ isCompact = false }) {
                     onChange={(e) => updateSelectedLayer({
                       style: { ...(selectedLayer.style || {}), radius: Number(e.target.value) }
                     })}
-                    className="w-full accent-[#8FD3FF] cursor-pointer"
+                    className="w-full accent-accent cursor-pointer"
                   />
                 </div>
 
@@ -475,7 +475,7 @@ export default function LayoutPanel({ isCompact = false }) {
                         border: { ...(selectedLayer.style?.border || {}), w: Number(e.target.value) } 
                       }
                     })}
-                    className="w-full accent-[#8FD3FF] cursor-pointer"
+                    className="w-full accent-accent cursor-pointer"
                   />
                 </div>
               </div>

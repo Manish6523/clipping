@@ -118,9 +118,9 @@ export default function PanelHost({
 
   if (mode === 'desktop') {
     return (
-      <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl flex flex-col shadow-xl select-none overflow-hidden">
+      <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl flex flex-col shadow-xl select-none overflow-hidden">
         {/* Unified Tool Tabs Header */}
-        <div className="grid grid-cols-7 gap-0.5 bg-[#0A0B0E] p-1.5 border-b border-white/[0.06] shrink-0">
+        <div className="grid grid-cols-7 gap-0.5 bg-canvas p-1.5 border-b border-white/[0.06] shrink-0">
           {tabs.map((t) => {
             const Icon = t.icon;
             const isActive = (resolvedPanel === t.id);
@@ -141,10 +141,10 @@ export default function PanelHost({
                     useEditorStore.getState().setSelection({ type: 'none', id: null });
                   }
                 }}
-                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[9px] font-bold transition-all cursor-pointer ${
+                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
                   isActive
-                    ? 'bg-[#1A1D24] text-[#8FD3FF] shadow-sm border border-white/[0.08]'
-                    : 'text-[#8B90A0] hover:text-[#E8EAF0] hover:bg-white/[0.02]'
+                    ? 'bg-raised text-accent shadow-sm border border-white/[0.08]'
+                    : 'text-muted hover:text-ink hover:bg-white/[0.02]'
                 }`}
                 title={t.label}
               >
@@ -166,10 +166,10 @@ export default function PanelHost({
   if (mode === 'tablet' && window.innerWidth > window.innerHeight && window.innerHeight < 520) {
     if (!activePanel) return null;
     return (
-      <div className="fixed inset-y-0 right-0 w-80 bg-[#0E1118]/95 backdrop-blur-xl border-l border-white/10 z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="fixed inset-y-0 right-0 w-80 bg-surface/95 backdrop-blur-xl border-l border-white/10 z-50 flex flex-col shadow-2xl animate-in slide-in-from-right duration-200">
         <div className="px-3 py-2.5 border-b border-white/[0.06] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            <config.icon size={14} className="text-[#8FD3FF]" />
+            <config.icon size={14} className="text-accent" />
             <span className="font-bold text-white text-xs">{config.label}</span>
           </div>
           <button
@@ -199,7 +199,7 @@ export default function PanelHost({
 
   return (
     <div 
-      className={`w-full bg-[#0E1118]/98 backdrop-blur-2xl border-t border-white/[0.1] rounded-t-3xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col shrink-0 z-40 transition-all duration-300 ease-out select-none ${snapHeightClasses}`}
+      className={`w-full bg-surface/98 backdrop-blur-2xl border-t border-white/[0.1] rounded-t-3xl shadow-[0_-10px_30px_rgba(0,0,0,0.8)] flex flex-col shrink-0 z-40 transition-all duration-300 ease-out select-none ${snapHeightClasses}`}
       style={{ overscrollBehavior: 'none' }}
     >
       {/* 44dp Touch Drag Handle Header */}
@@ -209,7 +209,7 @@ export default function PanelHost({
         className="h-11 px-4 flex items-center justify-between shrink-0 cursor-grab active:cursor-grabbing border-b border-white/[0.04]"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <config.icon size={15} className="text-[#8FD3FF] shrink-0" />
+          <config.icon size={15} className="text-accent shrink-0" />
           <span className="font-extrabold text-white text-xs truncate">
             {config.label}
           </span>

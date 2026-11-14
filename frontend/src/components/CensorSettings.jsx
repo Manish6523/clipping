@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { VolumeX, Volume2, Music, Upload, Play, Square, ShieldAlert, Type, Wand2 } from 'lucide-react';
 import axios from 'axios';
+import { Panel, Toggle, Button, Input, Notice } from './ui';
 
 const AUDIO_MODES = [
   { id: 'bleep', label: 'Bleep', hint: 'Classic 1 kHz TV bleep' },
@@ -18,26 +19,6 @@ const CAPTION_STYLES = [
   { id: 'none', example: 'FUCK' },
 ];
 
-function Toggle({ checked, onChange, label, hint }) {
-  return (
-    <label className="flex items-start justify-between gap-3 py-2 cursor-pointer select-none">
-      <span className="min-w-0">
-        <span className="block text-sm text-slate-200">{label}</span>
-        {hint && <span className="block text-[11px] text-slate-500 leading-snug">{hint}</span>}
-      </span>
-      <button
-        type="button"
-        role="switch"
-        aria-checked={checked}
-        onClick={() => onChange(!checked)}
-        className={`relative shrink-0 w-11 h-6 rounded-full transition-colors cursor-pointer ${checked ? 'bg-rose-500' : 'bg-slate-700'}`}
-      >
-        <span className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-5' : ''}`} />
-      </button>
-    </label>
-  );
-}
-
 function WordListInput({ value = [], onChange, placeholder }) {
   const [draft, setDraft] = useState('');
   const add = () => {
@@ -49,16 +30,9 @@ function WordListInput({ value = [], onChange, placeholder }) {
   return (
     <div className="space-y-2">
       <div className="flex gap-2">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }}
-          placeholder={placeholder}
-          className="flex-1 min-w-0 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-rose-500"
-        />
-        <button type="button" onClick={add} className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-semibold cursor-pointer shrink-0">
-          Add
-        </button>
+        <Input value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={placeholder} aria-label={placeholder}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); add(); } }} className="flex-1 min-w-0" />
+        <Button onClick={add}>Add</Button>
       </div>
       {value.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
@@ -67,8 +41,8 @@ function WordListInput({ value = [], onChange, placeholder }) {
               key={w}
               type="button"
               onClick={() => onChange(value.filter((x) => x !== w))}
-              className="px-2 py-1 rounded-lg bg-slate-800 border border-slate-700 text-xs text-slate-200 hover:border-rose-500 hover:text-rose-300 cursor-pointer"
-              title="Remove"
+              className="px-2 py-1 rounded-lg bg-white/[0.06] text-xs text-ink hover:bg-bad/20 hover:text-bad"
+              title="Remove" aria-label={`Remove ${w}`}
             >
               {w} ✕
             </button>
@@ -88,6 +62,7 @@ export default function CensorSettings({ value, onChange }) {
   const [playing, setPlaying] = useState(null);
   const [testText, setTestText] = useState('bro what the fuck was that, holy shit chat clip it');
   const [preview, setPreview] = useState(null);
+  const [uploadError, setUploadError] = useState('');
   const audioRef = useRef(null);
   const audioCtxRef = useRef(null);
   const fileRef = useRef(null);
@@ -162,6 +137,7 @@ export default function CensorSettings({ value, onChange }) {
     e.target.value = '';
     if (!file) return;
     setUploading(true);
+    setUploadError('');
     try {
       const form = new FormData();
       form.append('file', file);
@@ -169,7 +145,7 @@ export default function CensorSettings({ value, onChange }) {
       await loadSfx();
       if (res.data?.name) set({ sfx_file: res.data.name, audio_mode: 'sfx' });
     } catch (err) {
-      alert('Upload failed: ' + (err.response?.data?.error?.message || err.message));
+      setUploadError(`Upload failed: ${err.response?.data?.error?.message || err.message}`);
     } finally {
       setUploading(false);
     }
@@ -179,19 +155,12 @@ export default function CensorSettings({ value, onChange }) {
   const enabled = cfg.enabled !== false;
 
   return (
-    <div className="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-2 min-w-0">
-          <VolumeX className="w-5 h-5 text-rose-400 shrink-0 mt-0.5" />
-          <div className="min-w-0">
-            <h2 className="text-base sm:text-lg font-semibold text-white">Profanity Censor</h2>
-            <p className="text-xs text-slate-400 leading-snug">
-              Bleeps swear words in the audio, masks them in captions, and cleans titles so Shorts keep full ads.
-            </p>
-          </div>
-        </div>
-        <Toggle checked={enabled} onChange={(v) => set({ enabled: v })} label="" />
-      </div>
+    <Panel title="Profanity censor" icon={VolumeX} className="space-y-5"
+      right={<Toggle checked={enabled} onChange={(v) => set({ enabled: v })} label="" />}>
+      <p className="text-xs text-muted leading-snug -mt-1">
+        Bleeps swear words in the audio, masks them in captions and cleans titles so Shorts keep full ads.
+      </p>
+      {uploadError && <Notice tone="bad">{uploadError}</Notice>}
 
       <div className={`space-y-5 ${enabled ? '' : 'opacity-40 pointer-events-none'}`}>
         {/* Audio mode */}
@@ -208,7 +177,7 @@ export default function CensorSettings({ value, onChange }) {
                 className={`text-left p-2.5 rounded-xl border transition-colors cursor-pointer ${
                   cfg.audio_mode === m.id
                     ? 'bg-rose-500/15 border-rose-500 text-white'
-                    : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
+                    : 'bg-canvas border-line text-slate-300 hover:border-line-strong'
                 }`}
               >
                 <span className="block text-sm font-semibold">{m.label}</span>
@@ -218,7 +187,7 @@ export default function CensorSettings({ value, onChange }) {
           </div>
 
           {cfg.audio_mode === 'bleep' && (
-            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+            <div className="flex flex-wrap items-center gap-3 p-3 rounded-xl bg-canvas border border-line">
               <button type="button" onClick={playBleep} className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs text-white flex items-center gap-1.5 cursor-pointer">
                 <Play className="w-3.5 h-3.5" /> Preview bleep
               </button>
@@ -232,7 +201,7 @@ export default function CensorSettings({ value, onChange }) {
           )}
 
           {cfg.audio_mode === 'sfx' && (
-            <div className="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+            <div className="p-3 rounded-xl bg-canvas border border-line space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs text-slate-400 flex items-center gap-1.5"><Music className="w-3.5 h-3.5" /> Sound effect</span>
                 <button
@@ -291,7 +260,7 @@ export default function CensorSettings({ value, onChange }) {
                 type="button"
                 onClick={() => set({ caption_style: s.id })}
                 className={`py-2 rounded-xl border font-black text-sm tracking-wide cursor-pointer ${
-                  cfg.caption_style === s.id ? 'bg-rose-500/15 border-rose-500 text-white' : 'bg-slate-950 border-slate-800 text-slate-300 hover:border-slate-600'
+                  cfg.caption_style === s.id ? 'bg-rose-500/15 border-rose-500 text-white' : 'bg-canvas border-line text-slate-300 hover:border-line-strong'
                 }`}
                 title={s.id}
               >
@@ -312,7 +281,7 @@ export default function CensorSettings({ value, onChange }) {
         </section>
 
         {/* Rules */}
-        <section className="divide-y divide-slate-800/80">
+        <section className="divide-y divide-line">
           <Toggle checked={!!cfg.censor_mild} onChange={(v) => set({ censor_mild: v })}
             label="Also censor mild words" hint="damn, hell, ass, crap, piss…" />
           <Toggle checked={cfg.censor_titles !== false} onChange={(v) => set({ censor_titles: v })}
@@ -335,14 +304,14 @@ export default function CensorSettings({ value, onChange }) {
         </div>
 
         {/* Live tester */}
-        <section className="space-y-2 p-3 rounded-xl bg-slate-950/70 border border-slate-800">
+        <section className="space-y-2 p-3 rounded-xl bg-canvas border border-line">
           <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
             <Wand2 className="w-3.5 h-3.5" /> Try it
           </h3>
           <input
             value={testText}
             onChange={(e) => setTestText(e.target.value)}
-            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-rose-500"
+            className="w-full bg-slate-900 border border-line rounded-xl px-3 py-2 text-sm text-ink focus:outline-none focus:border-accent/60"
           />
           {preview && (
             <div className="space-y-1.5">
@@ -365,6 +334,6 @@ export default function CensorSettings({ value, onChange }) {
           )}
         </section>
       </div>
-    </div>
+    </Panel>
   );
 }

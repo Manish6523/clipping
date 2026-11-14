@@ -1,14 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Calendar, Clock, Send, AlertTriangle, Loader2, MonitorPlay, Camera, Scissors } from 'lucide-react';
+import { Calendar, Clock, Send, AlertTriangle, MonitorPlay, Camera, Scissors, Film } from 'lucide-react';
 import { getQueue, postClipNow } from '../api';
-
-const STATUS_STYLE = {
-  uploaded: 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30',
-  failed: 'bg-rose-500/15 text-rose-300 border-rose-500/30',
-  pending: 'bg-white/[0.05] text-slate-300 border-white/10',
-  skipped: 'bg-transparent text-slate-500 border-white/[0.06]',
-};
+import { Page, Panel, Pill, Button, EmptyState, Skeleton, Stat, Confirm, Notice } from './ui';
 
 function relTime(date, now) {
   const diff = Math.round((date - now) / 60000);
@@ -28,11 +22,14 @@ function dayLabel(date, now) {
   return date.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
-function StatusChip({ icon: Icon, label, status }) {
+const TONE = { uploaded: 'good', failed: 'bad', pending: 'warn', skipped: 'idle' };
+
+function Target({ icon: Icon, label, status }) {
+  if (status === 'skipped') return null;
   return (
-    <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-bold ${STATUS_STYLE[status] || STATUS_STYLE.pending}`}>
-      <Icon size={12} /> {label} · {status || 'pending'}
-    </span>
+    <Pill tone={TONE[status] || 'warn'}>
+      <Icon size={11} className="text-muted" /> {label} · {status || 'pending'}
+    </Pill>
   );
 }
 
@@ -40,6 +37,8 @@ export default function QueueCalendar() {
   const [queue, setQueue] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const [posting, setPosting] = useState(null);
+  const [confirm, setConfirm] = useState(null);
+  const [error, setError] = useState('');
   const [now, setNow] = useState(() => new Date());
 
   const fetchQueue = async () => {
@@ -59,14 +58,15 @@ export default function QueueCalendar() {
     return () => clearInterval(interval);
   }, []);
 
-  const handlePublishNow = async (clipId) => {
-    if (!window.confirm(`Upload clip #${clipId} right now instead of waiting for its slot?`)) return;
+  const publishNow = async (clipId) => {
+    setConfirm(null);
     setPosting(clipId);
+    setError('');
     try {
       await postClipNow(clipId);
       fetchQueue();
     } catch (err) {
-      alert('Publish failed: ' + (err.response?.data?.error || err.message));
+      setError(`Publish failed: ${err.response?.data?.error || err.message}`);
     } finally {
       setPosting(null);
     }
@@ -85,105 +85,87 @@ export default function QueueCalendar() {
   }, [queue, now]);
 
   const next = queue.length ? new Date(queue[0].scheduled_for) : null;
+  const failedCount = queue.filter((q) => q.yt_status === 'failed' || q.ig_status === 'failed').length;
+  const channels = new Set(queue.map((q) => q.account_key || q.account_title).filter(Boolean)).size;
 
   return (
-    <div className="max-w-3xl mx-auto px-3 sm:px-4 py-4 sm:py-6">
-      <div className="flex items-end justify-between gap-3 mb-4">
-        <div>
-          <h2 className="text-xl font-black text-white flex items-center gap-2">
-            <Calendar className="text-amber-500" size={20} />
-            <span className="sm:hidden">Drip Queue</span>
-            <span className="hidden sm:inline">Drip-Feed Queue</span>
-          </h2>
-          <p className="hidden sm:block text-xs text-slate-400 mt-1">Approved clips upload automatically at their slot.</p>
+    <Page title="Drip queue" icon={Calendar} subtitle="Approved clips upload on their own at each channel's next free slot." narrow>
+      {loaded && queue.length > 0 && (
+        <div className="grid grid-cols-3 gap-2">
+          <Stat label="Scheduled" value={queue.length} icon={Calendar} />
+          <Stat label="Next post" value={next && !Number.isNaN(next.getTime()) ? relTime(next, now) : '—'} icon={Clock} />
+          <Stat label="Failed" value={failedCount} tone={failedCount ? 'bad' : 'good'} sub={`${channels} channel${channels === 1 ? '' : 's'}`} />
         </div>
-        {next && !Number.isNaN(next.getTime()) && (
-          <div className="text-right shrink-0">
-            <div className="text-[10px] uppercase font-bold text-slate-500">Next post</div>
-            <div className="text-sm font-black text-amber-300">{relTime(next, now)}</div>
-          </div>
-        )}
-      </div>
-
-      {!loaded && (
-        <div className="py-16 flex justify-center"><Loader2 className="animate-spin text-slate-500" /></div>
       )}
 
+      {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
+
+      {!loaded && <div className="space-y-2"><Skeleton className="h-28" /><Skeleton className="h-28" /></div>}
+
       {loaded && queue.length === 0 && (
-        <div className="py-14 px-6 text-center rounded-2xl border border-dashed border-white/10 text-slate-400 text-sm">
-          Nothing scheduled. Swipe right on a clip in Review to add it here.
-          <div className="mt-4">
-            <Link to="/" className="inline-block px-4 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold">Go to Review</Link>
-          </div>
-        </div>
+        <Panel>
+          <EmptyState icon={Calendar} title="Nothing scheduled"
+            text="Swipe right on a clip in Review (or tap Queue) and it will appear here with its upload time."
+            action={<Link to="/"><Button variant="primary" icon={Film}>Go to Review</Button></Link>} />
+        </Panel>
       )}
 
       <div className="space-y-5">
         {groups.map((g) => (
-          <section key={g.label}>
-            <h3 className="text-[11px] uppercase tracking-wider font-bold text-slate-500 mb-2 px-1">{g.label}</h3>
+          <section key={g.label} aria-label={g.label}>
+            <h2 className="text-[11px] uppercase tracking-wider font-semibold text-muted mb-2 px-1">{g.label}</h2>
             <div className="space-y-2">
               {g.items.map((item) => {
                 const failed = item.yt_status === 'failed' || item.ig_status === 'failed';
                 const validTime = !Number.isNaN(item.when.getTime());
+                const overdue = item.when < now;
                 return (
-                  <div key={item.id} className={`rounded-2xl border p-3 bg-slate-900/60 ${failed ? 'border-rose-500/30' : 'border-white/[0.08]'}`}>
+                  <Panel key={item.id} tone={failed ? 'bad' : undefined} className="!p-3">
                     <div className="flex items-start gap-3">
-                      <div className="w-16 shrink-0 text-center">
-                        <div className="text-base font-black text-white leading-tight">
+                      <div className="w-[58px] shrink-0 text-center rounded-xl bg-white/[0.04] py-1.5">
+                        <div className="text-[15px] font-semibold text-ink tabular-nums leading-tight">
                           {validTime ? item.when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
                         </div>
-                        <div className={`text-[10px] font-bold ${item.when < now ? 'text-rose-300' : 'text-amber-300'}`}>
-                          {validTime ? relTime(item.when, now) : ''}
-                        </div>
+                        <div className={`text-[10px] font-semibold ${overdue ? 'text-bad' : 'text-warn'}`}>{validTime ? relTime(item.when, now) : ''}</div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-white line-clamp-2">{item.title || 'Untitled clip'}</p>
-                        <p className="text-[11px] text-slate-400 mt-0.5 truncate">
-                          #{item.clip_id} · @{item.channel_id || 'unknown'} · {item.template_name}
-                        </p>
-                        <p className="text-[11px] mt-0.5 font-semibold text-sky-300 truncate">
+                        <p className="text-[13.5px] font-semibold text-ink line-clamp-2 leading-snug">{item.title || 'Untitled clip'}</p>
+                        <p className="text-[11px] text-muted mt-0.5 truncate">#{item.clip_id} · @{item.channel_id || 'unknown'} · {item.template_name}</p>
+                        <p className="text-[11px] mt-0.5 font-medium text-accent truncate">
                           → {item.account_title || item.account_key || 'Mapped channels'}
-                          {item.attempts > 0 && item.yt_status === 'pending' ? <span className="text-amber-300"> · retry {item.attempts}</span> : null}
+                          {item.attempts > 0 && item.yt_status === 'pending' ? <span className="text-warn"> · retry {item.attempts}</span> : null}
                         </p>
                         <div className="flex flex-wrap gap-1.5 mt-2">
-                          <StatusChip icon={MonitorPlay} label="YT" status={item.yt_status} />
-                          <StatusChip icon={Camera} label="IG" status={item.ig_status} />
+                          <Target icon={MonitorPlay} label="YouTube" status={item.yt_status} />
+                          <Target icon={Camera} label="Instagram" status={item.ig_status} />
                         </div>
                         {item.last_error && (
-                          <p className="mt-2 text-[11px] text-rose-300 flex items-start gap-1.5 break-words">
+                          <p className="mt-2 text-[11px] text-bad flex items-start gap-1.5 break-words">
                             <AlertTriangle size={12} className="shrink-0 mt-0.5" /> {item.last_error}
                           </p>
                         )}
                       </div>
                     </div>
                     <div className="flex gap-2 mt-3">
-                      <Link
-                        to={`/clips/${item.clip_id}/editor`}
-                        className="flex-1 h-10 rounded-xl bg-white/[0.05] border border-white/10 text-slate-200 text-xs font-bold flex items-center justify-center gap-1.5"
-                      >
-                        <Scissors size={14} /> Edit
+                      <Link to={`/clips/${item.clip_id}/editor`} className="flex-1">
+                        <Button block size="sm" icon={Scissors}>Edit</Button>
                       </Link>
-                      <button
-                        onClick={() => handlePublishNow(item.clip_id)}
-                        disabled={posting !== null}
-                        className="flex-1 h-10 rounded-xl bg-indigo-600 text-white text-xs font-bold flex items-center justify-center gap-1.5 disabled:opacity-50"
-                      >
-                        {posting === item.clip_id ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />} Post now
-                      </button>
+                      <Button block size="sm" variant="primary" icon={Send} loading={posting === item.clip_id}
+                        disabled={posting !== null} onClick={() => setConfirm(item.clip_id)}>Post now</Button>
                     </div>
-                  </div>
+                  </Panel>
                 );
               })}
             </div>
           </section>
         ))}
       </div>
-      {queue.length > 0 && (
-        <p className="mt-4 text-center text-[11px] text-slate-500 flex items-center justify-center gap-1">
-          <Clock size={11} /> Times shown in your local timezone
-        </p>
-      )}
-    </div>
+
+      {queue.length > 0 && <p className="text-center text-[11px] text-faint flex items-center justify-center gap-1"><Clock size={11} /> Times are shown in your local timezone</p>}
+
+      <Confirm open={confirm != null} title={`Post clip #${confirm} now?`}
+        text="It uploads immediately instead of waiting for its slot, and counts against that channel's daily YouTube quota."
+        confirmLabel="Post now" onCancel={() => setConfirm(null)} onConfirm={() => publishNow(confirm)} />
+    </Page>
   );
 }

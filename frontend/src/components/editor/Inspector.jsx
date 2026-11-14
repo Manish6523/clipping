@@ -98,20 +98,20 @@ function ClipOverviewSection() {
   };
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
       {/* Title */}
       <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-          <Clock size={12} className="text-[#8FD3FF]" /> Clip Overview
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <Clock size={12} className="text-accent" /> Clip Overview
         </span>
-        <span className="text-[11px] font-mono text-[#8FD3FF] font-bold">
+        <span className="text-[11px] font-mono text-accent font-bold">
           {duration.toFixed(1)}s
         </span>
       </div>
 
       {/* Target Aspect Format */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Target Format</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Target Format</label>
         <div className="grid grid-cols-4 gap-1">
           {formats.map((fmt) => {
             const isSelected = (edl?.export?.format || '9:16') === fmt;
@@ -120,8 +120,8 @@ function ClipOverviewSection() {
                 key={fmt}
                 className={`py-1 rounded-lg font-bold text-xs flex items-center justify-center transition-all ${
                   isSelected
-                    ? 'bg-[#1A1D24] border border-[#8FD3FF] text-white'
-                    : 'bg-[#1A1D24]/60 border border-white/[0.04] text-[#8B90A0] hover:text-white'
+                    ? 'bg-raised border border-accent text-white'
+                    : 'bg-raised/60 border border-white/[0.04] text-muted hover:text-white'
                 }`}
               >
                 {fmt}
@@ -134,14 +134,14 @@ function ClipOverviewSection() {
       {/* Clip Length / Boundaries Adjustment */}
       <div className="pt-2 border-t border-white/[0.06] flex flex-col gap-2">
         <div className="flex items-center justify-between">
-          <label className="text-[9px] font-bold uppercase text-[#8B90A0]">Clip Boundaries</label>
-          {extending && <span className="text-[10px] text-amber-400 font-mono animate-pulse">Updating...</span>}
+          <label className="text-[10.5px] font-bold uppercase text-muted">Clip Boundaries</label>
+          {extending && <span className="text-[11px] text-amber-400 font-mono animate-pulse">Updating...</span>}
         </div>
 
         {/* Start Trim Row */}
-        <div className="bg-[#1A1D24] p-1.5 rounded-lg border border-white/[0.06] flex items-center justify-between text-xs">
+        <div className="bg-raised p-1.5 rounded-lg border border-white/[0.06] flex items-center justify-between text-xs">
           <div>
-            <span className="text-[9px] text-slate-400 block uppercase">In Point</span>
+            <span className="text-[10.5px] text-slate-400 block uppercase">In Point</span>
             <span className="font-mono font-bold text-white">{curStart.toFixed(1)}s</span>
           </div>
           <div className="flex items-center gap-1">
@@ -149,7 +149,7 @@ function ClipOverviewSection() {
               <button
                 key={d}
                 onClick={() => handleAdjustStart(d)}
-                className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 text-[10px] font-mono rounded text-slate-300 hover:text-white"
+                className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 text-[11px] font-mono rounded text-slate-300 hover:text-white"
               >
                 {d > 0 ? `+${d}` : d}
               </button>
@@ -158,9 +158,9 @@ function ClipOverviewSection() {
         </div>
 
         {/* End Trim Row */}
-        <div className="bg-[#1A1D24] p-1.5 rounded-lg border border-white/[0.06] flex items-center justify-between text-xs">
+        <div className="bg-raised p-1.5 rounded-lg border border-white/[0.06] flex items-center justify-between text-xs">
           <div>
-            <span className="text-[9px] text-slate-400 block uppercase">Out Point</span>
+            <span className="text-[10.5px] text-slate-400 block uppercase">Out Point</span>
             <span className="font-mono font-bold text-white">{curEnd.toFixed(1)}s</span>
           </div>
           <div className="flex items-center gap-1">
@@ -168,7 +168,7 @@ function ClipOverviewSection() {
               <button
                 key={d}
                 onClick={() => handleAdjustEnd(d)}
-                className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 text-[10px] font-mono rounded text-slate-300 hover:text-white"
+                className="px-1.5 py-0.5 bg-white/5 hover:bg-white/10 text-[11px] font-mono rounded text-slate-300 hover:text-white"
               >
                 {d > 0 ? `+${d}` : d}
               </button>
@@ -178,7 +178,7 @@ function ClipOverviewSection() {
 
         {/* Quick Length Chips */}
         <div>
-          <label className="text-[9px] text-slate-400 block mb-1">Quick Target Length</label>
+          <label className="text-[10.5px] text-slate-400 block mb-1">Quick Target Length</label>
           <div className="grid grid-cols-4 gap-1">
             {[15, 30, 45, 60].map((sec) => (
               <button
@@ -186,8 +186,8 @@ function ClipOverviewSection() {
                 onClick={() => handleSetDuration(sec)}
                 className={`py-1 rounded-lg text-xs font-mono font-bold transition-all ${
                   Math.round(duration) === sec
-                    ? 'bg-[#8FD3FF]/20 border border-[#8FD3FF] text-[#8FD3FF]'
-                    : 'bg-[#1A1D24] border border-white/5 text-slate-400 hover:text-white'
+                    ? 'bg-accent/20 border border-accent text-accent'
+                    : 'bg-raised border border-white/5 text-slate-400 hover:text-white'
                 }`}
               >
                 {sec}s
@@ -199,10 +199,10 @@ function ClipOverviewSection() {
 
       {/* Transcription Status */}
       <div className="pt-2 border-t border-white/[0.06] flex flex-col gap-2">
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0]">Transcription</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted">Transcription</label>
         <button
           onClick={transcribeClip}
-          className="w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-[#8FD3FF] flex items-center justify-center gap-1.5"
+          className="w-full py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-bold text-accent flex items-center justify-center gap-1.5"
         >
           <Sparkles size={12} className="text-amber-400" /> Transcribe / Re-align Words
         </button>
@@ -221,7 +221,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
 
   if (!layer) {
     return (
-      <div className="w-full h-full bg-[#13151A] rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
+      <div className="w-full h-full bg-surface rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
         Frame not found
       </div>
     );
@@ -238,7 +238,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
   };
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
         <div className="flex items-center gap-2">
@@ -247,7 +247,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
         </div>
         <button
           onClick={() => setSelection({ type: 'none', id: null })}
-          className="text-[10px] text-slate-400 hover:text-white"
+          className="text-[11px] text-slate-400 hover:text-white"
         >
           Done
         </button>
@@ -255,22 +255,22 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
 
       {/* Rename */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Frame Name</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Frame Name</label>
         <input
           type="text"
           value={layer.name}
           onChange={(e) => updateSelectedLayer({ name: e.target.value })}
-          className="w-full bg-[#1A1D24] border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-[#8FD3FF]"
+          className="w-full bg-raised border border-white/10 rounded-lg px-2 py-1 text-xs text-white focus:outline-none focus:border-accent"
         />
       </div>
 
       {/* Fit Mode */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Fit Mode</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Fit Mode</label>
         <select
           value={layer.fit || 'cover'}
           onChange={(e) => updateSelectedLayer({ fit: e.target.value })}
-          className="w-full bg-[#1A1D24] border border-white/10 rounded-lg p-1.5 text-xs text-white focus:outline-none"
+          className="w-full bg-raised border border-white/10 rounded-lg p-1.5 text-xs text-white focus:outline-none"
         >
           <option value="cover">Cover (Fill slot, crop overflow)</option>
           <option value="contain">Contain (Letterbox inside slot)</option>
@@ -280,11 +280,11 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
 
       {/* Shape / Radius */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Corner Shape</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Corner Shape</label>
         <select
           value={layer.style?.shape || 'rect'}
           onChange={(e) => updateSelectedLayer({ style: { ...layer.style, shape: e.target.value } })}
-          className="w-full bg-[#1A1D24] border border-white/10 rounded-lg p-1.5 text-xs text-white focus:outline-none"
+          className="w-full bg-raised border border-white/10 rounded-lg p-1.5 text-xs text-white focus:outline-none"
         >
           <option value="rect">Rectangle</option>
           <option value="circle">Circle / Bubble</option>
@@ -293,7 +293,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
 
       {/* Opacity Slider */}
       <div>
-        <div className="flex items-center justify-between text-[9px] font-bold uppercase text-[#8B90A0] mb-1">
+        <div className="flex items-center justify-between text-[10.5px] font-bold uppercase text-muted mb-1">
           <span>Opacity</span>
           <span className="font-mono text-white">{Math.round((layer.style?.opacity ?? 1.0) * 100)}%</span>
         </div>
@@ -305,7 +305,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
           onChange={(e) => updateSelectedLayer({
             style: { ...layer.style, opacity: Number(e.target.value) / 100 }
           })}
-          className="w-full h-1 accent-[#8FD3FF] cursor-pointer"
+          className="w-full h-1 accent-accent cursor-pointer"
         />
       </div>
 
@@ -313,7 +313,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
       <div className="pt-2 border-t border-white/[0.06]">
         <button
           onClick={() => setAdvancedOpen(!advancedOpen)}
-          className="w-full flex items-center justify-between text-[10px] font-bold uppercase text-slate-400 hover:text-white"
+          className="w-full flex items-center justify-between text-[11px] font-bold uppercase text-slate-400 hover:text-white"
         >
           <span>Advanced Styling</span>
           {advancedOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -322,7 +322,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
         {advancedOpen && (
           <div className="flex flex-col gap-2.5 pt-2">
             <div>
-              <label className="text-[9px] text-slate-400 block mb-1">Border Width ({layer.style?.border?.w || 0}px)</label>
+              <label className="text-[10.5px] text-slate-400 block mb-1">Border Width ({layer.style?.border?.w || 0}px)</label>
               <input
                 type="range"
                 min="0"
@@ -331,12 +331,12 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
                 onChange={(e) => updateSelectedLayer({
                   style: { ...layer.style, border: { ...layer.style?.border, w: Number(e.target.value) } }
                 })}
-                className="w-full h-1 accent-[#8FD3FF]"
+                className="w-full h-1 accent-accent"
               />
             </div>
 
             <div>
-              <label className="text-[9px] text-slate-400 block mb-1">Shadow Blur ({layer.style?.shadow?.blur || 0}px)</label>
+              <label className="text-[10.5px] text-slate-400 block mb-1">Shadow Blur ({layer.style?.shadow?.blur || 0}px)</label>
               <input
                 type="range"
                 min="0"
@@ -345,7 +345,7 @@ function LayerInspectorSection({ layerId, advancedOpen, setAdvancedOpen }) {
                 onChange={(e) => updateSelectedLayer({
                   style: { ...layer.style, shadow: { ...layer.style?.shadow, blur: Number(e.target.value) } }
                 })}
-                className="w-full h-1 accent-[#8FD3FF]"
+                className="w-full h-1 accent-accent"
               />
             </div>
           </div>
@@ -376,18 +376,18 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
   };
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
       {/* Title */}
       <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-          <Type size={12} className="text-[#8FD3FF]" /> Caption Customizer
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+          <Type size={12} className="text-accent" /> Caption Customizer
         </span>
-        <span className="text-[10px] font-mono text-[#8FD3FF] font-bold">Live Sync</span>
+        <span className="text-[11px] font-mono text-accent font-bold">Live Sync</span>
       </div>
 
       {/* Quick Placement Anchors */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Position Presets</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Position Presets</label>
         <div className="grid grid-cols-3 gap-1">
           {[
             { id: 'top', label: 'Top' },
@@ -400,7 +400,7 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
             <button
               key={btn.id}
               onClick={() => handleQuickPlace(btn.id)}
-              className="py-1 px-1 bg-[#1A1D24] hover:bg-[#1A1D24]/80 border border-white/[0.06] rounded-lg text-[10px] font-bold text-[#8FD3FF] hover:text-white transition-all text-center"
+              className="py-1 px-1 bg-raised hover:bg-raised/80 border border-white/[0.06] rounded-lg text-[11px] font-bold text-accent hover:text-white transition-all text-center"
             >
               {btn.label}
             </button>
@@ -410,7 +410,7 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
 
       {/* Words Per Line */}
       <div>
-        <div className="flex items-center justify-between text-[9px] font-bold uppercase text-[#8B90A0] mb-1">
+        <div className="flex items-center justify-between text-[10.5px] font-bold uppercase text-muted mb-1">
           <span>Words Per Line</span>
           <span className="font-mono text-white">{captions.words_per_line || 3}</span>
         </div>
@@ -420,17 +420,17 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
           max="5"
           value={captions.words_per_line || 3}
           onChange={(e) => updateCaptionStyle({ words_per_line: Number(e.target.value) })}
-          className="w-full h-1 accent-[#8FD3FF] cursor-pointer"
+          className="w-full h-1 accent-accent cursor-pointer"
         />
       </div>
 
       {/* Animation Style */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Word Animation</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Word Animation</label>
         <select
           value={captions.animation || 'pop'}
           onChange={(e) => updateCaptionStyle({ animation: e.target.value })}
-          className="w-full bg-[#1A1D24] border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+          className="w-full bg-raised border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
         >
           <option value="pop">Pop Scale (Punchy)</option>
           <option value="bounce">Bounce Jump</option>
@@ -441,11 +441,11 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
 
       {/* Typography Font Family */}
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Font Family</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Font Family</label>
         <select
           value={captions.font || 'Montserrat ExtraBold'}
           onChange={(e) => updateCaptionStyle({ font: e.target.value })}
-          className="w-full bg-[#1A1D24] border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+          className="w-full bg-raised border border-white/[0.06] rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
         >
           <option value="Montserrat ExtraBold">Montserrat ExtraBold</option>
           <option value="TheBoldFont">TheBoldFont</option>
@@ -458,27 +458,27 @@ function CaptionInspectorSection({ advancedOpen, setAdvancedOpen }) {
       {/* Colors: Primary & Active Highlight */}
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="text-[9px] text-[#8B90A0] block mb-1">Base Color</label>
-          <div className="flex items-center gap-1.5 bg-[#1A1D24] p-1 rounded-lg border border-white/[0.06]">
+          <label className="text-[10.5px] text-muted block mb-1">Base Color</label>
+          <div className="flex items-center gap-1.5 bg-raised p-1 rounded-lg border border-white/[0.06]">
             <input
               type="color"
               value={captions.color || '#FFFFFF'}
               onChange={(e) => updateCaptionStyle({ color: e.target.value })}
               className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
             />
-            <span className="text-[9px] font-mono uppercase text-slate-300">{captions.color || '#FFFFFF'}</span>
+            <span className="text-[10.5px] font-mono uppercase text-slate-300">{captions.color || '#FFFFFF'}</span>
           </div>
         </div>
         <div>
-          <label className="text-[9px] text-[#8B90A0] block mb-1">Active Word</label>
-          <div className="flex items-center gap-1.5 bg-[#1A1D24] p-1 rounded-lg border border-white/[0.06]">
+          <label className="text-[10.5px] text-muted block mb-1">Active Word</label>
+          <div className="flex items-center gap-1.5 bg-raised p-1 rounded-lg border border-white/[0.06]">
             <input
               type="color"
               value={captions.highlight || '#FACC15'}
               onChange={(e) => updateCaptionStyle({ highlight: e.target.value })}
               className="w-5 h-5 rounded cursor-pointer border-0 bg-transparent"
             />
-            <span className="text-[9px] font-mono uppercase text-slate-300">{captions.highlight || '#FACC15'}</span>
+            <span className="text-[10.5px] font-mono uppercase text-slate-300">{captions.highlight || '#FACC15'}</span>
           </div>
         </div>
       </div>
@@ -497,26 +497,26 @@ function WordInspectorSection({ wordId }) {
 
   if (!wordItem) {
     return (
-      <div className="w-full h-full bg-[#13151A] rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
+      <div className="w-full h-full bg-surface rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
         Word not found
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
       <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Word Inspector</span>
-        <span className="text-[10px] font-mono text-[#8FD3FF]">{wordItem.start.toFixed(2)}s - {wordItem.end.toFixed(2)}s</span>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Word Inspector</span>
+        <span className="text-[11px] font-mono text-accent">{wordItem.start.toFixed(2)}s - {wordItem.end.toFixed(2)}s</span>
       </div>
 
       <div>
-        <label className="text-[9px] font-bold uppercase text-[#8B90A0] block mb-1">Spoken Text</label>
+        <label className="text-[10.5px] font-bold uppercase text-muted block mb-1">Spoken Text</label>
         <input
           type="text"
           value={wordItem.word || wordItem.text || ''}
           onChange={(e) => editWordText(wordId, e.target.value)}
-          className="w-full bg-[#1A1D24] border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
+          className="w-full bg-raised border border-white/10 rounded-lg px-2 py-1.5 text-xs text-white focus:outline-none"
         />
       </div>
 
@@ -546,17 +546,17 @@ function SegmentInspectorSection({ segmentId }) {
 
   if (!seg) {
     return (
-      <div className="w-full h-full bg-[#13151A] rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
+      <div className="w-full h-full bg-surface rounded-2xl p-4 flex flex-col items-center justify-center text-slate-500 text-xs">
         Segment not found
       </div>
     );
   }
 
   return (
-    <div className="w-full h-full bg-[#13151A] border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
+    <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl p-3 flex flex-col gap-3 shadow-xl select-none overflow-y-auto">
       <div className="flex items-center justify-between pb-2 border-b border-white/[0.06]">
-        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Segment Inspector</span>
-        <span className="text-[10px] font-mono text-[#8FD3FF] font-bold">{(seg.src_out - seg.src_in).toFixed(1)}s</span>
+        <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Segment Inspector</span>
+        <span className="text-[11px] font-mono text-accent font-bold">{(seg.src_out - seg.src_in).toFixed(1)}s</span>
       </div>
 
       <div className="text-xs text-slate-400 font-mono">

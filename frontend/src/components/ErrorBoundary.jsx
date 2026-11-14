@@ -1,4 +1,5 @@
 import React from 'react';
+import { AlertTriangle, RefreshCw } from 'lucide-react';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
@@ -17,23 +18,18 @@ export default class ErrorBoundary extends React.Component {
   render() {
     if (this.state.hasError) {
       return (
-        <div className="min-h-screen bg-[#0A0B0E] text-slate-100 flex flex-col items-center justify-center p-6 text-center">
-          <div className="bg-[#141721] border border-rose-500/30 rounded-2xl p-6 max-w-lg w-full shadow-2xl">
-            <div className="w-12 h-12 rounded-xl bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-4 text-2xl font-bold">
-              !
-            </div>
-            <h2 className="text-lg font-bold text-white mb-2">Something went wrong</h2>
-            <p className="text-xs text-slate-400 mb-4 font-mono bg-black/40 p-3 rounded-lg overflow-x-auto text-left">
+        <div className="min-h-screen bg-canvas text-ink flex items-center justify-center p-4">
+          <div role="alert" className="w-full max-w-md rounded-2xl border border-bad/30 bg-surface p-5 text-center space-y-3 shadow-2xl">
+            <div className="w-12 h-12 rounded-2xl bg-bad/15 text-bad flex items-center justify-center mx-auto"><AlertTriangle size={22} /></div>
+            <h2 className="text-[17px] font-semibold">Something went wrong</h2>
+            <p className="text-xs text-muted">The page crashed while drawing. Reloading usually fixes it - if not, the log below helps debugging.</p>
+            <pre className="text-[11px] text-slate-300 font-mono bg-canvas border border-line p-3 rounded-xl overflow-x-auto text-left whitespace-pre-wrap break-words">
               {this.state.error?.message || 'Unknown render error'}
-            </p>
-            <button
-              onClick={() => {
-                this.setState({ hasError: false, error: null });
-                window.location.reload();
-              }}
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-lg text-xs transition-colors shadow"
-            >
-              Reload Application
+            </pre>
+            <button type="button"
+              onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}
+              className="inline-flex items-center justify-center gap-2 h-10 px-4 rounded-xl bg-accent-strong text-white text-[13px] font-semibold hover:bg-[#3987e5] transition-colors">
+              <RefreshCw size={15} /> Reload
             </button>
           </div>
         </div>
@@ -42,4 +38,3 @@ export default class ErrorBoundary extends React.Component {
     return this.props.children;
   }
 }
-

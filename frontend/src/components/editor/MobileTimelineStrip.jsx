@@ -138,14 +138,14 @@ export default function MobileTimelineStrip({ videoRef }) {
   const relTime = Math.max(0, currentTime - startOffset);
 
   return (
-    <div className={`w-full bg-[#0A0B0E] border-t border-white/[0.06] flex flex-col select-none shrink-0 z-20 transition-all ${isExpanded ? 'h-52' : 'h-24'}`}>
+    <div className={`w-full bg-canvas border-t border-white/[0.06] flex flex-col select-none shrink-0 z-20 transition-all ${isExpanded ? 'h-52' : 'h-24'}`}>
       {/* 1. Transport Bar: Play / Pause, Time, Split, Expand */}
       <div className="h-10 px-3 flex items-center justify-between gap-2 border-b border-white/[0.04]">
         <div className="flex items-center gap-2">
           {/* Large 36x36 Play / Pause */}
           <button
             onClick={togglePlay}
-            className="w-8 h-8 rounded-xl bg-[#8FD3FF] text-[#0A0B0E] font-black flex items-center justify-center active:scale-95 shadow-md shadow-[#8FD3FF]/20"
+            className="w-8 h-8 rounded-xl bg-accent text-canvas font-black flex items-center justify-center active:scale-95 shadow-md shadow-accent/20"
           >
             {isPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
           </button>
@@ -163,7 +163,7 @@ export default function MobileTimelineStrip({ videoRef }) {
             onClick={splitSegmentAtPlayhead}
             className="h-7 px-2.5 rounded-lg bg-white/[0.04] active:bg-white/10 text-white font-bold text-[11px] flex items-center gap-1 border border-white/[0.06]"
           >
-            <Scissors size={12} className="text-[#8FD3FF]" />
+            <Scissors size={12} className="text-accent" />
             <span>Split</span>
           </button>
 
@@ -178,7 +178,7 @@ export default function MobileTimelineStrip({ videoRef }) {
 
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="h-7 px-2 rounded-lg bg-white/[0.04] active:bg-white/10 text-[#8FD3FF] font-bold text-[11px] flex items-center gap-1 border border-white/[0.06]"
+            className="h-7 px-2 rounded-lg bg-white/[0.04] active:bg-white/10 text-accent font-bold text-[11px] flex items-center gap-1 border border-white/[0.06]"
             title={isExpanded ? 'Collapse Timeline' : 'Expand Timeline'}
           >
             {isExpanded ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
@@ -205,9 +205,9 @@ export default function MobileTimelineStrip({ videoRef }) {
             {words.slice(0, 30).map((w, i) => (
               <span
                 key={i}
-                className={`text-[9px] font-mono px-1.5 py-0.5 rounded truncate max-w-[65px] ${
+                className={`text-[10.5px] font-mono px-1.5 py-0.5 rounded truncate max-w-[65px] ${
                   currentTime >= w.start && currentTime <= w.end 
-                    ? 'bg-[#8FD3FF] text-black font-bold' 
+                    ? 'bg-accent text-black font-bold' 
                     : 'bg-white/10 text-white/70'
                 }`}
               >
@@ -220,7 +220,7 @@ export default function MobileTimelineStrip({ videoRef }) {
 
       {/* 3. Expanded Drawer Controls (Segments list & Trim zoom) */}
       {isExpanded && (
-        <div className="h-12 px-3 bg-[#0A0B0E]/95 border-t border-white/[0.04] flex items-center justify-between gap-2 overflow-x-auto">
+        <div className="h-12 px-3 bg-canvas/95 border-t border-white/[0.04] flex items-center justify-between gap-2 overflow-x-auto">
           {/* Segment Badges */}
           <div className="flex items-center gap-1.5 overflow-x-auto flex-1 py-1">
             {segments.map((seg, idx) => (
@@ -233,12 +233,12 @@ export default function MobileTimelineStrip({ videoRef }) {
                 }}
                 className={`h-7 px-2.5 rounded-lg text-[11px] font-bold shrink-0 flex items-center gap-1.5 border transition-all ${
                   activeSegmentId === seg.id 
-                    ? 'bg-[#8FD3FF]/20 border-[#8FD3FF] text-[#8FD3FF]' 
+                    ? 'bg-accent/20 border-accent text-accent' 
                     : 'bg-white/[0.04] border-white/10 text-slate-400'
                 }`}
               >
                 <span>Seg {idx + 1}</span>
-                <span className="text-[9px] font-mono opacity-70">
+                <span className="text-[10.5px] font-mono opacity-70">
                   {((seg.end - seg.start) || 0).toFixed(1)}s
                 </span>
               </button>
@@ -253,7 +253,7 @@ export default function MobileTimelineStrip({ videoRef }) {
             >
               <ZoomOut size={12} />
             </button>
-            <span className="text-[10px] font-mono text-slate-400 w-6 text-center">{zoomLevel}x</span>
+            <span className="text-[11px] font-mono text-slate-400 w-6 text-center">{zoomLevel}x</span>
             <button
               onClick={() => setZoomLevel(Math.min(3, zoomLevel + 0.5))}
               className="w-7 h-7 rounded-lg bg-white/[0.04] text-slate-300 flex items-center justify-center text-xs"
