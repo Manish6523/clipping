@@ -406,13 +406,26 @@ export default function LayoutBuilder({
         ctx.fillRect(0, 0, cw, ch);
       } else if (bg.type === 'blur' && media) {
         ctx.save();
-        ctx.filter = `blur(${bg.blur || 30}px)`;
-        // Draw centered and covering entire 9:16
-        ctx.drawImage(media, -cw * 0.5, 0, cw * 2.0, ch);
+        // Scale blur proportionally to canvas size (cw / 1080)
+        const blurRadius = Math.max(8, Math.round(((bg.blur || 40) * cw) / 1080));
+        ctx.filter = `blur(${blurRadius}px)`;
+
+        // Calculate aspect-ratio "cover" exactly like FFmpeg: scale=1080:1920:force_original_aspect_ratio=increase
+        const srcW = media.videoWidth || media.naturalWidth || 1920;
+        const srcH = media.videoHeight || media.naturalHeight || 1080;
+        const scale = Math.max(cw / srcW, ch / srcH);
+        const drawW = srcW * scale;
+        const drawH = srcH * scale;
+        const drawX = (cw - drawW) / 2;
+        const drawY = (ch - drawH) / 2;
+
+        ctx.drawImage(media, drawX, drawY, drawW, drawH);
         ctx.restore();
 
-        if (bg.dim > 0) {
-          ctx.fillStyle = `rgba(0,0,0,${bg.dim || 0.35})`;
+        // Brightness dimming
+        const dimVal = bg.dim !== undefined ? Number(bg.dim) : 0.35;
+        if (dimVal > 0) {
+          ctx.fillStyle = `rgba(0,0,0,${dimVal})`;
           ctx.fillRect(0, 0, cw, ch);
         }
       }
