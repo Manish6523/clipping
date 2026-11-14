@@ -71,9 +71,28 @@ async def delete_template(request: web.Request) -> web.Response:
     if not t_name:
         return make_json_error("NAME_REQUIRED", "Template name required", status=400)
 
-    # Sanitize name
+    # 1. Direct path check
     clean_name = Path(t_name).stem
     t_path = Path(TEMPLATES_DIR) / f"{clean_name}.json"
+
+    # 2. Case-insensitive / whitespace-tolerant search across templates directory
+    if not t_path.exists():
+        found = None
+        for tf in Path(TEMPLATES_DIR).glob("*.json"):
+            if tf.stem.lower() == clean_name.lower():
+                found = tf
+                break
+            # Also check internal template name inside the json
+            try:
+                with open(tf, "r", encoding="utf-8") as f:
+                    d = json.load(f)
+                    if d.get("name", "").strip().lower() == clean_name.lower():
+                        found = tf
+                        break
+            except Exception:
+                pass
+        if found:
+            t_path = found
 
     if not t_path.exists():
         return make_json_error("NOT_FOUND", f"Template '{clean_name}' not found", status=404)
