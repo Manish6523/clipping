@@ -50,14 +50,12 @@ def build_filter_graph(
 
     # 1. Base Canvas / Background Pipeline
     if bg_type == "blur":
-        # Keep blur radius gentle and preserve vibrant colors like the browser canvas preview
-        blur_rad = int(bg_cfg.get("blur", 25))
-        # Reduce heavy dimming so ambient gameplay lights/colors remain visible (default ~0.15 instead of 0.35)
-        raw_dim = float(bg_cfg.get("dim", 0.15))
-        dim = min(0.20, raw_dim) if raw_dim > 0.20 else raw_dim
+        # Gentle blur to preserve colorful atmospheric backlight (like TikTok/YouTube Shorts ambient mode)
+        blur_rad = int(bg_cfg.get("blur", 20))
+        # Keep dimming minimal (0.00 to 0.05 max) so the background glows brightly and never turns black
         filters.append(
             f"[{input_tag}]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,"
-            f"crop={canvas_w}:{canvas_h},boxblur={blur_rad}:2,eq=brightness=-{dim:.2f}:saturation=1.15[base_bg]"
+            f"crop={canvas_w}:{canvas_h},boxblur={blur_rad}:1,eq=brightness=0.02:saturation=1.25[base_bg]"
         )
         current_base = "[base_bg]"
     else:
