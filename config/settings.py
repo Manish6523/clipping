@@ -116,5 +116,17 @@ WEB_PORT = int(os.getenv("WEB_PORT", "8080"))
 # faster-whisper model for clip transcription (tiny | base | small | medium | large-v3-turbo).
 # Bigger models catch swear words far more reliably; editable from the Settings page.
 WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")
+# Live moments are short and many: a smaller model keeps a small VPS from falling behind.
+LIVE_WHISPER_MODEL = os.getenv("LIVE_WHISPER_MODEL", "base")
+# Whisper jobs that may run at the same time (1 = one at a time; best on small servers).
+WHISPER_CONCURRENCY = int(os.getenv("WHISPER_CONCURRENCY", "1"))
+
+# Live hype trigger + queue (tuned for a small VPS)
+LIVE_TRIGGER_COOLDOWN_S = float(os.getenv("LIVE_TRIGGER_COOLDOWN_S", "150"))   # per streamer
+LIVE_KEYWORD_MIN_HITS = int(os.getenv("LIVE_KEYWORD_MIN_HITS", "3"))            # keyword msgs in 5s
+LIVE_KEYWORD_MIN_RATIO = float(os.getenv("LIVE_KEYWORD_MIN_RATIO", "1.3"))      # chat must also speed up
+LIVE_MAX_MOMENT_AGE_S = float(os.getenv("LIVE_MAX_MOMENT_AGE_S", "600"))        # drop moments older than this
+LIVE_QUEUE_DIR = Path(os.getenv("LIVE_QUEUE_DIR", DATA_DIR / "live_queue"))     # outside tmp/ -> never GC'd
+LIVE_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
 AUTH_LOCK_ENABLED = os.getenv("AUTH_LOCK_ENABLED", "false").lower() in ("true", "1", "yes")

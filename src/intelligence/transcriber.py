@@ -30,13 +30,27 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
+_WHISPER_SLOTS: Optional[asyncio.Semaphore] = None
+
+
+def _whisper_slots() -> asyncio.Semaphore:
+    """One Whisper job at a time by default: on a small CPU, parallel jobs only thrash."""
+    global _WHISPER_SLOTS
+    if _WHISPER_SLOTS is None:
+        import config.settings as s
+        _WHISPER_SLOTS = asyncio.Semaphore(max(1, int(getattr(s, "WHISPER_CONCURRENCY", 1) or 1)))
+    return _WHISPER_SLOTS
+
 
 class Transcriber:
     """Extracts high-precision word timestamps using faster-whisper."""
 
-    def __init__(self, model_size: Optional[str] = None, device: str = "auto", compute_type: str = "auto"):
-        # model_size=None follows config.settings.WHISPER_MODEL (changeable at runtime from Settings).
+    def __init__(self, model_size: Optional[str] = None, device: str = "auto", compute_type: str = "auto",
+                 model_setting: str = "WHISPER_MODEL", beam_size: int = 5):
+        # model_size=None follows config.settings.<model_setting> (changeable at runtime from Settings).
         self._fixed_model_size = model_size
+        self._model_setting = model_setting
+        self.beam_size = max(1, int(beam_size))
         self.device = device
         self.compute_type = compute_type
         self._model = None
@@ -47,7 +61,7 @@ class Transcriber:
         if self._fixed_model_size:
             return self._fixed_model_size
         import config.settings as s
-        return getattr(s, "WHISPER_MODEL", "small") or "small"
+        return getattr(s, self._model_setting, None) or getattr(s, "WHISPER_MODEL", "small") or "small"
 
     def _get_model(self):
         """Lazy loader for faster-whisper WhisperModel with cached instance."""
@@ -128,6 +142,7 @@ class Transcriber:
             segments_generator, info = model.transcribe(
                 audio_path,
                 word_timestamps=True,
+                beam_size=self.beam_size,
                 vad_filter=True,
                 vad_parameters=dict(min_silence_duration_ms=400),
             )
@@ -161,7 +176,8 @@ class Transcriber:
                 "duration": info.duration,
             }
 
-        result = await loop.run_in_executor(None, _run_transcription)
+        async with _whisper_slots():
+            result = await loop.run_in_executor(None, _run_transcription)
 
         # Persist full transcript words to data/transcripts/{source_id}.json
         try:

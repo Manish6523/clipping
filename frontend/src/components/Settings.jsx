@@ -46,6 +46,7 @@ export default function Settings() {
   const [bulkInput, setBulkInput] = useState('');
   const [censor, setCensor] = useState(null);
   const [whisperModel, setWhisperModel] = useState('small');
+  const [liveWhisperModel, setLiveWhisperModel] = useState('base');
 
   useEffect(() => {
     fetchSettings();
@@ -59,6 +60,7 @@ export default function Settings() {
       setMinScore(res.data.min_virality_score || 70);
       setCensor(res.data.censor || null);
       setWhisperModel(res.data.whisper_model || 'small');
+      setLiveWhisperModel(res.data.live_whisper_model || 'base');
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -137,6 +139,7 @@ export default function Settings() {
         gemini_model: model,
         min_virality_score: minScore,
         whisper_model: whisperModel,
+        live_whisper_model: liveWhisperModel,
         ...(censor ? { censor } : {}),
       });
       setSaveSuccess(true);
@@ -427,7 +430,20 @@ export default function Settings() {
             >
               {WHISPER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
-            <p className="text-[11px] text-slate-500">Bigger models catch swear words and fast speech far more reliably.</p>
+            <p className="text-[11px] text-slate-500">Used for Quick Clip and VODs. Bigger models catch swear words and fast speech far more reliably.</p>
+          </div>
+
+          <div className="pt-2 space-y-1.5">
+            <label htmlFor="live-whisper-model" className="text-xs font-semibold text-slate-300">Live clips model (Whisper)</label>
+            <select
+              id="live-whisper-model"
+              value={liveWhisperModel}
+              onChange={(e) => setLiveWhisperModel(e.target.value)}
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-purple-500 font-mono"
+            >
+              {WHISPER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+            <p className="text-[11px] text-slate-500">Live moments arrive every few minutes; on a small VPS keep this at <b>base</b> or <b>tiny</b> so it keeps up.</p>
           </div>
         </div>
 

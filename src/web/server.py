@@ -151,6 +151,7 @@ class WebUIServer:
         self.app.router.add_get("/api/logs", self.handle_get_logs)
         self.app.router.add_get("/api/pipeline/status", self.handle_get_pipeline_status)
         self.app.router.add_get("/api/streamers", self.handle_get_streamers)
+        self.app.router.add_get("/api/telemetry", self.handle_telemetry)
 
         # Serve static rendered video files & posters
         self.app.router.add_static("/renders", path=str(RENDER_DIR), name="renders", show_index=False)
@@ -1020,6 +1021,7 @@ class WebUIServer:
         import config.settings as s
         censor_cfg = merge_config(await load_global_config())
         whisper_model = db_settings.get("whisper_model", {}).get("value") or getattr(s, "WHISPER_MODEL", "small")
+        live_whisper_model = db_settings.get("live_whisper_model", {}).get("value") or getattr(s, "LIVE_WHISPER_MODEL", "base")
 
         return web.json_response({
             "gemini_api_keys": keys_list,
@@ -1028,6 +1030,7 @@ class WebUIServer:
             "total_keys_count": len(keys_list),
             "censor": censor_cfg,
             "whisper_model": whisper_model,
+            "live_whisper_model": live_whisper_model,
         })
 
     async def handle_save_settings(self, request: web.Request) -> web.Response:
@@ -1084,6 +1087,14 @@ class WebUIServer:
                 return web.json_response({"error": {"code": "BAD_MODEL", "message": f"whisper_model must be one of {sorted(allowed)}"}}, status=400)
             await set_system_setting("whisper_model", whisper_model, category="ai", description="faster-whisper transcription model")
             s.WHISPER_MODEL = whisper_model
+
+        live_model = data.get("live_whisper_model")
+        if live_model:
+            allowed = {"tiny", "base", "small", "medium", "large-v3", "large-v3-turbo"}
+            if live_model not in allowed:
+                return web.json_response({"error": {"code": "BAD_MODEL", "message": f"live_whisper_model must be one of {sorted(allowed)}"}}, status=400)
+            await set_system_setting("live_whisper_model", live_model, category="ai", description="faster-whisper model for live moments")
+            s.LIVE_WHISPER_MODEL = live_model
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
 
@@ -1352,6 +1363,36 @@ class WebUIServer:
             logger.warning("Could not query pipeline_runs table: %s", e)
 
         return web.json_response(runs)
+
+    async def handle_telemetry(self, request: web.Request) -> web.Response:
+        """Everything the Live Pulse page shows: streams, hype engine, moments, queue, server."""
+        from src.monitor import telemetry
+        try:
+            minutes = max(1, min(30, int(request.query.get("minutes", "30"))))
+        except ValueError:
+            minutes = 30
+        data = telemetry.snapshot(series_seconds=minutes * 60)
+        history, today = [], {}
+        try:
+            async with get_db_connection() as db:
+                cur = await db.execute(
+                    "SELECT id, channel_id, trigger_type, trigger_value, status, gate_failed, rejection_reason, "
+                    "virality_score, threshold_value, clip_id, created_at, substr(transcript_text, 1, 200) AS transcript "
+                    "FROM live_hypes ORDER BY id DESC LIMIT 60")
+                history = [dict(r) for r in await cur.fetchall()]
+                cur = await db.execute(
+                    "SELECT channel_id, status, COUNT(*) AS n, AVG(virality_score) AS avg_score "
+                    "FROM live_hypes WHERE date(created_at) = date('now') GROUP BY channel_id, status")
+                for r in await cur.fetchall():
+                    d = today.setdefault(r["channel_id"], {"passed": 0, "rejected": 0, "avg_score": None})
+                    d[r["status"]] = r["n"]
+                    if r["status"] == "rejected":
+                        d["avg_score"] = round(r["avg_score"] or 0, 1)
+        except Exception as e:
+            logger.debug("telemetry history query failed: %s", e)
+        data["history"] = history
+        data["today"] = today
+        return web.json_response(data)
 
     async def handle_get_live_hypes(self, request: web.Request) -> web.Response:
         """Get recent live detected hypes (both passed and rejected) with reasons."""

@@ -5,7 +5,7 @@ All are free for commercial use.
 
 | File | Family | License |
 |---|---|---|
-| Montserrat-Black.ttf, Montserrat-ExtraBold.ttf | Montserrat | SIL OFL 1.1 (OFL-Montserrat.txt) |
+| Montserrat-Black.ttf, Montserrat-ExtraBold.ttf | Montserrat | SIL OFL 1.1 (licenses/OFL-Montserrat.txt) |
 | anton-400.ttf | Anton | SIL OFL 1.1 |
 | bangers-400.ttf | Bangers | SIL OFL 1.1 |
 | bebas-neue-400.ttf | Bebas Neue | SIL OFL 1.1 |

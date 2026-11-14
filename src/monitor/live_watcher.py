@@ -15,9 +15,13 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 import aiohttp
 
-from config.settings import BUFFER_DIR, CHAT_SPIKE_MULTIPLIER, AUDIO_PEAK_DB_THRESHOLD
+from config.settings import (
+    AUDIO_PEAK_DB_THRESHOLD, BUFFER_DIR, CHAT_SPIKE_MULTIPLIER,
+    LIVE_KEYWORD_MIN_HITS, LIVE_KEYWORD_MIN_RATIO, LIVE_TRIGGER_COOLDOWN_S,
+)
 from src.compositor.ffmpeg_renderer import escape_ffmpeg_path
 from src.web.logger_stream import update_streamer_status, update_pipeline_progress
+from src.monitor import telemetry
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +64,122 @@ class LiveStreamWatcher:
 
         # Trigger cooldown to avoid duplicate triggers for the same event
         self.last_trigger_time = 0.0
-        self.cooldown_seconds = 90.0
+        self.cooldown_seconds = float(LIVE_TRIGGER_COOLDOWN_S)
+        self._keyword_hits: deque = deque()  # timestamps of chat messages containing a hype keyword
+
+        # Telemetry (for the /telemetry page)
+        self._stream_info: Dict[str, Any] = {}
+        self._chat_connected = False
+        self._chat_feed: deque = deque(maxlen=80)          # (ts, user, text, keyword?)
+        self._chatters: Dict[str, float] = {}              # user -> last seen
+        self._chat_total = 0
+        self._series: deque = deque(maxlen=900)            # 2 s samples -> 30 min
+        self._trigger_count = 0
+        self._last_trigger_ctx: Dict[str, Any] = {}
+        self._live_since: Optional[float] = None
+        self._last_live_check: Optional[float] = None
+
+    # ==========================================
+    # Telemetry
+    # ==========================================
+
+    def _rates(self, now: float) -> Dict[str, float]:
+        recent_5s = sum(1 for t in self.chat_messages_timestamps if t >= now - 5.0)
+        mps = recent_5s / 5.0
+        return {"mps": mps, "recent_5s": recent_5s,
+                "ratio": mps / max(0.1, self.chat_baseline_mps)}
+
+    async def _sample_telemetry(self) -> None:
+        """A cheap 2-second sample of the hype engine (30 min history) for the live charts."""
+        while self.is_running:
+            try:
+                now = time.time()
+                if self._is_channel_live:
+                    r = self._rates(now)
+                    while self._keyword_hits and self._keyword_hits[0] < now - 5.0:
+                        self._keyword_hits.popleft()
+                    self._series.append({
+                        "t": round(now, 1),
+                        "mps": round(r["mps"], 2),
+                        "baseline": round(self.chat_baseline_mps, 2),
+                        "ratio": round(r["ratio"], 2),
+                        "kw": len(self._keyword_hits),
+                        "db": round(self._last_peak_db, 1) if getattr(self, "_last_peak_db", None) is not None else None,
+                        "trig": 1 if now - self.last_trigger_time < 2.0 else 0,
+                    })
+            except Exception:
+                pass
+            await asyncio.sleep(2.0 if self._is_channel_live else 10.0)
+
+    def telemetry_snapshot(self, series_seconds: int = 1800) -> Dict[str, Any]:
+        now = time.time()
+        chunks = sorted(glob.glob(str(self.buffer_path / "chunk_*.ts")), key=os.path.getmtime)
+        newest_age = None
+        if chunks:
+            try:
+                newest_age = round(now - os.path.getmtime(chunks[-1]), 1)
+            except OSError:
+                newest_age = None
+        stream_alive = bool(self._stream_proc and self._stream_proc.poll() is None)
+        ffmpeg_alive = bool(self._ffmpeg_proc and self._ffmpeg_proc.poll() is None)
+        r = self._rates(now)
+        kw_5s = sum(1 for t in self._keyword_hits if t >= now - 5.0)
+        cooldown_left = max(0.0, self.cooldown_seconds - (now - self.last_trigger_time)) if self.last_trigger_time else 0.0
+        warm = getattr(self, "_chat_first_seen", None)
+        warmed_up = bool(warm and (min(BASELINE_WINDOW_S, now - warm) - BASELINE_EXCLUDE_S) >= BASELINE_WARMUP_S)
+        cutoff = now - series_seconds
+        tokens = []
+        try:
+            tokens = self._extract_chat_features().get("top_tokens", [])[:12]
+        except Exception:
+            tokens = []
+        return {
+            "channel_id": self.channel_id,
+            "platform": self.platform,
+            "url": self._get_live_url(),
+            "is_live": bool(self._is_channel_live),
+            "live_since": self._live_since,
+            "last_live_check": self._last_live_check,
+            "stream": dict(self._stream_info),
+            "recording": {
+                "stream_process": stream_alive,
+                "segmenter_process": ffmpeg_alive,
+                "chunks": len(chunks),
+                "buffer_seconds": len(chunks) * 10,
+                "buffer_capacity_seconds": 240,
+                "newest_chunk_age": newest_age,
+                "healthy": bool(self._is_channel_live and stream_alive and ffmpeg_alive
+                                and newest_age is not None and newest_age < 30),
+            },
+            "chat": {
+                "connected": self._chat_connected if self.platform == "twitch" else None,
+                "supported": self.platform == "twitch",
+                "total_messages": self._chat_total,
+                "active_chatters_5m": sum(1 for t in self._chatters.values() if t >= now - 300),
+                "feed": [{"t": round(t, 1), "user": u, "text": m, "keyword": k} for t, u, m, k in list(self._chat_feed)[-40:]],
+                "top_tokens": tokens,
+            },
+            "engine": {
+                "mps": round(r["mps"], 2),
+                "baseline": round(self.chat_baseline_mps, 2),
+                "ratio": round(r["ratio"], 2),
+                "recent_5s": r["recent_5s"],
+                "warmed_up": warmed_up,
+                "spike_multiplier": float(self.spike_multiplier),
+                "keyword_hits_5s": kw_5s,
+                "keyword_min_hits": LIVE_KEYWORD_MIN_HITS,
+                "keyword_min_ratio": LIVE_KEYWORD_MIN_RATIO,
+                "keywords": self.hype_keywords,
+                "cooldown_seconds": self.cooldown_seconds,
+                "cooldown_left": round(cooldown_left, 1),
+                "last_trigger_at": self.last_trigger_time or None,
+                "last_trigger": self._last_trigger_ctx,
+                "triggers_this_session": self._trigger_count,
+                "audio_db": getattr(self, "_last_peak_db", None),
+                "audio_threshold_db": AUDIO_PEAK_DB_THRESHOLD,
+            },
+            "series": [p for p in self._series if p["t"] >= cutoff],
+        }
 
     def _get_live_url(self) -> str:
         """Resolve correct live stream URL for platform (handles YouTube handles with @)."""
@@ -84,7 +203,11 @@ class LiveStreamWatcher:
                         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
                     }
                     payload = {
-                        "query": f'query {{ user(login: "{self.channel_id.lower()}") {{ stream {{ id type title game {{ name }} }} }} }}'
+                        "query": (
+                            f'query {{ user(login: "{self.channel_id.lower()}") {{ displayName profileImageURL(width: 70) '
+                            f'stream {{ id type title viewersCount createdAt previewImageURL(width: 640, height: 360) '
+                            f'game {{ name boxArtURL(width: 72, height: 96) }} }} }} }}'
+                        )
                     }
                     async with session.post("https://gql.twitch.tv/gql", json=payload, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
                         if resp.status == 200:
@@ -96,6 +219,19 @@ class LiveStreamWatcher:
                                 if is_live and stream:
                                     self._stream_title = stream.get("title") or ""
                                     self._stream_category = (stream.get("game") or {}).get("name") or ""
+                                game = (stream or {}).get("game") or {}
+                                self._stream_info = {
+                                    "display_name": user_data.get("displayName"),
+                                    "avatar": user_data.get("profileImageURL"),
+                                    "title": (stream or {}).get("title"),
+                                    "category": game.get("name"),
+                                    "category_art": game.get("boxArtURL"),
+                                    "viewers": (stream or {}).get("viewersCount"),
+                                    "started_at": (stream or {}).get("createdAt"),
+                                    "preview": (stream or {}).get("previewImageURL"),
+                                    "stream_id": (stream or {}).get("id"),
+                                    "updated": time.time(),
+                                }
                                 return is_live
             except Exception as e:
                 logger.debug("Fast Twitch live check failed for %s (%s), falling back...", self.channel_id, e)
@@ -169,11 +305,18 @@ class LiveStreamWatcher:
 
         chat_task = asyncio.create_task(self._listen_to_chat())
         audio_task = asyncio.create_task(self._monitor_audio_peaks())
+        sample_task = asyncio.create_task(self._sample_telemetry())
+        telemetry.register_watcher(self)
 
         try:
             while self.is_running:
                 is_live = await self.is_channel_live()
+                if is_live and not self._is_channel_live:
+                    self._live_since = time.time()
+                elif not is_live:
+                    self._live_since = None
                 self._is_channel_live = is_live
+                self._last_live_check = time.time()
                 chunks = glob.glob(str(self.buffer_path / "chunk_*.ts"))
                 recent_5s = sum(1 for t in self.chat_messages_timestamps if t >= time.time() - 5.0)
                 update_streamer_status(
@@ -197,6 +340,8 @@ class LiveStreamWatcher:
         finally:
             chat_task.cancel()
             audio_task.cancel()
+            sample_task.cancel()
+            telemetry.unregister_watcher(self)
             await self.stop_pipeline()
 
     async def stop_pipeline(self) -> None:
@@ -235,6 +380,7 @@ class LiveStreamWatcher:
                 await writer.drain()
 
                 logger.info("Connected to Twitch IRC for channel #%s", self.channel_id)
+                self._chat_connected = True
 
                 while self.is_running:
                     line = await reader.readline()
@@ -248,14 +394,16 @@ class LiveStreamWatcher:
                         continue
 
                     if "PRIVMSG" in decoded:
-                        msg_body = decoded.split("PRIVMSG", 1)[1]
+                        prefix, msg_body = decoded.split("PRIVMSG", 1)
+                        user = prefix.lstrip(":").split("!", 1)[0].strip() or None
                         if ":" in msg_body:
                             text = msg_body.split(":", 1)[1].strip()
-                            await self._on_chat_message(text)
+                            await self._on_chat_message(text, user=user)
 
             except asyncio.CancelledError:
                 break
             except Exception as e:
+                self._chat_connected = False
                 logger.warning("Twitch IRC connection drop for %s: %s. Reconnecting in 10s...", self.channel_id, e)
                 await asyncio.sleep(10)
 
@@ -299,7 +447,7 @@ class LiveStreamWatcher:
             "total_messages_90s": len(recent),
         }
 
-    async def _on_chat_message(self, message: str) -> None:
+    async def _on_chat_message(self, message: str, user: Optional[str] = None) -> None:
         """Record message and check for hype velocity or keyword spikes."""
         # Only process chat hype if the streamer is actually live broadcasting
         if not getattr(self, "_is_channel_live", False):
@@ -347,31 +495,57 @@ class LiveStreamWatcher:
                     keyword_hit = True
                     break
 
+        self._chat_total += 1
+        if user:
+            self._chatters[user] = now
+            if len(self._chatters) > 5000:
+                cutoff = now - 300
+                self._chatters = {u: t for u, t in self._chatters.items() if t >= cutoff}
+        self._chat_feed.append((now, user, message[:200], keyword_hit))
+        if keyword_hit:
+            self._keyword_hits.append(now)
+        while self._keyword_hits and self._keyword_hits[0] < now - 5.0:
+            self._keyword_hits.popleft()
+        ratio = current_5s_mps / max(0.1, self.chat_baseline_mps)
+
         velocity_spike = warmed_up and current_5s_mps >= (self.chat_baseline_mps * self.spike_multiplier) and recent_5s >= 10
 
-        # Require meaningful chat velocity for keyword triggers to avoid low-activity false triggers
-        should_trigger = velocity_spike or (keyword_hit and recent_5s >= 6)
+        # A keyword alone is not a moment: "W" / "LMAO" appear all the time. Require several
+        # keyword messages within 5s AND chat running faster than its normal pace.
+        keyword_burst = (
+            warmed_up
+            and len(self._keyword_hits) >= LIVE_KEYWORD_MIN_HITS
+            and ratio >= LIVE_KEYWORD_MIN_RATIO
+            and recent_5s >= 6
+        )
+        should_trigger = velocity_spike or keyword_burst
 
-        # Enforce minimum cooldown of 90s between live triggers to let previous pipeline finish
-        cooldown = max(90.0, getattr(self, "cooldown_seconds", 60.0))
+        cooldown = max(60.0, float(getattr(self, "cooldown_seconds", LIVE_TRIGGER_COOLDOWN_S)))
         if should_trigger and (now - self.last_trigger_time > cooldown):
             trigger_context = {
                 "type": "chat_spike" if velocity_spike else "keyword_hit",
                 "mps_recent": round(current_5s_mps, 2),
                 "mps_baseline": round(self.chat_baseline_mps, 2),
-                "ratio": round(current_5s_mps / max(0.1, self.chat_baseline_mps), 2),
+                "ratio": round(ratio, 2),
+                "keyword_hits_5s": len(self._keyword_hits),
                 "recent_5s_count": recent_5s,
                 "keyword": keyword_hit,
                 "t_trigger": now,
             }
+            trigger_context["moment_id"] = f"{self.channel_id.lower()}:{int(now)}"
+            self._trigger_count += 1
+            self._last_trigger_ctx = dict(trigger_context)
+            telemetry.moment_event(trigger_context["moment_id"], "triggered", self.channel_id,
+                                   note=f"{trigger_context['type']} {ratio:.1f}x", trigger=dict(trigger_context))
             chat_features = self._extract_chat_features()
             logger.info(
-                "Hype Triggered on %s! (Velocity: %.2f MPS vs baseline %.2f MPS | Keyword: %s)",
-                self.channel_id, current_5s_mps, self.chat_baseline_mps, keyword_hit
+                "Hype Triggered on %s! (%s | Velocity: %.2f MPS vs baseline %.2f MPS = %.1fx | keyword msgs in 5s: %d)",
+                self.channel_id, trigger_context["type"], current_5s_mps, self.chat_baseline_mps, ratio,
+                len(self._keyword_hits),
             )
             self.last_trigger_time = now
             asyncio.create_task(self._handle_hype_event(
-                reason="chat_spike",
+                reason=trigger_context["type"],
                 trigger_context=trigger_context,
                 chat_features=chat_features
             ))
@@ -412,6 +586,11 @@ class LiveStreamWatcher:
                         "threshold_db": AUDIO_PEAK_DB_THRESHOLD,
                         "t_trigger": now,
                     }
+                    trigger_context["moment_id"] = f"{self.channel_id.lower()}:{int(now)}"
+                    self._trigger_count += 1
+                    self._last_trigger_ctx = dict(trigger_context)
+                    telemetry.moment_event(trigger_context["moment_id"], "triggered", self.channel_id,
+                                           note=f"audio peak {peak_db:.1f} dB", trigger=dict(trigger_context))
                     chat_features = self._extract_chat_features()
                     asyncio.create_task(self._handle_hype_event(
                         reason=f"audio_peak_{peak_db:.1f}dB",
@@ -459,12 +638,15 @@ class LiveStreamWatcher:
         """Wait 20s for moment to conclude, concatenate surrounding 75s of .ts chunks into an MP4."""
         logger.info("🔥 Hype moment triggered on %s (%s). Waiting 20 seconds for conclusion...", self.channel_id, reason)
         update_pipeline_progress("triggered", channel_id=self.channel_id, step=1, step_name=f"Hype Moment Triggered ({reason})! Buffering event...", trigger_reason=reason)
+        moment_id = (trigger_context or {}).get("moment_id")
+        telemetry.moment_event(moment_id, "buffering", self.channel_id, note="waiting 20 s for the moment to finish")
         await asyncio.sleep(20)
 
         update_pipeline_progress("processing", channel_id=self.channel_id, step=2, step_name="Slicing and concatenating 75s ring buffer chunks...", trigger_reason=reason)
         chunks = sorted(glob.glob(str(self.buffer_path / "chunk_*.ts")), key=os.path.getmtime)
         if len(chunks) < 3:
             logger.warning("Not enough ring-buffer chunks on %s to create clip (chunks: %d).", self.channel_id, len(chunks))
+            telemetry.moment_event(moment_id, "error", self.channel_id, note=f"only {len(chunks)} buffer chunks recorded")
             update_pipeline_progress("idle", channel_id=self.channel_id, step=0, step_name="Idle - Awaiting Stream Moments")
             return
 
@@ -497,6 +679,7 @@ class LiveStreamWatcher:
 
         if target_mp4.exists() and proc.returncode == 0:
             logger.info("Successfully sliced live highlight: %s (%s)", target_mp4, reason)
+            telemetry.moment_event(moment_id, "sliced", self.channel_id, note=f"{len(selected_chunks) * 10} s clip cut from the buffer")
             if self.on_viral_moment_detected:
                 metadata = {
                     "source_type": "live",
@@ -508,11 +691,13 @@ class LiveStreamWatcher:
                     "stream_title": getattr(self, "_stream_title", ""),
                     "stream_category": getattr(self, "_stream_category", ""),
                     "timestamp": timestamp_id,
+                    "moment_id": moment_id,
                 }
                 asyncio.create_task(self.on_viral_moment_detected(str(target_mp4), metadata))
         else:
             err_msg = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else 'Unknown FFmpeg error'
             logger.error("FFmpeg concat failed for %s (exit code %d): %s", self.channel_id, proc.returncode, err_msg)
+            telemetry.moment_event(moment_id, "error", self.channel_id, note=f"cutting the clip failed (ffmpeg {proc.returncode})")
             update_pipeline_progress("error", channel_id=self.channel_id, error=f"Ring buffer concat failed (exit code {proc.returncode})")
             async def _reset_err():
                 await asyncio.sleep(10)

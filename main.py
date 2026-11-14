@@ -11,6 +11,7 @@ import json
 import logging
 import signal
 import sys
+import shutil
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -55,6 +56,7 @@ from src.intelligence.sentences import SentenceChunker
 from src.monitor.live_watcher import LiveStreamWatcher
 from src.monitor.vod_watcher import VODWatcher
 from src.monitor.storage_gc import run_storage_gc_loop
+from src.monitor import telemetry
 from src.publisher.scheduler import DripScheduler
 from src.web.server import WebUIServer
 from src.web.logger_stream import update_pipeline_progress, WebLogHandler
@@ -94,6 +96,8 @@ class AutoClipEngine:
         from src.notify import alerts
         alerts.configure(self.bot)  # problems (blocked downloads, quota, failed uploads, disk) -> Telegram
         self.transcriber = Transcriber()  # follows WHISPER_MODEL setting
+        # Live moments: smaller model + greedy decoding (several x faster on a small VPS)
+        self.live_transcriber = Transcriber(model_setting="LIVE_WHISPER_MODEL", beam_size=1)
         self.scorer = ViralScorer()
         self.calibrated_judge = CalibratedJudge()
         self.renderer = FFmpegRenderer()
@@ -108,6 +112,12 @@ class AutoClipEngine:
         self.running = False
         concurrency = max(1, MAX_CONCURRENT_JOBS)
         self._clip_semaphore = asyncio.Semaphore(concurrency)
+        self._live_pending: Dict[str, Any] = {}       # channel -> (queued file, metadata, queued_at)
+        self._live_wakeup = asyncio.Event()
+        self._live_worker_task = None
+        self._live_busy = False
+        self._live_current: Optional[Dict[str, Any]] = None
+        telemetry.set_queue_provider(self._live_queue_snapshot)
         logger.info("Pipeline concurrency limit initialized: %d parallel job(s)", concurrency)
 
     @staticmethod
@@ -147,6 +157,15 @@ class AutoClipEngine:
             saved_model = await get_system_setting("whisper_model")
             if saved_model:
                 s.WHISPER_MODEL = saved_model
+            from config.settings import LIVE_QUEUE_DIR
+            leftovers = [f for f in Path(LIVE_QUEUE_DIR).glob("*.mp4")]
+            for f in leftovers:
+                f.unlink(missing_ok=True)
+            if leftovers:
+                logger.info("Removed %d stale live moment(s) left from the previous run.", len(leftovers))
+            saved_live = await get_system_setting("live_whisper_model")
+            if saved_live:
+                s.LIVE_WHISPER_MODEL = saved_live
         except Exception as e:
             logger.debug("No saved whisper_model setting: %s", e)
         logger.info("AutoClipDaemon initialized successfully.")
@@ -365,18 +384,103 @@ class AutoClipEngine:
                 pass
             update_pipeline_progress("error", channel_id="manual", error=str(e))
 
+    # ------------------------------------------------------------------
+    # Live moment queue
+    #   * the highlight is MOVED out of tmp/ into LIVE_QUEUE_DIR at once, so storage GC can
+    #     never delete it while it waits or while it's being transcribed;
+    #   * at most one waiting moment per streamer - a newer moment replaces the older one;
+    #   * moments older than LIVE_MAX_MOMENT_AGE_S are dropped instead of processed late.
+    # ------------------------------------------------------------------
     async def _on_live_moment(self, video_path: str, metadata: Dict[str, Any]) -> None:
         """Handler triggered when LiveStreamWatcher detects a chat velocity or audio peak spike."""
+        from config.settings import LIVE_QUEUE_DIR
+        channel_id = metadata.get("channel_id", "unknown")
+        src = Path(video_path)
+        moment_id = metadata.get("moment_id")
+        if not src.exists():
+            logger.warning("Live highlight vanished before it could be queued: %s", video_path)
+            telemetry.moment_event(moment_id, "error", channel_id, note="clip file vanished before queueing")
+            return
+        claimed = Path(LIVE_QUEUE_DIR) / f"{channel_id}_{src.name}"
+        try:
+            shutil.move(str(src), str(claimed))
+        except Exception as e:
+            logger.error("Could not move live highlight into the queue (%s): %s", video_path, e)
+            telemetry.moment_event(moment_id, "error", channel_id, note=f"could not queue: {e}")
+            return
+
+        old = self._live_pending.pop(channel_id, None)
+        if old:
+            Path(old[0]).unlink(missing_ok=True)
+            logger.info("Newer moment on %s replaces the one still waiting (%s).", channel_id, Path(old[0]).name)
+            telemetry.moment_event(old[1].get("moment_id"), "replaced", channel_id,
+                                   note="a newer moment from this streamer arrived while it was waiting")
+        self._live_pending[channel_id] = (str(claimed), metadata, time.time())
+        busy = self._live_busy
+        logger.info("Live moment queued for %s%s.", channel_id, " (pipeline busy - waiting)" if busy else "")
+        telemetry.moment_event(moment_id, "queued", channel_id,
+                               note="waiting for the pipeline" if busy else "starting now")
+        self._live_wakeup.set()
+        if not self._live_worker_task or self._live_worker_task.done():
+            self._live_worker_task = asyncio.create_task(self._live_worker())
+
+    def _live_queue_snapshot(self) -> Dict[str, Any]:
+        from config.settings import LIVE_MAX_MOMENT_AGE_S
+        now = time.time()
+        waiting = [
+            {"channel_id": ch, "moment_id": meta.get("moment_id"),
+             "age_seconds": round(now - float(meta.get("timestamp") or queued_at)),
+             "queued_seconds": round(now - queued_at)}
+            for ch, (_p, meta, queued_at) in sorted(self._live_pending.items(), key=lambda kv: kv[1][2])
+        ]
+        current = dict(self._live_current) if self._live_current else None
+        if current:
+            current["running_seconds"] = round(now - current["started_at"])
+        return {"busy": self._live_busy, "current": current, "waiting": waiting,
+                "max_age_seconds": LIVE_MAX_MOMENT_AGE_S}
+
+    async def _live_worker(self) -> None:
+        """Processes queued live moments one at a time, oldest first, skipping stale ones."""
+        from config.settings import LIVE_MAX_MOMENT_AGE_S
+        while getattr(self, "running", True):
+            if not self._live_pending:
+                self._live_wakeup.clear()
+                try:
+                    await asyncio.wait_for(self._live_wakeup.wait(), timeout=300)
+                except asyncio.TimeoutError:
+                    continue
+                continue
+            channel_id = min(self._live_pending, key=lambda k: self._live_pending[k][2])
+            path, metadata, queued_at = self._live_pending.pop(channel_id)
+            age = time.time() - float(metadata.get("timestamp") or queued_at)
+            if age > LIVE_MAX_MOMENT_AGE_S:
+                logger.info("Dropping stale live moment for %s (%.0f s old > %.0f s).", channel_id, age, LIVE_MAX_MOMENT_AGE_S)
+                telemetry.moment_event(metadata.get("moment_id"), "dropped", channel_id,
+                                       note=f"too old to post ({age / 60:.0f} min > {LIVE_MAX_MOMENT_AGE_S / 60:.0f} min)")
+                Path(path).unlink(missing_ok=True)
+                continue
+            self._live_busy = True
+            self._live_current = {"channel_id": channel_id, "moment_id": metadata.get("moment_id"),
+                                  "started_at": time.time()}
+            try:
+                await self._process_live_moment(path, metadata)
+            except Exception as e:
+                logger.error("Live worker error for %s: %s", channel_id, e, exc_info=True)
+            finally:
+                self._live_busy = False
+                self._live_current = None
+                # Kept highlights are moved to SOURCES_DIR; anything left here is done with.
+                if not metadata.get("_keep_file"):
+                    Path(path).unlink(missing_ok=True)
+
+    async def _process_live_moment(self, video_path: str, metadata: Dict[str, Any]) -> None:
+        """Transcribe, judge, render and register one queued live moment."""
         channel_id = metadata.get("channel_id", "unknown")
         reason = metadata.get("trigger_reason", "hype")
 
-        # Serialized pipeline lock: Prevent multiple live channels from transcribing/rendering simultaneously
-        if self._clip_semaphore.locked():
-            logger.info("⏳ Processing pipeline is busy. Queueing live moment for %s...", channel_id)
-
         async with self._clip_semaphore:
             if not Path(video_path).exists():
-                logger.warning("Live highlight file no longer exists (skipped or already cleaned): %s", video_path)
+                logger.warning("Queued live highlight is missing: %s", video_path)
                 return
 
             logger.info("Processing live highlight for creator '%s': %s", channel_id, video_path)
@@ -390,7 +494,17 @@ class AutoClipEngine:
             )
 
             try:
-                transcription = await self.transcriber.transcribe(video_path)
+                moment_id = metadata.get("moment_id")
+                telemetry.moment_event(moment_id, "transcribing", channel_id,
+                                       note=f"Whisper '{self.live_transcriber.model_size}'")
+                t0 = time.time()
+                transcription = await self.live_transcriber.transcribe(video_path)
+                took = time.time() - t0
+                logger.info("Live transcription for %s took %.0f s (model: %s).", channel_id, took,
+                            self.live_transcriber.model_size)
+                telemetry.moment_event(moment_id, "judging", channel_id, note="Gemini is scoring the moment",
+                                       transcribe_seconds=round(took, 1),
+                                       transcript=(transcription.get("text") or "")[:400])
 
                 template_name = metadata.get("template_name")
                 if not template_name:
@@ -494,6 +608,8 @@ class AutoClipEngine:
                         rej_reason = f"Score {score_val} below threshold {min_score}"
 
                     logger.info("No candidates passed min_virality_score threshold (%d). Discarding (%s).", min_score, rej_reason)
+                    telemetry.moment_event(metadata.get("moment_id"), "rejected", channel_id, note=rej_reason,
+                                           score=score_val, min_score=min_score)
                     update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name=f"Rejected: {rej_reason}")
 
                     # Persist rejected live hype to DB for transparency & inspection
@@ -560,6 +676,9 @@ class AutoClipEngine:
                     return
 
                 logger.info("Selected viral candidate: '%s' (Score: %d/100, Mode: %s)", suggested_title, cand_score, PIPELINE_MODE)
+                telemetry.moment_event(metadata.get("moment_id"), "rendering", channel_id,
+                                       note=f"{template_name}, {clip_end - clip_start:.0f} s",
+                                       score=cand_score, min_score=min_score, title=suggested_title)
 
                 clip_dur = clip_end - clip_start
 
@@ -594,14 +713,13 @@ class AutoClipEngine:
                 import shutil
                 permanent_source_path = str(Path(SOURCES_DIR) / f"live_{channel_id}_{timestamp_id}_source.mp4")
                 try:
-                    if Path(video_path).exists():
-                        shutil.copy2(video_path, permanent_source_path)
-                        logger.info("Preserved permanent 16:9 raw source video to: %s", permanent_source_path)
-                    else:
-                        permanent_source_path = video_path
+                    # Move (not copy): the queued highlight IS the clip's source now - no extra disk/IO.
+                    shutil.move(video_path, permanent_source_path)
+                    logger.info("Kept 16:9 source footage at: %s", permanent_source_path)
                 except Exception as cp_err:
-                    logger.warning("Could not copy source footage to permanent storage: %s", cp_err)
+                    logger.warning("Could not move source footage to permanent storage: %s", cp_err)
                     permanent_source_path = video_path
+                    metadata["_keep_file"] = True  # the clip points at the queued file; don't delete it
 
                 await self.renderer.render_clip(
                     source_path=permanent_source_path,
@@ -649,6 +767,8 @@ class AutoClipEngine:
                     step_name=f"Viral Clip #{clip_id} Ready! Sent to Telegram.",
                     clip_id=clip_id,
                 )
+                telemetry.moment_event(metadata.get("moment_id"), "clip", channel_id, note=f"clip #{clip_id} is ready to review",
+                                       clip_id=clip_id, title=suggested_title)
 
                 # Broadcast clip_created event to real-time Web UI
                 from src.web.ws_manager import ws_manager
@@ -700,6 +820,7 @@ class AutoClipEngine:
             except Exception as e:
                 logger.error("Error processing live highlight: %s", e, exc_info=True)
                 update_pipeline_progress("error", channel_id=channel_id, error=str(e))
+                telemetry.moment_event(metadata.get("moment_id"), "error", channel_id, note=str(e)[:200])
 
     @staticmethod
     def _clip_options(metadata: Dict[str, Any], channel_record: Optional[Dict[str, Any]]) -> Dict[str, Any]:
