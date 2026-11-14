@@ -54,7 +54,19 @@ function WordListInput({ value = [], onChange, placeholder }) {
 }
 
 export default function CensorSettings({ value, onChange }) {
-  const cfg = value || {};
+  const cfg = value || {
+    enabled: true,
+    audio_mode: 'bleep',
+    bleep_volume: 0.35,
+    bleep_frequency: 1000,
+    caption_style: 'vowels',
+    clean_titles: true,
+    censor_mild: false,
+    custom_words: [],
+    never_censor_words: [],
+    mask_in_review: true,
+    send_to_review: true,
+  };
   const set = (patch) => onChange({ ...cfg, ...patch });
 
   const [sfxList, setSfxList] = useState([]);
@@ -151,7 +163,6 @@ export default function CensorSettings({ value, onChange }) {
     }
   };
 
-  if (!value) return null;
   const enabled = cfg.enabled !== false;
 
   return (
