@@ -1,24 +1,64 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Settings as SettingsIcon, Key, Cpu, Sliders, Plus, Trash2, CheckCircle2, AlertCircle, ShieldCheck, Zap, Copy, Upload, Check,
+  Settings as SettingsIcon,
+  Key,
+  Cpu,
+  Sliders,
+  Plus,
+  Trash2,
+  CheckCircle2,
+  AlertCircle,
+  ShieldCheck,
+  Zap,
+  Copy,
+  Upload,
+  Check,
+  HardDrive,
+  Download,
+  VolumeX,
+  Sparkles,
+  Server,
+  Layers,
+  ArrowRight
 } from 'lucide-react';
 import axios from 'axios';
 import CensorSettings from './CensorSettings';
 import StorageAlerts from './StorageAlerts';
 import YouTubeDownloads from './YouTubeDownloads';
 import {
-  Page, Panel, Button, IconButton, Input, Select, Textarea, Field, Pill, Badge, Sheet, EmptyState, Notice,
+  Page,
+  Panel,
+  Button,
+  IconButton,
+  Input,
+  Select,
+  Textarea,
+  Field,
+  Pill,
+  Badge,
+  Sheet,
+  EmptyState,
+  Notice,
 } from './ui';
 
 const WHISPER_MODELS = [
-  { id: 'tiny', label: 'tiny — fastest, misses many swears' },
-  { id: 'base', label: 'base — fast' },
-  { id: 'small', label: 'small — recommended balance' },
-  { id: 'medium', label: 'medium — accurate, slower' },
-  { id: 'large-v3-turbo', label: 'large-v3-turbo — most accurate' },
+  { id: 'tiny', label: 'tiny — fastest, misses many swears', badge: 'Ultra Fast' },
+  { id: 'base', label: 'base — fast, default for live clips', badge: 'Standard' },
+  { id: 'small', label: 'small — recommended balance (Best for 4-core VPS)', badge: 'Recommended' },
+  { id: 'medium', label: 'medium — highly accurate, slang aware', badge: 'High Quality' },
+  { id: 'large-v3-turbo', label: 'large-v3-turbo — maximum accuracy', badge: 'Studio Max' },
+];
+
+const SETTINGS_TABS = [
+  { id: 'ai', label: 'AI & Scoring', icon: Sparkles, desc: 'Gemini API keys, models & virality thresholds' },
+  { id: 'transcription', label: 'Whisper Models', icon: Cpu, desc: 'Speech-to-text models for VODs and live clips' },
+  { id: 'downloads', label: 'YouTube & Engine', icon: Download, desc: 'yt-dlp health, cookies.txt & bot bypass' },
+  { id: 'censor', label: 'Profanity Censor', icon: VolumeX, desc: 'Word lists, bleep audio & asterisks' },
+  { id: 'storage', label: 'Storage & Alerts', icon: HardDrive, desc: 'Disk usage, Telegram alerts & retention' },
 ];
 
 export default function Settings() {
+  const [activeTab, setActiveTab] = useState('ai');
   const [keys, setKeys] = useState([]);
   const [newKey, setNewKey] = useState('');
   const [newLabel, setNewLabel] = useState('');
@@ -67,7 +107,6 @@ export default function Settings() {
     setNewKey('');
     setNewLabel('');
 
-    // Auto-save to DB immediately
     try {
       await axios.post('/api/settings', {
         gemini_api_keys: updated,
@@ -107,7 +146,7 @@ export default function Settings() {
       });
       setTestResults((prev) => ({
         ...prev,
-        [keyString]: res.data.valid ? { ok: true, msg: 'Valid & Active' } : { ok: false, msg: res.data.error || 'Failed' }
+        [keyString]: res.data.valid ? { ok: true, msg: 'Active & Verified' } : { ok: false, msg: res.data.error || 'Failed' }
       }));
     } catch (err) {
       setTestResults((prev) => ({
@@ -151,7 +190,6 @@ export default function Settings() {
     if (!bulkInput.trim()) return;
     let parsedList = [];
     try {
-      // 1. Try parsing JSON format
       const parsed = JSON.parse(bulkInput.trim());
       if (Array.isArray(parsed)) {
         parsedList = parsed.map((item, idx) => {
@@ -162,7 +200,6 @@ export default function Settings() {
         });
       }
     } catch (e) {
-      // 2. Fallback to line-by-line or comma-separated
       const lines = bulkInput.split(/[\n,]+/);
       lines.forEach((line, idx) => {
         const trimmed = line.trim();
@@ -182,7 +219,6 @@ export default function Settings() {
       return;
     }
 
-    // Merge without duplicates by key
     const existingKeyStrings = new Set(keys.map((k) => (typeof k === 'object' ? k.key : k)));
     const merged = [...keys];
     parsedList.forEach((item) => {
@@ -196,7 +232,6 @@ export default function Settings() {
     setBulkInput('');
     setBulkModalOpen(false);
 
-    // Auto-save merged pool to DB immediately
     try {
       await axios.post('/api/settings', {
         gemini_api_keys: merged,
@@ -211,130 +246,299 @@ export default function Settings() {
   };
 
   const saveButton = (
-    <Button variant="primary" icon={saveSuccess ? Check : ShieldCheck} loading={saving} onClick={handleSave}>
-      {saveSuccess ? 'Saved & applied' : 'Save changes'}
+    <Button variant="primary" icon={saveSuccess ? Check : ShieldCheck} loading={saving} onClick={handleSave} className="shadow-lg shadow-accent/20">
+      {saveSuccess ? 'Saved & Applied' : 'Save Changes'}
     </Button>
   );
 
   return (
-    <Page title="Settings" icon={SettingsIcon} subtitle="AI keys and models, downloads, storage, alerts and profanity handling."
-      actions={<div className="hidden md:block">{saveButton}</div>} className="pb-28 md:pb-8">
+    <Page
+      title="Settings & System Configuration"
+      icon={SettingsIcon}
+      subtitle="Manage AI intelligence models, Gemini API pools, Whisper transcription, YouTube downloads, and profanity handling."
+      actions={<div className="hidden md:block">{saveButton}</div>}
+      className="pb-28 md:pb-12"
+    >
       {banner && <Notice tone={banner.tone} icon={AlertCircle}>{banner.text}</Notice>}
 
-      <Panel title="Gemini API key pool" icon={Key}
-        right={(
-          <>
-            <Pill tone={keys.length ? 'good' : 'warn'}>{keys.length} {keys.length === 1 ? 'key' : 'keys'}</Pill>
-            <Button size="sm" icon={copiedPool ? Check : Copy} onClick={handleCopyAllKeys} title="Copy the whole pool to move it to another server">{copiedPool ? 'Copied' : 'Copy all'}</Button>
-            <Button size="sm" icon={Upload} onClick={() => setBulkModalOpen(true)}>Import</Button>
-          </>
-        )}>
-        <p className="text-xs text-muted mb-3 leading-relaxed">
-          If a key hits a <b className="text-slate-300">429 quota</b> error, AutoClip rotates to the next one. For truly independent quotas, create each key from a different Google account.
-        </p>
-        <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2">
-          <Input value={newLabel} onChange={(e) => setNewLabel(e.target.value)} placeholder="Label (optional)" aria-label="Key label" />
-          <Input mono value={newKey} onChange={(e) => setNewKey(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
-            placeholder="Paste a Gemini API key" aria-label="API key" autoComplete="off" spellCheck={false} />
-          <Button icon={Plus} onClick={handleAddKey} disabled={!newKey.trim()}>Add key</Button>
-        </div>
-
-        <div className="space-y-2 mt-3">
-          {keys.length === 0 ? (
-            <EmptyState icon={Key} title="No keys yet" text="Add at least one key to enable AI clip scoring." className="!py-6 border border-dashed border-line rounded-xl" />
-          ) : keys.map((item, idx) => {
-            const kStr = typeof item === 'object' ? item.key : item;
-            const kLabel = typeof item === 'object' ? item.label : `Account ${idx + 1}`;
-            const kStatus = typeof item === 'object' ? item.status : null;
-            const result = testResults[kStr];
-            return (
-              <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3 rounded-xl bg-canvas border border-line">
-                <div className="flex flex-wrap items-center gap-2 min-w-0">
-                  <Badge tone="accent">{kLabel}</Badge>
-                  <span className="font-mono text-[11.5px] text-slate-300 truncate">{kStr.slice(0, 8)}••••••••{kStr.slice(-5)}</span>
-                  {result ? (
-                    <Pill tone={result.ok ? 'good' : 'bad'}>{result.ok ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}{result.msg}</Pill>
-                  ) : kStatus === 'Quota Exhausted' ? (
-                    <Pill tone="warn">Quota exhausted (429)</Pill>
-                  ) : (
-                    <Pill tone="good">Active</Pill>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5 self-end sm:self-auto">
-                  {confirmDeleteIdx === idx ? (
-                    <>
-                      <span className="text-[11.5px] text-bad">Delete this key?</span>
-                      <Button size="sm" variant="danger" onClick={() => handleRemoveKey(idx)}>Delete</Button>
-                      <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteIdx(null)}>Cancel</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button size="sm" icon={Zap} loading={testingKey === idx} onClick={() => handleTestKey(kStr, idx)}>Test</Button>
-                      <IconButton icon={Trash2} label="Delete key" size="sm" onClick={() => setConfirmDeleteIdx(idx)} className="hover:!text-bad" />
-                    </>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </Panel>
-
-      <div className="grid gap-3 lg:grid-cols-2 items-start">
-        <div className="space-y-3 min-w-0">
-          <Panel title="AI models" icon={Cpu} className="space-y-3.5">
-            <Field label="Scoring model (Gemini)" hint="Used for hook scoring and titles.">
-              <Select value={model} onChange={(e) => setModel(e.target.value)} className="font-mono !text-[13px]">
-                <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (recommended - saves quota)</option>
-                <option value="gemini-flash-latest">gemini-flash-latest</option>
-                <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-              </Select>
-            </Field>
-            <Field label="Transcription - Quick Clip & VODs (Whisper)" hint="Bigger models catch swear words and fast speech far more reliably.">
-              <Select value={whisperModel} onChange={(e) => setWhisperModel(e.target.value)}>
-                {WHISPER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </Select>
-            </Field>
-            <Field label="Transcription - live clips (Whisper)" hint="Live moments arrive every few minutes. On a small VPS keep this on base or tiny so it keeps up.">
-              <Select value={liveWhisperModel} onChange={(e) => setLiveWhisperModel(e.target.value)}>
-                {WHISPER_MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </Select>
-            </Field>
-          </Panel>
-
-          <Panel title="Minimum virality score" icon={Sliders} right={<Badge tone="good">{minScore}/100</Badge>}>
-            <p className="text-xs text-muted mb-3">Clips scoring below this are discarded automatically so the review queue stays high quality.</p>
-            <input type="range" min="50" max="95" step="5" value={minScore} onChange={(e) => setMinScore(Number(e.target.value))}
-              aria-label="Minimum virality score" className="w-full accent-[#3987e5] cursor-pointer h-6" />
-            <div className="flex justify-between text-[10.5px] text-faint tabular-nums"><span>50 · more clips</span><span>95 · only the best</span></div>
-          </Panel>
-        </div>
-
-        <div className="space-y-3 min-w-0">
-          <YouTubeDownloads />
-          <StorageAlerts />
-        </div>
+      {/* Modern Studio Category Tabs */}
+      <div className="flex gap-2 overflow-x-auto pb-1 border-b border-line mb-6 no-scrollbar">
+        {SETTINGS_TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs whitespace-nowrap transition-all border ${
+                isActive
+                  ? 'bg-[#181C26] text-accent border-accent/40 shadow-md shadow-accent/10'
+                  : 'text-muted hover:text-ink hover:bg-white/[0.03] border-transparent'
+              }`}
+            >
+              <Icon size={14} className={isActive ? 'text-accent' : 'text-faint'} />
+              <span>{tab.label}</span>
+              {tab.id === 'ai' && keys.length > 0 && (
+                <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-accent/15 text-accent border border-accent/30 font-bold">
+                  {keys.length}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
-      <CensorSettings value={censor} onChange={setCensor} />
+      {/* TAB 1: AI & SCORING */}
+      {activeTab === 'ai' && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Gemini Key Pool Panel */}
+          <Panel
+            title="Gemini API Key Pool"
+            icon={Key}
+            right={(
+              <div className="flex items-center gap-1.5">
+                <Pill tone={keys.length ? 'good' : 'warn'}>
+                  {keys.length} {keys.length === 1 ? 'Key Configured' : 'Keys in Pool'}
+                </Pill>
+                <Button size="sm" icon={copiedPool ? Check : Copy} onClick={handleCopyAllKeys} title="Copy the whole pool to move it to another server">
+                  {copiedPool ? 'Copied' : 'Export'}
+                </Button>
+                <Button size="sm" icon={Upload} onClick={() => setBulkModalOpen(true)}>
+                  Import
+                </Button>
+              </div>
+            )}
+          >
+            <div className="bg-canvas border border-line rounded-xl p-3.5 mb-4 text-xs text-muted leading-relaxed flex items-start gap-3">
+              <Zap size={16} className="text-accent shrink-0 mt-0.5" />
+              <div>
+                AutoClip automatically rotates across keys when hitting a <strong className="text-slate-200">429 rate limit</strong>. Add keys from multiple Google Cloud / AI Studio projects to achieve 100% uninterrupted autonomous evaluation.
+              </div>
+            </div>
 
-      {/* Phone: save bar floats above the tab bar */}
+            {/* Input Row */}
+            <div className="grid sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] gap-2.5 mb-4">
+              <Input
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+                placeholder="Account Label (e.g. Work, Personal 1)"
+                aria-label="Key label"
+              />
+              <Input
+                mono
+                value={newKey}
+                onChange={(e) => setNewKey(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleAddKey()}
+                placeholder="AIzaSy... (Paste Gemini API key)"
+                aria-label="API key"
+                autoComplete="off"
+                spellCheck={false}
+              />
+              <Button icon={Plus} onClick={handleAddKey} disabled={!newKey.trim()} variant="primary">
+                Add Key
+              </Button>
+            </div>
+
+            {/* Key List */}
+            <div className="space-y-2">
+              {keys.length === 0 ? (
+                <EmptyState
+                  icon={Key}
+                  title="No API keys registered"
+                  text="Add at least one Gemini key above or in config/.env to activate AI moment scoring and auto title generation."
+                  className="!py-8 border border-dashed border-line rounded-xl"
+                />
+              ) : (
+                keys.map((item, idx) => {
+                  const kStr = typeof item === 'object' ? item.key : item;
+                  const kLabel = typeof item === 'object' ? item.label : `Account ${idx + 1}`;
+                  const kStatus = typeof item === 'object' ? item.status : null;
+                  const result = testResults[kStr];
+                  return (
+                    <div key={idx} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 p-3.5 rounded-xl bg-[#0E1118] border border-line hover:border-white/10 transition-colors">
+                      <div className="flex flex-wrap items-center gap-2.5 min-w-0">
+                        <Badge tone="accent">{kLabel}</Badge>
+                        <span className="font-mono text-xs text-slate-300">
+                          {kStr.slice(0, 8)}••••••••{kStr.slice(-6)}
+                        </span>
+                        {result ? (
+                          <Pill tone={result.ok ? 'good' : 'bad'}>
+                            {result.ok ? <CheckCircle2 size={11} /> : <AlertCircle size={11} />}
+                            {result.msg}
+                          </Pill>
+                        ) : kStatus === 'Quota Exhausted' ? (
+                          <Pill tone="warn">429 Rate Limited</Pill>
+                        ) : (
+                          <Pill tone="good">Ready</Pill>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 self-end sm:self-auto">
+                        {confirmDeleteIdx === idx ? (
+                          <>
+                            <span className="text-xs text-bad font-bold">Confirm delete?</span>
+                            <Button size="sm" variant="danger" onClick={() => handleRemoveKey(idx)}>
+                              Delete
+                            </Button>
+                            <Button size="sm" variant="ghost" onClick={() => setConfirmDeleteIdx(null)}>
+                              Cancel
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            <Button size="sm" icon={Zap} loading={testingKey === idx} onClick={() => handleTestKey(kStr, idx)}>
+                              Test
+                            </Button>
+                            <IconButton icon={Trash2} label="Delete key" size="sm" onClick={() => setConfirmDeleteIdx(idx)} className="hover:!text-bad" />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </Panel>
+
+          {/* Model and Virality Threshold Grid */}
+          <div className="grid md:grid-cols-2 gap-5">
+            <Panel title="Scoring Model" icon={Cpu} className="space-y-4">
+              <Field label="Gemini Evaluation Model" hint="Powers the CalibratedJudge prompt engine, hook cards, and virality scoring.">
+                <Select value={model} onChange={(e) => setModel(e.target.value)} className="font-mono !text-xs">
+                  <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Recommended - Ultra-fast & saves quota)</option>
+                  <option value="gemini-flash-latest">gemini-flash-latest (Deep reasoning)</option>
+                  <option value="gemini-2.5-flash">gemini-2.5-flash (Next-gen frontier)</option>
+                </Select>
+              </Field>
+              <div className="p-3 bg-canvas border border-line rounded-xl text-xs text-muted">
+                <span className="text-slate-200 font-bold">Recommended:</span> <code>gemini-flash-lite-latest</code> evaluates moments in under 1.2s and uses 4x less quota.
+              </div>
+            </Panel>
+
+            <Panel title="Minimum Virality Gate" icon={Sliders} right={<Badge tone="good">{minScore}/100</Badge>}>
+              <p className="text-xs text-muted mb-4">
+                Moments scored below this gate are automatically rejected and discarded, keeping your review station filled with viral hits only.
+              </p>
+              <input
+                type="range"
+                min="50"
+                max="95"
+                step="5"
+                value={minScore}
+                onChange={(e) => setMinScore(Number(e.target.value))}
+                aria-label="Minimum virality score"
+                className="w-full accent-accent cursor-pointer h-6 mb-2"
+              />
+              <div className="flex justify-between text-xs text-faint font-mono">
+                <span>50 · Relaxed (More clips)</span>
+                <span className="font-bold text-slate-300">70 · Balanced</span>
+                <span>95 · Strict (Only tier-1)</span>
+              </div>
+            </Panel>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: TRANSCRIPTION & WHISPER */}
+      {activeTab === 'transcription' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <Panel title="Whisper Speech-to-Text Engines" icon={Cpu} className="space-y-5">
+            <div className="bg-canvas border border-line rounded-xl p-4 text-xs text-muted flex items-start gap-3">
+              <Server size={18} className="text-accent shrink-0 mt-0.5" />
+              <div>
+                <span className="text-slate-200 font-bold block mb-1">Running on Oracle Ampere ARM (4 Cores / 24 GB RAM)</span>
+                Because you now have 24 GB of RAM and 4 physical cores, you can comfortably run <code>small</code> or <code>medium</code> Whisper models for near-perfect syllable snapping without running out of memory.
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5">
+              <Field
+                label="Quick Clip & Full VOD Model"
+                hint="Used when manually clipping from YouTube or processing entire livestream VODs."
+              >
+                <Select value={whisperModel} onChange={(e) => setWhisperModel(e.target.value)}>
+                  {WHISPER_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </Select>
+              </Field>
+
+              <Field
+                label="Real-Time Live Stream Model"
+                hint="Used for rolling 75-second hype moments sliced during live Twitch/YouTube streams."
+              >
+                <Select value={liveWhisperModel} onChange={(e) => setLiveWhisperModel(e.target.value)}>
+                  {WHISPER_MODELS.map((m) => (
+                    <option key={m.id} value={m.id}>{m.label}</option>
+                  ))}
+                </Select>
+              </Field>
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {/* TAB 3: YOUTUBE & ENGINE */}
+      {activeTab === 'downloads' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <YouTubeDownloads />
+        </div>
+      )}
+
+      {/* TAB 4: PROFANITY CENSOR */}
+      {activeTab === 'censor' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <CensorSettings value={censor} onChange={setCensor} />
+        </div>
+      )}
+
+      {/* TAB 5: STORAGE & ALERTS */}
+      {activeTab === 'storage' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <StorageAlerts />
+        </div>
+      )}
+
+      {/* Mobile Sticky Save Bar */}
       <div className="md:hidden fixed inset-x-3 z-40" style={{ bottom: 'calc(68px + var(--safe-bottom))' }}>
-        <Button block size="lg" variant="primary" icon={saveSuccess ? Check : ShieldCheck} loading={saving} onClick={handleSave} className="shadow-xl shadow-black/50">
-          {saveSuccess ? 'Saved & applied' : 'Save changes'}
+        <Button
+          block
+          size="lg"
+          variant="primary"
+          icon={saveSuccess ? Check : ShieldCheck}
+          loading={saving}
+          onClick={handleSave}
+          className="shadow-2xl shadow-black/80"
+        >
+          {saveSuccess ? 'Saved & Applied' : 'Save Changes'}
         </Button>
       </div>
 
-      <Sheet open={bulkModalOpen} onClose={() => setBulkModalOpen(false)} title="Import API keys"
+      {/* Bulk Import Sheet */}
+      <Sheet
+        open={bulkModalOpen}
+        onClose={() => setBulkModalOpen(false)}
+        title="Import Gemini API Keys"
         footer={(
           <div className="flex gap-2">
             <Button block onClick={() => setBulkModalOpen(false)}>Cancel</Button>
-            <Button block variant="primary" onClick={handleImportBulkKeys} disabled={!bulkInput.trim()}>Import &amp; save</Button>
+            <Button block variant="primary" onClick={handleImportBulkKeys} disabled={!bulkInput.trim()}>
+              Import &amp; Save
+            </Button>
           </div>
-        )}>
-        <p className="text-xs text-muted mb-3">Paste the JSON exported from another AutoClip, or keys one per line / comma-separated (<span className="font-mono">label: key</span> works too).</p>
-        <Textarea rows={7} value={bulkInput} onChange={(e) => setBulkInput(e.target.value)} className="font-mono !text-xs"
-          placeholder={'[\n  { "key": "AIzaSy...", "label": "Account 1" }\n]'} aria-label="Keys to import" />
+        )}
+      >
+        <p className="text-xs text-muted mb-3">
+          Paste exported JSON from another AutoClip instance, or keys line-by-line / comma-separated (<span className="font-mono">Label: Key</span> format supported).
+        </p>
+        <Textarea
+          rows={7}
+          value={bulkInput}
+          onChange={(e) => setBulkInput(e.target.value)}
+          className="font-mono !text-xs"
+          placeholder={'[\n  { "key": "AIzaSy...", "label": "Account 1" }\n]'}
+          aria-label="Keys to import"
+        />
       </Sheet>
     </Page>
   );
