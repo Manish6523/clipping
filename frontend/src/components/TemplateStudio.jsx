@@ -854,6 +854,10 @@ export default function TemplateStudio() {
                   setWatermarkY(newY);
                   setWatermarkPosition('custom');
                   setIsDirty(true);
+                },
+                onChangeWidth: (newW) => {
+                  setWatermarkWidth(newW);
+                  setIsDirty(true);
                 }
               }}
               selectedLayerId={selectedLayerId}

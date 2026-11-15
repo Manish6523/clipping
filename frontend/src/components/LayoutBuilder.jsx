@@ -803,10 +803,10 @@ export default function LayoutBuilder({
     };
   }, [captionDragState, enableSnapping, captionsConfig]);
 
-  // Watermark drag handling
+  // Watermark drag & resize handling
   const [watermarkDragState, setWatermarkDragState] = useState(null);
 
-  const handleWatermarkPointerDown = (e) => {
+  const handleWatermarkPointerDown = (e, action = 'move', handle = null) => {
     e.stopPropagation();
     e.preventDefault();
 
@@ -816,11 +816,12 @@ export default function LayoutBuilder({
 
     let curNormX = watermarkConfig.x;
     let curNormY = watermarkConfig.y;
+    const curWidth = watermarkConfig.width || 220;
 
     if (curNormX === undefined || curNormX === null || curNormY === undefined || curNormY === null) {
       const pos = (watermarkConfig.position || 'top_right').toLowerCase();
-      const targetW = (watermarkConfig.width || 220) / 1080;
-      const targetH = ((watermarkConfig.width || 220) * 0.5) / 1920;
+      const targetW = curWidth / 1080;
+      const targetH = (curWidth * 0.5) / 1920;
 
       if (pos === 'top_left') {
         curNormX = 40 / 1080;
@@ -844,29 +845,43 @@ export default function LayoutBuilder({
     }
 
     setWatermarkDragState({
+      action,
+      handle,
       startX: e.clientX,
       startY: e.clientY,
       canvasW: rect.width,
       canvasH: rect.height,
       origX: curNormX,
       origY: curNormY,
+      origWidth: curWidth,
     });
   };
 
   useEffect(() => {
     const handleWatermarkMove = (e) => {
       if (!watermarkDragState) return;
-      const deltaXNorm = (e.clientX - watermarkDragState.startX) / watermarkDragState.canvasW;
-      const deltaYNorm = (e.clientY - watermarkDragState.startY) / watermarkDragState.canvasH;
 
-      let newX = Math.max(0.01, Math.min(0.85, watermarkDragState.origX + deltaXNorm));
-      let newY = Math.max(0.01, Math.min(0.92, watermarkDragState.origY + deltaYNorm));
+      if (watermarkDragState.action === 'resize') {
+        const deltaX = (e.clientX - watermarkDragState.startX);
+        // Scaling factor relative to canvas width
+        const scale = 1 + (deltaX / (watermarkDragState.canvasW * 0.3));
+        const newWidth = Math.round(Math.max(60, Math.min(600, watermarkDragState.origWidth * scale)));
+        if (watermarkConfig && watermarkConfig.onChangeWidth) {
+          watermarkConfig.onChangeWidth(newWidth);
+        }
+      } else {
+        const deltaXNorm = (e.clientX - watermarkDragState.startX) / watermarkDragState.canvasW;
+        const deltaYNorm = (e.clientY - watermarkDragState.startY) / watermarkDragState.canvasH;
 
-      if (watermarkConfig && watermarkConfig.onChangePos) {
-        watermarkConfig.onChangePos(
-          Math.round(newX * 1000) / 1000,
-          Math.round(newY * 1000) / 1000
-        );
+        let newX = Math.max(0.005, Math.min(0.95, watermarkDragState.origX + deltaXNorm));
+        let newY = Math.max(0.005, Math.min(0.95, watermarkDragState.origY + deltaYNorm));
+
+        if (watermarkConfig && watermarkConfig.onChangePos) {
+          watermarkConfig.onChangePos(
+            Math.round(newX * 1000) / 1000,
+            Math.round(newY * 1000) / 1000
+          );
+        }
       }
     };
 
@@ -1263,7 +1278,12 @@ export default function LayoutBuilder({
                 let leftPct = 100 - ((watermarkConfig.width || 220) + 40) / 10.8;
                 let topPct = (50 / 1920) * 100;
                 const widthPct = ((watermarkConfig.width || 220) / 1080) * 100;
-                const heightPct = widthPct * 0.45; // Approximate bounding box height
+                // Use image aspect ratio if loaded, otherwise fallback
+                const wmImg = watermarkImgRef.current;
+                const aspect = (wmImg && wmImg.naturalWidth > 0)
+                  ? (wmImg.naturalHeight / wmImg.naturalWidth)
+                  : 0.5;
+                const heightPct = widthPct * aspect * (1080 / 1920);
 
                 if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
                   leftPct = watermarkConfig.x * 100;
@@ -1296,13 +1316,24 @@ export default function LayoutBuilder({
                       width: `${widthPct}%`,
                       height: `${heightPct}%`,
                     }}
-                    onPointerDown={handleWatermarkPointerDown}
-                    className="absolute z-40 border-2 border-dashed border-emerald-400/50 hover:border-emerald-400 hover:bg-emerald-400/10 cursor-move rounded-lg flex items-center justify-center transition-all group shadow-sm"
-                    title="Click and drag to freely position the watermark anywhere on the screen"
+                    onPointerDown={(e) => handleWatermarkPointerDown(e, 'move')}
+                    className="absolute z-40 border-2 border-dashed border-emerald-400/40 hover:border-emerald-400 cursor-move rounded-md flex items-center justify-center transition-all group"
+                    title="Click and drag to position logo"
                   >
-                    <span className="text-[10px] font-mono font-bold text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 px-1.5 py-0.5 rounded border border-emerald-500/30 pointer-events-none">
-                      Drag Logo
-                    </span>
+                    {/* Fixed-aspect Corner Resize Handles */}
+                    {['nw', 'ne', 'se', 'sw'].map((hnd) => (
+                      <div
+                        key={hnd}
+                        onPointerDown={(e) => handleWatermarkPointerDown(e, 'resize', hnd)}
+                        className={`absolute w-3.5 h-3.5 bg-emerald-400 border border-black rounded-full cursor-nwse-resize z-50 shadow-md hover:scale-125 transition-transform ${
+                          hnd === 'nw' ? '-top-1.5 -left-1.5' :
+                          hnd === 'ne' ? '-top-1.5 -right-1.5' :
+                          hnd === 'se' ? '-bottom-1.5 -right-1.5' :
+                          '-bottom-1.5 -left-1.5'
+                        }`}
+                        title="Drag corner to resize watermark (aspect ratio locked)"
+                      />
+                    ))}
                   </div>
                 );
               })()}
