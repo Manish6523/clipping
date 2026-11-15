@@ -337,13 +337,14 @@ class FFmpegRenderer:
 
         # Encoding codec selection
         if self.use_vaapi:
-            cmd.extend(["-c:v", "h264_vaapi", "-qp", "24"])
+            cmd.extend(["-c:v", "h264_vaapi", "-qp", "20"])
         else:
-            # -preset veryfast with -threads 2 prevents maxing out 100% CPU on 2-vCPU instances
+            # High-definition encoding profile: CRF 19, preset 'fast', 10M maxrate for crystal clear text & motion
+            # Utilize up to 4 CPU threads (ideal for 4-core Ampere / modern multi-core VPS)
             if intermediate:
-                cmd.extend(["-c:v", "libx264", "-preset", "veryfast", "-threads", "2", "-crf", "14"])
+                cmd.extend(["-c:v", "libx264", "-preset", "fast", "-threads", "4", "-crf", "14"])
             else:
-                cmd.extend(["-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25", "-maxrate", "4M", "-bufsize", "8M"])
+                cmd.extend(["-c:v", "libx264", "-preset", "fast", "-threads", "4", "-crf", "19", "-maxrate", "10M", "-bufsize", "16M", "-pix_fmt", "yuv420p"])
 
         cmd.extend([
             "-c:a", "aac",
@@ -458,7 +459,7 @@ class FFmpegRenderer:
             audio_map = ["-map", "0:a:0?"]
 
         cmd_teaser = [
-            "ffmpeg", "-y", "-threads", "2",
+            "ffmpeg", "-y", "-threads", "4",
             "-ss", f"{teaser_timestamp:.3f}",
             "-t", "1.500",
             "-i", str(source_path),
@@ -466,7 +467,7 @@ class FFmpegRenderer:
             "-filter_complex", flash_filter,
             "-map", "[v_flashed]",
             *audio_map,
-            "-c:v", "libx264", "-preset", "ultrafast", "-threads", "2", "-crf", "25",
+            "-c:v", "libx264", "-preset", "fast", "-threads", "4", "-crf", "19", "-maxrate", "10M", "-bufsize", "16M", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k",
             str(teaser_tmp),
         ]
