@@ -97,6 +97,9 @@ def clean_directory_by_age(
                 # Never delete protected clips
                 try:
                     resolved_str = str(item.resolve()).lower()
+                    # Never delete protected clips, story seeds, or clip permanent assets
+                    if "story_seeds" in resolved_str or "\\assets\\" in resolved_str or "/assets/" in resolved_str:
+                        continue
                     if resolved_str in protected or str(item).lower() in protected:
                         continue
                 except Exception:
@@ -136,6 +139,9 @@ def enforce_directory_quota(
                 # Skip protected clips from quota deletion
                 try:
                     resolved_str = str(item.resolve()).lower()
+                    # Never delete protected clips, story seeds, or clip permanent assets
+                    if "story_seeds" in resolved_str or "\\assets\\" in resolved_str or "/assets/" in resolved_str:
+                        continue
                     if resolved_str in protected or str(item).lower() in protected:
                         continue
                 except Exception:

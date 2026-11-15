@@ -736,6 +736,30 @@ class AutoClipEngine:
                 flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
                 suggested_title = censor_text(suggested_title, censor_cfg)
 
+                # Narrative Storyline Engine: Match & Stitch Check
+                is_stitched = 0
+                story_match = None
+                from config.settings import STORY_ENGINE_ENABLED, STORY_MODE
+                if STORY_ENGINE_ENABLED:
+                    try:
+                        from src.intelligence.storyline_matcher import StorylineMatcher
+                        from src.intelligence.session_storyline import get_or_create_active_session
+                        session_rec = await get_or_create_active_session(channel_id)
+                        if session_rec:
+                            matcher = StorylineMatcher()
+                            score_dict = json.loads(score_breakdown_json) if score_breakdown_json else {}
+                            story_match = await matcher.match_moment_to_seeds(
+                                session_id=session_rec["id"],
+                                payoff_transcript=transcription.get("text", ""),
+                                current_score_breakdown=score_dict,
+                                signal_score=float(cand_score),
+                            )
+                            if story_match and STORY_MODE == "live":
+                                is_stitched = 1
+                                logger.info("Narrative storyline stitch applied to clip! (Seed #%s)", story_match.get("seed_id"))
+                    except Exception as s_err:
+                        logger.warning("Storyline matching pass error: %s", s_err)
+
                 clip_id = await create_clip(
                     source_type="live",
                     source_id=str(timestamp_id),
@@ -759,6 +783,36 @@ class AutoClipEngine:
                     trigger_json=json.dumps(trigger_ctx) if trigger_ctx else None,
                     model=model_used,
                 )
+
+                # Record narrative storyline link if matched
+                if story_match:
+                    try:
+                        async with get_db_connection() as db:
+                            quotes_payload = json.dumps({
+                                "setup_quote": story_match.get("setup_quote"),
+                                "payoff_quote": story_match.get("payoff_quote"),
+                                "rationale": story_match.get("rationale"),
+                            })
+                            await db.execute("""
+                                INSERT INTO clip_story_links (
+                                    clip_id, seed_id, relation, confidence, quotes_json,
+                                    standalone_score, stitched_score, stitched
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """, (
+                                clip_id,
+                                story_match.get("seed_id"),
+                                story_match.get("relation", "payoff"),
+                                float(story_match.get("confidence", 0.8)),
+                                quotes_payload,
+                                float(story_match.get("old_score", cand_score)),
+                                float(story_match.get("new_score", cand_score)),
+                                is_stitched,
+                            ))
+                            if is_stitched:
+                                await db.execute("UPDATE clips SET stitched = 1 WHERE id = ?", (clip_id,))
+                            await db.commit()
+                    except Exception as lk_err:
+                        logger.warning("Could not persist clip_story_link for clip #%d: %s", clip_id, lk_err)
 
                 update_pipeline_progress(
                     "completed",

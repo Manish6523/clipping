@@ -89,11 +89,18 @@ def get_db_connection():
 
 
 async def init_db() -> None:
-    """Initialize database tables and run migrations."""
+    """Initialize database tables, run migrations, and verify integrity constraints."""
     DATABASE_PATH.parent.mkdir(parents=True, exist_ok=True)
     from src.database_migrations import run_migrations
     async with get_db_connection() as db:
         await run_migrations(db)
+        # Verify foreign keys are enabled outside of migration transactions
+        cur = await db.execute("PRAGMA foreign_keys;")
+        row = await cur.fetchone()
+        fk_val = row[0] if row else 0
+        if not fk_val:
+            raise RuntimeError("Database constraint violation: PRAGMA foreign_keys is OFF! Foreign keys must be enabled.")
+        logger.info("Database initialized and verified: PRAGMA foreign_keys = ON.")
 
 
 # ==========================================

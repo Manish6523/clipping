@@ -152,7 +152,9 @@ async def get_clips_list(request: web.Request) -> web.Response:
         SELECT c.id, c.channel_id, c.virality_score, c.title, c.template_name, c.caption_style, c.hook_style,
                c.raw_start, c.raw_end, c.adjusted_start, c.adjusted_end, c.score_breakdown, c.render_version,
                c.status, c.thumbnail_path, c.source_video_path, c.rendered_video_path, c.created_at,
-               c.ai_start, c.ai_end, c.flags,
+               c.ai_start, c.ai_end, c.flags, c.stitched,
+               (SELECT json_object('relation', l.relation, 'confidence', l.confidence, 'setup_quote', json_extract(l.quotes_json, '$.setup_quote'), 'payoff_quote', json_extract(l.quotes_json, '$.payoff_quote'), 'seed_id', l.seed_id)
+                FROM clip_story_links l WHERE l.clip_id = c.id LIMIT 1) as story_link,
                (SELECT json_extract(f.payload_json, '$.reason') 
                 FROM clip_feedback_events f 
                 WHERE f.clip_id = c.id AND f.event IN ('rejected', 'reason_tagged') 
@@ -245,6 +247,30 @@ async def get_clip_by_id(request: web.Request) -> web.Response:
     clip["source_url"] = f"/api/clips/{clip_id}/source"
     svp = clip.get("source_video_path")
     clip["has_raw_video"] = bool(svp and Path(svp).exists())
+
+    # Attach narrative storyline link details if stitched
+    async with get_db_connection() as db:
+        cur = await db.execute(
+            """SELECT l.id, l.seed_id, l.relation, l.confidence, l.quotes_json,
+                      l.standalone_score, l.stitched_score, s.quote as seed_quote,
+                      s.summary as seed_summary, s.duration as seed_duration
+               FROM clip_story_links l
+               LEFT JOIN story_seeds s ON s.id = l.seed_id
+               WHERE l.clip_id = ?
+               LIMIT 1""",
+            (clip_id,)
+        )
+        srow = await cur.fetchone()
+        if srow:
+            sdict = dict(srow)
+            try:
+                sdict["quotes"] = json.loads(sdict.get("quotes_json", "{}"))
+            except Exception:
+                sdict["quotes"] = {}
+            clip["story_link"] = sdict
+        else:
+            clip["story_link"] = None
+
     return web.json_response(clip)
 
 

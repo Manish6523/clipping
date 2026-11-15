@@ -445,6 +445,13 @@ async def delete_channel_endpoint(request: web.Request) -> web.Response:
     return web.json_response({"success": success, "removed": handle})
 
 
+async def get_story_stats(request: web.Request) -> web.Response:
+    """Return story pattern statistics and auto-pruning status."""
+    from src.intelligence.session_storyline import get_pattern_stats
+    stats = await get_pattern_stats()
+    return web.json_response({"success": True, "patterns": stats})
+
+
 def register_channel_routes(app: web.Application):
     app.router.add_get("/api/channels", get_channels_list)
     app.router.add_delete("/api/channels/{handle}", delete_channel_endpoint)
@@ -452,6 +459,7 @@ def register_channel_routes(app: web.Application):
     app.router.add_post("/api/channels/{id}/pause", pause_channel)
     app.router.add_post("/api/channels/{id}/resume", resume_channel)
     app.router.add_get("/api/channels/{id}/frame", get_channel_live_frame)
+    app.router.add_get("/api/story/stats", get_story_stats)
     app.router.add_post("/api/daemon/pause", pause_daemon)
     app.router.add_post("/api/daemon/resume", resume_daemon)
 

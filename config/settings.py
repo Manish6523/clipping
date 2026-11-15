@@ -130,3 +130,13 @@ LIVE_QUEUE_DIR = Path(os.getenv("LIVE_QUEUE_DIR", DATA_DIR / "live_queue"))     
 LIVE_QUEUE_DIR.mkdir(parents=True, exist_ok=True)
 
 AUTH_LOCK_ENABLED = os.getenv("AUTH_LOCK_ENABLED", "false").lower() in ("true", "1", "yes")
+
+# Story Engine Configuration (Same-Stream Narrative Storyline)
+STORY_ENGINE_ENABLED = os.getenv("STORY_ENGINE_ENABLED", "false").lower() in ("true", "1", "yes")
+STORY_MODE = os.getenv("STORY_MODE", "shadow")  # 'shadow' | 'live'
+STORY_SEED_CPU_BUDGET = float(os.getenv("STORY_SEED_CPU_BUDGET", "0.35"))  # max 35% of 1 core
+STORY_SESSION_GRACE_MINUTES = int(os.getenv("STORY_SESSION_GRACE_MINUTES", "35"))
+STORY_ASSET_RETENTION_DAYS = int(os.getenv("STORY_ASSET_RETENTION_DAYS", "14"))
+STORY_SEEDS_DIR = Path(os.getenv("STORY_SEEDS_DIR", DATA_DIR / "story_seeds"))
+STORY_SEEDS_DIR.mkdir(parents=True, exist_ok=True)
+

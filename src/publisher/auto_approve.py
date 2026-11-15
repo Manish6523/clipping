@@ -25,6 +25,14 @@ async def evaluate_new_clip(clip_id: int, channel_id: str, score: int) -> List[D
 
     handle = (channel_id or "").strip()
     async with get_db_connection() as db:
+        # Check if the clip is stitched - stitched clips fail-closed and are NEVER auto-approved
+        cur = await db.execute("SELECT stitched FROM clips WHERE id = ?", (clip_id,))
+        row = await cur.fetchone()
+        is_stitched = row[0] if row else 0
+        if is_stitched:
+            logger.info("Clip #%d is a stitched narrative clip; skipping auto-approval (requires human approval).", clip_id)
+            return []
+
         cur = await db.execute(
             """SELECT a.account_key, COALESCE(a.auto_mode, 'off') AS auto_mode, COALESCE(a.min_score_threshold, 75) AS threshold
                FROM youtube_accounts a JOIN streamer_yt_mappings m ON a.account_key = m.account_key

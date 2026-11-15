@@ -246,6 +246,63 @@ async def has_audio(path: str | Path) -> bool:
     return bool(out.strip())
 
 
+async def cut_multi_source_segments(
+    sources_map: Dict[str, str | Path],
+    segments: Sequence[Dict[str, Any]],
+    out: str | Path,
+) -> None:
+    """Frame-accurate trim + concat across multiple video source files.
+    
+    Each segment dict must provide:
+      - source_id: key into sources_map (or uses 'default')
+      - start: float start time relative to that source's file
+      - end: float end time relative to that source's file
+    
+    12ms audio fades hide all joins seamlessly.
+    """
+    # Map sources to input indices
+    source_keys = list(sources_map.keys())
+    input_args = []
+    has_audio_map = {}
+    for idx, key in enumerate(source_keys):
+        src_path = sources_map[key]
+        input_args.extend(["-i", str(src_path)])
+        has_audio_map[key] = await has_audio(src_path)
+
+    parts, labels = [], ""
+    for i, seg in enumerate(segments):
+        sid = seg.get("source_id", source_keys[0])
+        s_idx = source_keys.index(sid) if sid in source_keys else 0
+        s = float(seg.get("start", 0.0))
+        e = float(seg.get("end", s + 1.0))
+        d = max(0.05, e - s)
+
+        parts.append(f"[{s_idx}:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS[v{i}]")
+        labels += f"[v{i}]"
+
+        audio = has_audio_map.get(sid, False)
+        if audio:
+            fade = min(0.012, d / 4)
+            parts.append(
+                f"[{s_idx}:a]atrim=start={s:.3f}:end={e:.3f},asetpts=PTS-STARTPTS,"
+                f"afade=t=in:d={fade:.3f},afade=t=out:st={max(0.0, d - fade):.3f}:d={fade:.3f}[a{i}]"
+            )
+            labels += f"[a{i}]"
+
+    n = len(segments)
+    all_have_audio = any(has_audio_map.values())
+    parts.append(f"{labels}concat=n={n}:v=1:a={1 if all_have_audio else 0}[vc]" + ("[ac]" if all_have_audio else ""))
+    cmd = ["ffmpeg", "-y", "-v", "error", *input_args, "-filter_complex", ";".join(parts), "-map", "[vc]"]
+    if all_have_audio:
+        cmd += ["-map", "[ac]", "-c:a", "aac", "-b:a", "192k"]
+    cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p", str(out)]
+
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+    _, err = await proc.communicate()
+    if proc.returncode != 0:
+        raise RuntimeError(f"Multi-source auto-edit cut failed: {err.decode(errors='ignore')[-300:]}")
+
+
 async def cut_segments(src: str | Path, segments: Sequence[Tuple[float, float]], out: str | Path) -> None:
     """Frame-accurate trim + concat of the kept ranges (12 ms audio fades hide the joins)."""
     audio = await has_audio(src)

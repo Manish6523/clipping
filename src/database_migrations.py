@@ -686,6 +686,106 @@ async def migration_v21(db):
     await db.commit()
 
 
+@migration(22, "Same-stream narrative storyline engine tables, triggers and gates")
+async def migration_v22(db):
+    # 1. Stream sessions table
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS stream_sessions (
+        id TEXT PRIMARY KEY,
+        channel_id TEXT NOT NULL,
+        started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        ended_at TIMESTAMP,
+        is_active INTEGER DEFAULT 1
+    );
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_stream_sessions_active ON stream_sessions(channel_id, is_active);")
+
+    # 2. Staged snippets awaiting LLM confirmation
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS seed_staging (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        regex_pattern TEXT NOT NULL,
+        transcript_snippet TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        expires_at TIMESTAMP NOT NULL,
+        status TEXT DEFAULT 'pending'
+    );
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_seed_staging_expires ON seed_staging(expires_at);")
+
+    # 3. Confirmed narrative seeds
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS story_seeds (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL,
+        channel_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        quote TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        snippet_path TEXT NOT NULL,
+        transcript_json TEXT NOT NULL,
+        stream_epoch_start REAL NOT NULL,
+        duration REAL NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_story_seeds_session ON story_seeds(session_id);")
+
+    # 4. Pattern hit and confirm statistics for auto-pruning
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS story_pattern_stats (
+        pattern_name TEXT PRIMARY KEY,
+        hits INTEGER DEFAULT 0,
+        confirmed INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+
+    # 5. Add stitched integer column to clips (guarded)
+    cur = await db.execute("PRAGMA table_info(clips)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "stitched" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN stitched INTEGER NOT NULL DEFAULT 0;")
+
+    # 6. Clip-Story Links with ON DELETE SET NULL on seed_id
+    await db.execute("""
+    CREATE TABLE IF NOT EXISTS clip_story_links (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        clip_id INTEGER NOT NULL REFERENCES clips(id) ON DELETE CASCADE,
+        seed_id INTEGER REFERENCES story_seeds(id) ON DELETE SET NULL,
+        relation TEXT NOT NULL,
+        confidence REAL NOT NULL,
+        quotes_json TEXT NOT NULL,
+        standalone_score REAL,
+        stitched_score REAL,
+        stitched INTEGER NOT NULL DEFAULT 1,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    """)
+    await db.execute("CREATE INDEX IF NOT EXISTS idx_clip_story_links_clip ON clip_story_links(clip_id);")
+
+    # 7. Defense-in-depth trigger: prevent stitched clips from entering approved/queued/publishing without human approval
+    await db.execute("""
+    CREATE TRIGGER IF NOT EXISTS trg_stitched_clip_approval_guard
+    BEFORE UPDATE OF status ON clips
+    FOR EACH ROW
+    WHEN NEW.stitched = 1 AND NEW.status IN ('approved', 'queued', 'publishing')
+    BEGIN
+        SELECT RAISE(ABORT, 'Stitched clips require an explicit human approval event before changing status')
+        WHERE NOT EXISTS (
+            SELECT 1 FROM clip_feedback_events
+            WHERE clip_id = NEW.id AND event = 'approved'
+        );
+    END;
+    """)
+    await db.commit()
+
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

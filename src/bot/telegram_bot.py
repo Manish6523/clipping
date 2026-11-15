@@ -123,6 +123,10 @@ def format_clip_caption_html(clip: Dict[str, Any]) -> str:
     is_unscored = v_score == 0 or "unscored" in flags_raw
     score_display = "unscored" if is_unscored else f"{v_score}/100"
 
+    story_line = ""
+    if clip.get("stitched"):
+        story_line = "📖 <b>Narrative Storyline:</b> <code>Setup + Payoff</code>\n"
+
     censor_line = ""
     try:
         flag_list = json.loads(flags_raw) if flags_raw else []
@@ -143,6 +147,7 @@ def format_clip_caption_html(clip: Dict[str, Any]) -> str:
         f"📈 <b>Virality Score:</b> <code>{score_display}</code>\n"
         f"⏱️ <b>Duration:</b> <code>{duration:.1f}s</code> ({clip['adjusted_start']:.1f}s - {clip['adjusted_end']:.1f}s)\n"
         f"🎬 <b>Teaser Pre-Roll:</b> <code>{teaser_status}</code>\n"
+        f"{story_line}"
         f"{censor_line}\n"
         f"📝 <b>Title:</b> {title}\n"
         f"🏷️ <b>Tags:</b> {tags}\n\n"

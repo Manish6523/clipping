@@ -425,6 +425,11 @@ export default function ReviewStation({ onStatusChange }) {
                           </div>
                           <Badge tone={unscored(clip) ? 'idle' : 'warn'} className="shrink-0 gap-1">{unscored(clip) ? 'unscored' : <><Flame size={10} />{clip.virality_score}</>}</Badge>
                         </div>
+                        {Boolean(clip.stitched) && (
+                          <div className="pl-[23px] -mt-0.5">
+                            <Badge tone="primary" className="text-[10px] py-0 px-1.5 bg-accent/20 text-accent">📖 Story Setup + Payoff</Badge>
+                          </div>
+                        )}
                         <div className="text-[11.5px] text-slate-200 line-clamp-1 pl-[23px]">{clip.title || 'Untitled clip'}</div>
                         <div className="flex items-center justify-between gap-2 text-[10.5px] text-muted pl-[23px]">
                           <span className="truncate max-w-[110px]">{clip.template_name}</span>
@@ -487,6 +492,24 @@ export default function ReviewStation({ onStatusChange }) {
               {errorMsg && <Notice tone="bad" icon={AlertTriangle} className="shrink-0">{errorMsg}</Notice>}
 
               <div className="flex-1 flex flex-col gap-3 overflow-y-auto pr-1 min-h-0">
+                {/* Narrative Setup Context Banner */}
+                {Boolean(clipData?.story_link) && (
+                  <div className="bg-accent/10 border border-accent/40 rounded-xl p-3 shrink-0 text-xs">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-semibold text-accent flex items-center gap-1.5">📖 Narrative Storyline ({clipData.story_link.relation})</span>
+                      <span className="text-[11px] text-faint">Setup: {clipData.story_link.seed_duration?.toFixed(1) || '4.0'}s</span>
+                    </div>
+                    <div className="text-slate-200 mt-1">
+                      <span className="text-muted font-medium">Setup Quote: </span>"{clipData.story_link.quotes?.setup_quote || clipData.story_link.seed_quote}"
+                    </div>
+                    {clipData.story_link.quotes?.payoff_quote && (
+                      <div className="text-slate-200 mt-1">
+                        <span className="text-muted font-medium">Payoff Quote: </span>"{clipData.story_link.quotes.payoff_quote}"
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <Field label="Title / hook"><Input value={editingTitle} onChange={(e) => setEditingTitle(e.target.value)} /></Field>
                 <Field label="Hashtags"><Input mono value={editingTags} onChange={(e) => setEditingTags(e.target.value)} className="!text-accent" /></Field>
 

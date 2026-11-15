@@ -306,6 +306,7 @@ class LiveStreamWatcher:
         chat_task = asyncio.create_task(self._listen_to_chat())
         audio_task = asyncio.create_task(self._monitor_audio_peaks())
         sample_task = asyncio.create_task(self._sample_telemetry())
+        seed_task = asyncio.create_task(self._monitor_story_seeds())
         telemetry.register_watcher(self)
 
         try:
@@ -341,6 +342,7 @@ class LiveStreamWatcher:
             chat_task.cancel()
             audio_task.cancel()
             sample_task.cancel()
+            seed_task.cancel()
             telemetry.unregister_watcher(self)
             await self.stop_pipeline()
 
@@ -361,6 +363,28 @@ class LiveStreamWatcher:
             except Exception:
                 pass
             self._stream_proc = None
+
+    async def _monitor_story_seeds(self) -> None:
+        """Periodic background task detecting narrative seeds from incoming audio chunks."""
+        from config.settings import STORY_ENGINE_ENABLED
+        if not STORY_ENGINE_ENABLED:
+            return
+
+        from src.monitor.seed_detector import SeedDetector
+        detector = SeedDetector(channel_id=self.channel_id, channel_handle=self.channel_id)
+
+        while self.is_running:
+            try:
+                await asyncio.sleep(12)
+                if not getattr(self, "_is_channel_live", False):
+                    continue
+
+                # Run low-priority seed detection on latest chunk
+                await detector.process_latest_audio()
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug("Seed monitor error on %s: %s", self.channel_id, e)
 
     # ==========================================
     # Trigger 1: Chat Velocity & Keyword Spike
