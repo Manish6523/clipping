@@ -24,6 +24,7 @@ import { CAPTION_STYLES } from '../../lib/captionStyles';
 import { useHookStyles } from '../../lib/hookStyles';
 
 export default function ContextualInspector({ channels = [] }) {
+  const hookStyles = useHookStyles() || [];
   const { 
     selection, 
     layout, 
@@ -358,7 +359,6 @@ export default function ContextualInspector({ channels = [] }) {
   }
 
   // 3. HOOK TITLE CARD INSPECTOR
-  const hookStyles = useHookStyles() || [];
   if (selection.type === 'hook') {
     return (
       <div className="w-full h-full flex flex-col bg-surface overflow-y-auto p-3 text-xs gap-4 custom-scrollbar select-none">
