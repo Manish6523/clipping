@@ -69,6 +69,9 @@ export const getTemplates = () => api.get('/api/templates').then(r => r.data);
 export const saveTemplate = (data) => api.post('/api/templates', data).then(r => r.data);
 export const deleteTemplate = (name) => api.delete(`/api/templates/${encodeURIComponent(name)}`).then(r => r.data);
 export const testTemplateSample = (data) => api.post('/api/templates/test-sample', data).then(r => r.data);
+export const uploadWatermark = (formData) => api.post('/api/templates/watermark/upload', formData, {
+  headers: { 'Content-Type': 'multipart/form-data' }
+}).then(r => r.data);
 
 export const getQueue = () => api.get('/api/queue').then(r => r.data);
 export const clipManual = (data) => api.post('/api/clip-manual', data).then(r => r.data);

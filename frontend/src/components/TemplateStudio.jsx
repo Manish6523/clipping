@@ -39,7 +39,8 @@ import {
   deleteTemplate,
   getChannels,
   patchChannelSettings,
-  testTemplateSample
+  testTemplateSample,
+  uploadWatermark,
 } from '../api';
 import LayoutBuilder, { PRESET_STARTERS } from './LayoutBuilder';
 import { useLayoutMode } from '../hooks/useLayoutMode';
@@ -438,12 +439,10 @@ export default function TemplateStudio() {
     try {
       const formData = new FormData();
       formData.append('watermark', file);
-      const res = await axios.post('/api/templates/watermark/upload', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
-      if (res.data?.success) {
-        setWatermarkPath(res.data.watermark_path);
-        setWatermarkUrl(res.data.url);
+      const res = await uploadWatermark(formData);
+      if (res?.success) {
+        setWatermarkPath(res.watermark_path);
+        setWatermarkUrl(res.url);
         setWatermarkEnabled(true);
         setIsDirty(true);
         showToast('Watermark image uploaded successfully!');
