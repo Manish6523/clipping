@@ -92,7 +92,13 @@ def base_args() -> List[str]:
     args = [
         sys.executable, "-m", "yt_dlp", "--no-warnings",
         "--force-ipv4",
+        "--extractor-args", "youtube:player_client=tv,android,ios,mweb,web",
     ]
+    # Allow user-configured proxy if datacenter VPS IP is strictly blocked
+    proxy = os.getenv("YTDLP_PROXY", "").strip()
+    if proxy:
+        args += ["--proxy", proxy]
+
     cookies = cookies_path()
     if cookies:
         args += ["--cookies", str(cookies)]
