@@ -832,6 +832,14 @@ export default function TemplateStudio() {
               }}
               sourceMediaUrl={customImage || channelFrameUrl}
               captionsConfig={activeCaptionsConfig}
+              watermarkConfig={{
+                enabled: watermarkEnabled,
+                path: watermarkPath,
+                url: watermarkUrl,
+                position: watermarkPosition,
+                opacity: watermarkOpacity,
+                width: watermarkWidth,
+              }}
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               mode="template"

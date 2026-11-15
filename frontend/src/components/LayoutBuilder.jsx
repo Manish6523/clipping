@@ -171,6 +171,7 @@ export default function LayoutBuilder({
   sourceMediaUrl,
   videoRef,
   captionsConfig,
+  watermarkConfig,
   words = [],
   currentTime = 0,
   mode = 'template', // 'template' | 'clip'
@@ -510,7 +511,47 @@ export default function LayoutBuilder({
         isTemplateStudio: mode === 'template',
       });
 
-      // 4. Safe area overlay lines
+      // 4. Watermark Logo Overlay onto 9:16 Canvas
+      if (watermarkConfig?.enabled && watermarkImgRef.current && watermarkImgRef.current.complete && watermarkImgRef.current.naturalWidth > 0) {
+        ctx.save();
+        const wmImg = watermarkImgRef.current;
+        const opacity = typeof watermarkConfig.opacity === 'number' ? watermarkConfig.opacity : 0.85;
+        ctx.globalAlpha = opacity;
+
+        const targetW = watermarkConfig.width || 220;
+        const aspect = wmImg.naturalHeight / wmImg.naturalWidth;
+        const targetH = targetW * aspect;
+
+        const pos = (watermarkConfig.position || 'top_right').toLowerCase();
+        let wx = cw - targetW - 40;
+        let wy = 50;
+
+        if (pos === 'top_left') {
+          wx = 40;
+          wy = 50;
+        } else if (pos === 'top_center') {
+          wx = (cw - targetW) / 2;
+          wy = 50;
+        } else if (pos === 'bottom_left') {
+          wx = 40;
+          wy = ch - targetH - 60;
+        } else if (pos === 'bottom_right') {
+          wx = cw - targetW - 40;
+          wy = ch - targetH - 60;
+        } else if (pos === 'bottom_center') {
+          wx = (cw - targetW) / 2;
+          wy = ch - targetH - 60;
+        } else {
+          // top_right default
+          wx = cw - targetW - 40;
+          wy = 50;
+        }
+
+        ctx.drawImage(wmImg, wx, wy, targetW, targetH);
+        ctx.restore();
+      }
+
+      // 5. Safe area overlay lines
       if (showSafeArea) {
         ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
         ctx.lineWidth = 2;
@@ -528,7 +569,26 @@ export default function LayoutBuilder({
     return () => {
       if (animId) cancelAnimationFrame(animId);
     };
-  }, [currentLayout, layers, videoRef, sourceMediaUrl, showSafeArea, mode, captionsConfig, words, currentTime]);
+  }, [currentLayout, layers, videoRef, sourceMediaUrl, showSafeArea, mode, captionsConfig, words, currentTime, watermarkConfig]);
+
+  // Watermark image reference for canvas preview
+  const watermarkImgRef = useRef(null);
+  useEffect(() => {
+    const wmUrl = watermarkConfig?.url || (watermarkConfig?.path ? `/data/watermarks/${watermarkConfig.path.split(/[/\\]/).pop()}` : null);
+    if (watermarkConfig?.enabled && wmUrl) {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.src = wmUrl;
+      img.onload = () => {
+        watermarkImgRef.current = img;
+      };
+      img.onerror = () => {
+        watermarkImgRef.current = null;
+      };
+    } else {
+      watermarkImgRef.current = null;
+    }
+  }, [watermarkConfig?.enabled, watermarkConfig?.url, watermarkConfig?.path]);
 
   // Image reference for static snapshot in Template Studio
   const imgRef = useRef(null);
