@@ -563,7 +563,8 @@ export default function LayoutBuilder({
         ctx.setLineDash([]);
       }
 
-      if ((mode === 'clip' && videoRef?.current) || mode === 'template') {
+      // Only schedule continuous requestAnimationFrame if video is actively playing
+      if (mode === 'clip' && videoRef?.current && !videoRef.current.paused) {
         animId = requestAnimationFrame(renderDst);
       }
     };
