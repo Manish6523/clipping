@@ -51,16 +51,39 @@ export default function TopBar() {
         body: JSON.stringify(edl),
       });
       const data = await res.json();
-      if (data.success && data.clip?.rendered_video_path) {
-        const v = data.clip.render_version || Date.now();
-        // Served by the backend wherever the render landed (output or renders dir)
-        setRenderedResultUrl(`/api/clips/${clipId}/video?v=${v}`);
-      } else {
-        alert('Render failed: ' + (data.error || 'Unknown error'));
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || 'Failed to start render');
       }
+
+      // If already finished synchronously
+      if (data.status === 'completed' && data.clip?.rendered_video_path) {
+        const v = data.clip.render_version || Date.now();
+        setRenderedResultUrl(`/api/clips/${clipId}/video?v=${v}`);
+        setRendering(false);
+        return;
+      }
+
+      // Poll background status every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/clips/${clipId}/render-status`);
+          const pollData = await pollRes.json();
+          if (pollData.status === 'completed' && pollData.clip?.rendered_video_path) {
+            clearInterval(pollInterval);
+            const v = pollData.clip.render_version || Date.now();
+            setRenderedResultUrl(`/api/clips/${clipId}/video?v=${v}`);
+            setRendering(false);
+          } else if (pollData.status === 'failed') {
+            clearInterval(pollInterval);
+            setRendering(false);
+            alert('Render failed: ' + (pollData.error || 'Unknown error'));
+          }
+        } catch (pollErr) {
+          console.warn('Poll error:', pollErr);
+        }
+      }, 2000);
     } catch (err) {
       alert('Render request failed: ' + err.message);
-    } finally {
       setRendering(false);
     }
   };

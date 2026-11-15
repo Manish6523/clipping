@@ -72,11 +72,34 @@ export default function ClipEditorPage() {
         body: JSON.stringify(edl),
       });
       const data = await res.json();
-      if (!res.ok || !data.success) throw new Error(data.error || 'Render failed');
-      alert('Render completed successfully!');
+      if (!res.ok || !data.success) throw new Error(data.error || 'Failed to start render');
+
+      if (data.status === 'completed') {
+        alert('Render completed successfully!');
+        setRendering(false);
+        return;
+      }
+
+      // Poll background status every 2 seconds
+      const pollInterval = setInterval(async () => {
+        try {
+          const pollRes = await fetch(`/api/clips/${clipId}/render-status`);
+          const pollData = await pollRes.json();
+          if (pollData.status === 'completed') {
+            clearInterval(pollInterval);
+            setRendering(false);
+            alert('Render completed successfully!');
+          } else if (pollData.status === 'failed') {
+            clearInterval(pollInterval);
+            setRendering(false);
+            alert('Render failed: ' + (pollData.error || 'Unknown error'));
+          }
+        } catch (pollErr) {
+          console.warn('Poll error:', pollErr);
+        }
+      }, 2000);
     } catch (err) {
       alert(`Render error: ${err.message}`);
-    } finally {
       setRendering(false);
     }
   };

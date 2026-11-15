@@ -64,6 +64,7 @@ class WebUIServer:
         self.port = port
         self.on_manual_clip = on_manual_clip
         self.trimmer = ClipTrimmer()
+        self._render_jobs: dict = {}
         # Enable timing & auth middleware
         self.app = web.Application(middlewares=[request_timing_middleware, self.auth_middleware])
         self._setup_routes()
@@ -138,6 +139,7 @@ class WebUIServer:
         self.app.router.add_post("/api/clips/{id}/transcribe", self.handle_transcribe_clip)
         self.app.router.add_post("/api/clips/{id}/detect-faces", self.handle_detect_faces)
         self.app.router.add_post("/api/clips/{id}/render-edl", self.handle_render_from_edl)
+        self.app.router.add_get("/api/clips/{id}/render-status", self.handle_render_status)
         self.app.router.add_get("/api/fonts", self.handle_get_fonts)
         self.app.router.add_post("/api/clips/{id}/trim", self.handle_trim_clip)
         self.app.router.add_post("/api/clips/{id}/toggle-teaser", self.handle_toggle_teaser)
@@ -685,7 +687,7 @@ class WebUIServer:
         return web.json_response({"suggested_person": norm_box})
 
     async def handle_render_from_edl(self, request: web.Request) -> web.Response:
-        """Execute full FFmpeg render directly from EDL specifications."""
+        """Enqueue full FFmpeg render from EDL specifications and return immediately to avoid Cloudflare timeouts."""
         clip_id = int(request.match_info["id"])
         data = await request.json()
         clip = await get_clip(clip_id)
@@ -695,15 +697,46 @@ class WebUIServer:
         # Save EDL
         await save_clip_edl(clip_id, data)
 
-        # Trigger re-render with updated timestamps and regions
         segments = data.get("segments", [])
-        if segments:
+        if not segments:
+            return web.json_response({"success": True, "message": "EDL saved", "status": "completed"})
+
+        # If a render is already running for this clip, report status
+        existing_job = self._render_jobs.get(clip_id)
+        if existing_job and existing_job.get("status") == "rendering":
+            return web.json_response({
+                "success": True,
+                "status": "rendering",
+                "message": "Render already in progress",
+            })
+
+        # Initialize background job state
+        self._render_jobs[clip_id] = {
+            "status": "rendering",
+            "progress": 10,
+            "error": None,
+            "clip": None,
+            "started_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+        # Spawn asynchronous render worker in the background
+        asyncio.create_task(self._execute_async_render(clip_id, clip, data))
+
+        return web.json_response({
+            "success": True,
+            "status": "rendering",
+            "message": "Render job dispatched asynchronously",
+        })
+
+    async def _execute_async_render(self, clip_id: int, clip: dict, data: dict):
+        """Worker task to execute FFmpeg render and update job status."""
+        try:
+            segments = data.get("segments", [])
             in_point = segments[0]["src_in"]
             out_point = segments[-1]["src_out"]
             delta_start = in_point - clip["adjusted_start"]
             delta_end = out_point - clip["adjusted_end"]
 
-            # Merge EDL layout and subtitle styles directly into the rendering template
             template_name = clip.get("template_name", "ishowspeed_gaming")
             from src.bot.trimmer import load_template
             active_template = load_template(template_name)
@@ -737,9 +770,43 @@ class WebUIServer:
                 custom_template=active_template,
                 words_override=data.get("words") or None,
             )
-            return web.json_response({"success": True, "clip": updated})
 
-        return web.json_response({"success": True, "message": "EDL saved"})
+            if updated:
+                self._render_jobs[clip_id] = {
+                    "status": "completed",
+                    "progress": 100,
+                    "error": None,
+                    "clip": updated,
+                }
+            else:
+                self._render_jobs[clip_id] = {
+                    "status": "failed",
+                    "progress": 0,
+                    "error": "Render returned no updated clip output",
+                    "clip": None,
+                }
+        except Exception as e:
+            logger.exception("Async render failed for clip %d: %s", clip_id, e)
+            self._render_jobs[clip_id] = {
+                "status": "failed",
+                "progress": 0,
+                "error": str(e),
+                "clip": None,
+            }
+
+    async def handle_render_status(self, request: web.Request) -> web.Response:
+        """Poll the status of an asynchronous render job."""
+        clip_id = int(request.match_info["id"])
+        job = self._render_jobs.get(clip_id)
+        if not job:
+            clip = await get_clip(clip_id)
+            if not clip:
+                return web.json_response({"error": "Clip not found"}, status=404)
+            return web.json_response({
+                "status": "idle",
+                "clip": clip,
+            })
+        return web.json_response(job)
 
     async def handle_get_fonts(self, request: web.Request) -> web.Response:
         """List fonts available for kinetic caption burning."""
