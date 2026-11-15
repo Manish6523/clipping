@@ -63,7 +63,13 @@ export default function TemplateStudioEditor() {
   const [showOverflow, setShowOverflow] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [splitRatio, setSplitRatio] = useState(0.55); // 55% source, 45% output
+  const [splitRatio, setSplitRatio] = useState(() => {
+    const saved = localStorage.getItem('template_studio_split_ratio');
+    return saved ? parseFloat(saved) : 0.58;
+  });
+  const [stageFocus, setStageFocus] = useState('both'); // 'both' | 'source' | 'output'
+  const isDraggingSplitter = useRef(false);
+  const splitContainerRef = useRef(null);
   const [activeMobileTab, setActiveMobileTab] = useState('layers'); // 'layers' | 'inspector'
 
   // Test Render State
@@ -193,6 +199,34 @@ export default function TemplateStudioEditor() {
     } finally {
       setTestingSample(false);
     }
+  };
+
+  // Draggable Split Divider Logic
+  const handleSplitPointerDown = (e) => {
+    e.preventDefault();
+    isDraggingSplitter.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onPointerMove = (moveEvent) => {
+      if (!isDraggingSplitter.current || !splitContainerRef.current) return;
+      const rect = splitContainerRef.current.getBoundingClientRect();
+      const rawRatio = (moveEvent.clientX - rect.left) / rect.width;
+      const clamped = Math.max(0.25, Math.min(0.75, rawRatio));
+      setSplitRatio(clamped);
+      localStorage.setItem('template_studio_split_ratio', clamped.toFixed(3));
+    };
+
+    const onPointerUp = () => {
+      isDraggingSplitter.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
   };
 
   // Keyboard Navigation & Shortcuts
@@ -411,7 +445,7 @@ export default function TemplateStudioEditor() {
         ) : (
           /* PHONE VIEWPORT (Adaptive MobileStage with Bottom Sheets) */
           <div className="w-full h-full flex flex-col">
-            <div className="flex-1 min-h-0 overflow-hidden">
+            <div className="flex-1 min-h-0 overflow-hidden relative">
               <MobileStage
                 layout={layout}
                 onPointerActionStart={() => useTemplateEditorStore.getState().pushHistory()}
@@ -423,22 +457,47 @@ export default function TemplateStudioEditor() {
                 isPhone={true}
                 mode="template"
               />
+
+              {/* Mobile Drawer / Bottom Sheet for Layers or Properties */}
+              {activeMobileTab && (
+                <div className="absolute inset-x-0 bottom-0 max-h-[60%] bg-surface border-t border-white/10 rounded-t-2xl shadow-2xl z-40 flex flex-col overflow-hidden transition-all duration-200">
+                  <div className="flex items-center justify-between px-4 py-2 border-b border-white/10 bg-raised/40">
+                    <span className="text-xs font-bold text-white flex items-center gap-1.5 capitalize">
+                      {activeMobileTab === 'layers' ? <Layers size={13} className="text-accent" /> : <Sliders size={13} className="text-accent" />}
+                      {activeMobileTab}
+                    </span>
+                    <button
+                      onClick={() => setActiveMobileTab(null)}
+                      className="text-xs font-bold text-slate-400 hover:text-white px-2 py-0.5 rounded"
+                    >
+                      Done
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {activeMobileTab === 'layers' ? (
+                      <LayerStackPanel />
+                    ) : (
+                      <ContextualInspector channels={channels} />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Phone Bottom Switcher Bar */}
-            <div className="h-12 bg-surface border-t border-white/10 px-3 flex items-center justify-around shrink-0">
+            <div className="h-12 bg-surface border-t border-white/10 px-3 flex items-center justify-around shrink-0 z-50">
               <button
-                onClick={() => setActiveMobileTab('layers')}
+                onClick={() => setActiveMobileTab(activeMobileTab === 'layers' ? null : 'layers')}
                 className={`flex items-center gap-1.5 py-1 px-3 rounded-lg text-xs font-bold ${
-                  activeMobileTab === 'layers' ? 'bg-accent/15 text-accent' : 'text-slate-400'
+                  activeMobileTab === 'layers' ? 'bg-accent/15 text-accent border border-accent/30' : 'text-slate-400'
                 }`}
               >
                 <Layers size={14} /> Layers
               </button>
               <button
-                onClick={() => setActiveMobileTab('inspector')}
+                onClick={() => setActiveMobileTab(activeMobileTab === 'inspector' ? null : 'inspector')}
                 className={`flex items-center gap-1.5 py-1 px-3 rounded-lg text-xs font-bold ${
-                  activeMobileTab === 'inspector' ? 'bg-accent/15 text-accent' : 'text-slate-400'
+                  activeMobileTab === 'inspector' ? 'bg-accent/15 text-accent border border-accent/30' : 'text-slate-400'
                 }`}
               >
                 <Sliders size={14} /> Properties
