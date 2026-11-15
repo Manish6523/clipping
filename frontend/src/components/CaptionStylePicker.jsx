@@ -91,19 +91,21 @@ export function CaptionPreview({ styleId, height = 300, background, captionY = 0
 }
 
 /** Style chooser: big live preview + scrollable chips, each with its own mini preview. */
-export default function CaptionStylePicker({ value, onChange, background, captionY, compact = false, templateDefault, allowTemplate = true }) {
+export default function CaptionStylePicker({ value, onChange, background, captionY, compact = false, templateDefault, allowTemplate = true, showBigPreview = true }) {
   const resolve = (id) => (id === 'template' && templateDefault && templateDefault !== 'template' ? templateDefault : id);
   const current = styleById(value);
   return (
     <div className="space-y-3">
-      <div className="flex gap-3 items-center">
-        <CaptionPreview styleId={resolve(value)} height={compact ? 220 : 260} background={background} captionY={captionY} />
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-white"><Type size={14} className="text-pink-300" /> {current.label}</div>
-          <p className="text-[11px] text-slate-400 leading-snug">{value === 'template' && templateDefault && templateDefault !== 'template' ? `Uses the template's style (${styleById(templateDefault).label})` : current.hint}</p>
-          <p className="text-[10px] text-slate-500 leading-snug">Live preview. The video uses the same fonts and colours.</p>
+      {showBigPreview && (
+        <div className="flex gap-3 items-center">
+          <CaptionPreview styleId={resolve(value)} height={compact ? 220 : 260} background={background} captionY={captionY} />
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-white"><Type size={14} className="text-pink-300" /> {current.label}</div>
+            <p className="text-[11px] text-slate-400 leading-snug">{value === 'template' && templateDefault && templateDefault !== 'template' ? `Uses the template's style (${styleById(templateDefault).label})` : current.hint}</p>
+            <p className="text-[10px] text-slate-500 leading-snug">Live preview. The video uses the same fonts and colours.</p>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x" role="radiogroup" aria-label="Caption style">
         {CAPTION_STYLES.filter((s) => allowTemplate || s.id !== 'template').map((s) => {
           const on = s.id === value;

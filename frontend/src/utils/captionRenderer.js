@@ -57,7 +57,10 @@ export function renderCaptionsToCanvas({
   const shadowBlur = Math.round((cfg.shadow_blur ?? 8) * (canvasW / 1080));
   const shadowColor = cfg.shadow_color || 'rgba(0,0,0,0.85)';
   const animationMode = cfg.animation || 'pop'; // pop, bounce, fade, karaoke, none
+  const captionMode = cfg.mode || 'highlight'; // highlight, progressive, box, glow
   const bgBox = cfg.bg_box; // { enabled: bool, color: string, opacity: number, radius: number, padding: number }
+  const glowColor = cfg.glow_color || '#22D3EE';
+  const activeGlowColor = cfg.active_glow_color || '#EC4899';
 
   // Load font asynchronously
   ensureFontLoaded(fontFamily, fontWeight);
@@ -148,7 +151,7 @@ export function renderCaptionsToCanvas({
     ? ((Date.now() / 1000) % 0.8) 
     : (activeWordItem ? Math.max(0, currentTime - activeWordItem.start) : 0);
 
-  wordMetrics.forEach((m) => {
+  wordMetrics.forEach((m, idx) => {
     const wordCenterX = curX + m.width / 2;
     ctx.save();
 
@@ -168,15 +171,35 @@ export function renderCaptionsToCanvas({
       ctx.translate(-wordCenterX, -targetY);
     }
 
+    // Active word box background
+    if (m.isActive && captionMode === 'box' && bgBox?.color) {
+      const boxPad = Math.round(10 * (canvasW / 1080));
+      const bW = m.width + boxPad * 2;
+      const bH = fontSize * 1.25;
+      const bX = wordCenterX - bW / 2;
+      const bY = targetY - bH / 2;
+      const bRad = Math.round(8 * (canvasW / 1080));
+      ctx.fillStyle = bgBox.color;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(bX, bY, bW, bH, bRad);
+      else ctx.rect(bX, bY, bW, bH);
+      ctx.fill();
+    }
+
     // Shadow & Outline
-    if (shadowBlur > 0) {
+    if (captionMode === 'glow') {
+      ctx.shadowColor = m.isActive ? activeGlowColor : glowColor;
+      ctx.shadowBlur = Math.round((m.isActive ? 24 : 12) * (canvasW / 1080));
+      ctx.shadowOffsetX = 0;
+      ctx.shadowOffsetY = 0;
+    } else if (shadowBlur > 0) {
       ctx.shadowColor = shadowColor;
       ctx.shadowBlur = shadowBlur;
       ctx.shadowOffsetX = 0;
       ctx.shadowOffsetY = Math.round(2 * (canvasW / 1080));
     }
 
-    if (outlineWidth > 0) {
+    if (outlineWidth > 0 && captionMode !== 'box') {
       ctx.strokeStyle = outlineColor;
       ctx.lineWidth = outlineWidth;
       ctx.lineJoin = 'round';
@@ -186,7 +209,15 @@ export function renderCaptionsToCanvas({
 
     // Text Fill
     ctx.shadowBlur = 0; // Turn off shadow so fill is crisp
-    ctx.fillStyle = m.censorColor || (m.isHighlighted ? highlightColor : primaryColor);
+    let fillColor = primaryColor;
+    if (m.censorColor) {
+      fillColor = m.censorColor;
+    } else if (captionMode === 'progressive') {
+      fillColor = (idx <= activeIndex) ? highlightColor : primaryColor;
+    } else if (m.isHighlighted) {
+      fillColor = highlightColor;
+    }
+    ctx.fillStyle = fillColor;
     ctx.fillText(m.text, wordCenterX, targetY);
 
     ctx.restore();

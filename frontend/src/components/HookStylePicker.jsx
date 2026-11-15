@@ -138,7 +138,7 @@ export function HookPreview({ spec, height = 300, background, captionY = 0.7, pl
  * Hook card style chooser. `allowTemplate` adds a "Template default" option (value "template").
  * `templateDefault` is the id that option resolves to, shown in its preview.
  */
-export default function HookStylePicker({ value, onChange, allowTemplate = true, templateDefault = 'classic', compact = false }) {
+export default function HookStylePicker({ value, onChange, allowTemplate = true, templateDefault = 'classic', compact = false, showBigPreview = true }) {
   const styles = useHookStyles();
   if (!styles) return <div className="h-40 rounded-xl bg-white/[0.03] animate-pulse" />;
   const byId = Object.fromEntries(styles.map((s) => [s.id, s]));
@@ -149,14 +149,16 @@ export default function HookStylePicker({ value, onChange, allowTemplate = true,
   const current = options.find((o) => o.id === value) || options[0];
   return (
     <div className="space-y-3">
-      <div className="flex gap-3 items-center">
-        <HookPreview spec={byId[current.preview]} height={compact ? 220 : 260} />
-        <div className="min-w-0 space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-bold text-white"><Heading size={14} className="text-amber-300" /> {current.label}</div>
-          <p className="text-[11px] text-slate-400 leading-snug">{current.hint}</p>
-          <p className="text-[10px] text-slate-500 leading-snug">Shown for the first ~2.4 s. Text comes from the clip's best line or AI title.</p>
+      {showBigPreview && (
+        <div className="flex gap-3 items-center">
+          <HookPreview spec={byId[current.preview]} height={compact ? 220 : 260} />
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-white"><Heading size={14} className="text-amber-300" /> {current.label}</div>
+            <p className="text-[11px] text-slate-400 leading-snug">{current.hint}</p>
+            <p className="text-[10px] text-slate-500 leading-snug">Shown for the first ~2.4 s. Text comes from the clip's best line or AI title.</p>
+          </div>
         </div>
-      </div>
+      )}
       <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 snap-x" role="radiogroup" aria-label="Hook card style">
         {options.map((o) => {
           const on = o.id === value;

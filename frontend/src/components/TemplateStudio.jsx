@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CaptionStylePicker from './CaptionStylePicker';
 import HookStylePicker from './HookStylePicker';
+import { styleById } from '../lib/captionStyles';
 import { 
   Palette, 
   Save, 
@@ -86,6 +87,56 @@ export default function TemplateStudio() {
   const [layoutState, setLayoutState] = useState(PRESET_STARTERS.facecam_top_gameplay_bottom);
   const [history, setHistory] = useState([]);
   const [redoStack, setRedoStack] = useState([]);
+
+  // Compute active caption config for live canvas preview (resolves selected preset or studio default)
+  const activeCaptionsConfig = (() => {
+    if (defaultCaptionStyle && defaultCaptionStyle !== 'template') {
+      const preset = styleById(defaultCaptionStyle);
+      if (preset) {
+        return {
+          font: preset.font_name || preset.family?.replace(/['"]/g, '') || fontFamily,
+          fontSize: preset.size || fontSize,
+          color: preset.color || primaryColor,
+          highlight: preset.highlight || highlightColor,
+          outline_color: preset.outline || outlineColor,
+          outline_width: preset.outlineWidth ?? outlineWidth,
+          shadow_blur: preset.shadow ?? shadowBlur,
+          animation: preset.anim || animationPreset,
+          uppercase: preset.upper !== false,
+          mode: preset.mode || 'highlight',
+          bg_box: preset.box ? { enabled: true, color: preset.box, opacity: 0.9 } : undefined,
+          glow_color: preset.glow,
+          active_glow_color: preset.activeGlow,
+          position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
+          onChangePos: (newPos) => {
+            if (newPos && typeof newPos.y === 'number') {
+              setCaptionPositionY(Math.round(newPos.y * 100));
+              setIsDirty(true);
+            }
+          }
+        };
+      }
+    }
+    return {
+      font: fontFamily,
+      fontSize,
+      color: primaryColor,
+      highlight: highlightColor,
+      outline_color: outlineColor,
+      outline_width: outlineWidth,
+      shadow_blur: shadowBlur,
+      animation: animationPreset,
+      uppercase,
+      mode: 'highlight',
+      position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
+      onChangePos: (newPos) => {
+        if (newPos && typeof newPos.y === 'number') {
+          setCaptionPositionY(Math.round(newPos.y * 100));
+          setIsDirty(true);
+        }
+      }
+    };
+  })();
 
   const pushHistory = (prevState) => {
     setHistory((h) => [...h.slice(-30), JSON.parse(JSON.stringify(prevState))]);
@@ -704,24 +755,7 @@ export default function TemplateStudio() {
                   setIsDirty(true);
                 }}
                 sourceMediaUrl={customImage || channelFrameUrl}
-                captionsConfig={{
-                  font: fontFamily,
-                  fontSize,
-                  color: primaryColor,
-                  highlight: highlightColor,
-                  outline_color: outlineColor,
-                  outline_width: outlineWidth,
-                  shadow_blur: shadowBlur,
-                  animation: animationPreset,
-                  uppercase,
-                  position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
-                  onChangePos: (newPos) => {
-                    if (newPos && typeof newPos.y === 'number') {
-                      setCaptionPositionY(Math.round(newPos.y * 100));
-                      setIsDirty(true);
-                    }
-                  }
-                }}
+                captionsConfig={activeCaptionsConfig}
                 selectedLayerId={selectedLayerId}
                 onSelectLayer={setSelectedLayerId}
                 isPhone={true}
@@ -740,24 +774,7 @@ export default function TemplateStudio() {
                 setIsDirty(true);
               }}
               sourceMediaUrl={customImage || channelFrameUrl}
-              captionsConfig={{
-                font: fontFamily,
-                fontSize,
-                color: primaryColor,
-                highlight: highlightColor,
-                outline_color: outlineColor,
-                outline_width: outlineWidth,
-                shadow_blur: shadowBlur,
-                animation: animationPreset,
-                uppercase,
-                position: { x: 0.5, y: captionPositionY / 100, max_width: 0.85 },
-                onChangePos: (newPos) => {
-                  if (newPos && typeof newPos.y === 'number') {
-                    setCaptionPositionY(Math.round(newPos.y * 100));
-                    setIsDirty(true);
-                  }
-                }
-              }}
+              captionsConfig={activeCaptionsConfig}
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}
               mode="template"
@@ -1094,13 +1111,27 @@ export default function TemplateStudio() {
             <p className="text-[11px] text-slate-400 -mt-2">Every clip made with <b className="text-slate-200">{templateName}</b> uses these unless you pick something else in Quick Clip or swipe review. Remember to save the template.</p>
             <div>
               <p className="text-xs font-bold text-slate-200 mb-2">Caption style</p>
-              <CaptionStylePicker value={defaultCaptionStyle} onChange={(v) => { setDefaultCaptionStyle(v); setIsDirty(true); }} compact
-                captionY={captionPositionY / 100} />
+              <CaptionStylePicker
+                value={defaultCaptionStyle}
+                onChange={(v) => {
+                  setDefaultCaptionStyle(v);
+                  setIsDirty(true);
+                }}
+                compact
+                showBigPreview={false}
+                captionY={captionPositionY / 100}
+              />
               <p className="text-[11px] text-slate-500 mt-1">"Template default" keeps the font, size and colours set in this studio.</p>
             </div>
             <div>
               <p className="text-xs font-bold text-slate-200 mb-2">Hook title card (auto edit)</p>
-              <HookStylePicker value={defaultHookStyle} onChange={(v) => { setDefaultHookStyle(v); setIsDirty(true); }} compact allowTemplate={false} />
+              <HookStylePicker
+                value={defaultHookStyle}
+                onChange={(v) => { setDefaultHookStyle(v); setIsDirty(true); }}
+                compact
+                showBigPreview={false}
+                allowTemplate={false}
+              />
             </div>
           </div>
         </div>
