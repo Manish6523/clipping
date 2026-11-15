@@ -137,7 +137,10 @@ def build_filter_graph(
     last_v = graded_tag
 
     # 4. Optional Watermark
-    wm_config = template_config.get("watermark") or template_config.get("anti_shadowban", {})
+    raw_wm = template_config.get("watermark")
+    wm_config = raw_wm if isinstance(raw_wm, dict) else (template_config.get("anti_shadowban") or {})
+    if not isinstance(wm_config, dict):
+        wm_config = {}
     wm_file = watermark_path or wm_config.get("watermark_path")
     if wm_file and os.path.exists(wm_file):
         escaped_wm = wm_file.replace("\\", "/").replace(":", "\\:")

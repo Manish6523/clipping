@@ -223,7 +223,10 @@ class FFmpegRenderer:
         last_v = "[graded]"
 
         # Watermark overlay (if provided and valid)
-        wm_cfg = template.get("watermark") or template.get("anti_shadowban", {})
+        raw_wm = template.get("watermark")
+        wm_cfg = raw_wm if isinstance(raw_wm, dict) else (template.get("anti_shadowban") or {})
+        if not isinstance(wm_cfg, dict):
+            wm_cfg = {}
         wm_file = watermark_path or wm_cfg.get("watermark_path")
         if (has_watermark or wm_file) and wm_file and os.path.exists(wm_file):
             escaped_wm = escape_ffmpeg_path(wm_file)
