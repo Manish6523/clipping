@@ -20,8 +20,8 @@ import {
 } from 'lucide-react';
 import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { hexToAss, assToHex } from '../../utils/colorConversions';
-import { CAPTION_PRESET_STYLES } from '../../lib/captionStyles';
-import { HOOK_PRESET_STYLES } from '../../lib/hookStyles';
+import { CAPTION_STYLES } from '../../lib/captionStyles';
+import { useHookStyles } from '../../lib/hookStyles';
 
 export default function ContextualInspector({ channels = [] }) {
   const { 
@@ -221,12 +221,12 @@ export default function ContextualInspector({ channels = [] }) {
             <span className="text-[10px] font-mono text-accent">Click to Apply</span>
           </label>
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
-            {CAPTION_PRESET_STYLES.slice(0, 8).map((preset) => (
+            {CAPTION_STYLES.filter((s) => s.id !== 'template').map((preset) => (
               <button
                 key={preset.id}
                 onClick={() => {
                   updateSubtitles({
-                    font_name: preset.font_name || preset.family?.replace(/['"]/g, '') || subtitles.font_name,
+                    font_name: preset.font || preset.family?.replace(/['"]/g, '') || subtitles.font_name,
                     font_size: preset.size || subtitles.font_size,
                     primary_color: hexToAss(preset.color || '#FFFFFF'),
                     highlight_color: hexToAss(preset.highlight || '#FACC15'),
@@ -239,8 +239,8 @@ export default function ContextualInspector({ channels = [] }) {
                 }}
                 className="shrink-0 p-2 rounded-xl bg-raised hover:bg-white/[0.08] border border-white/10 text-left w-28 flex flex-col justify-between transition-all"
               >
-                <div className="text-[11px] font-black truncate text-white">{preset.name}</div>
-                <div className="text-[9px] text-muted truncate mt-1">{preset.desc}</div>
+                <div className="text-[11px] font-black truncate text-white">{preset.label}</div>
+                <div className="text-[9px] text-muted truncate mt-1">{preset.hint}</div>
               </button>
             ))}
           </div>
@@ -358,6 +358,7 @@ export default function ContextualInspector({ channels = [] }) {
   }
 
   // 3. HOOK TITLE CARD INSPECTOR
+  const hookStyles = useHookStyles() || [];
   if (selection.type === 'hook') {
     return (
       <div className="w-full h-full flex flex-col bg-surface overflow-y-auto p-3 text-xs gap-4 custom-scrollbar select-none">
@@ -374,7 +375,7 @@ export default function ContextualInspector({ channels = [] }) {
         </p>
 
         <div className="grid grid-cols-2 gap-2">
-          {HOOK_PRESET_STYLES.map((hook) => (
+          {hookStyles.map((hook) => (
             <button
               key={hook.id}
               onClick={() => {
@@ -386,8 +387,8 @@ export default function ContextualInspector({ channels = [] }) {
                   : 'bg-raised border-white/5 text-slate-300 hover:text-white'
               }`}
             >
-              <div className="text-xs font-bold">{hook.name}</div>
-              <div className="text-[10px] text-muted truncate mt-0.5">{hook.anim} anim</div>
+              <div className="text-xs font-bold">{hook.name || hook.label || hook.id}</div>
+              <div className="text-[10px] text-muted truncate mt-0.5">{hook.anim || 'slide'} anim</div>
             </button>
           ))}
         </div>

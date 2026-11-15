@@ -14,7 +14,8 @@ import { useLayoutMode } from './hooks/useLayoutMode';
 import { notifyClipReady } from './services/pwa';
 
 // Code-split heavy routes with React.lazy
-const TemplateStudio = lazy(() => import('./components/TemplateStudio'));
+const TemplateGallery = lazy(() => import('./components/TemplateGallery'));
+const TemplateStudioEditor = lazy(() => import('./components/TemplateStudioEditor'));
 const ChannelManager = lazy(() => import('./components/ChannelManager'));
 const AccountsManager = lazy(() => import('./components/AccountsManager'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
@@ -205,7 +206,8 @@ export default function App() {
       {/* Root Layout for Main Dashboard Navigation */}
       <Route path="/" element={<AppLayout />}>
         <Route index element={<ReviewStationWrapper />} />
-        <Route path="templates" element={<TemplateStudio />} />
+        <Route path="templates" element={<TemplateGallery />} />
+        <Route path="templates/:name" element={<TemplateStudioEditor />} />
         <Route path="presets" element={<Navigate to="/templates" replace />} />
         <Route path="channels" element={<ChannelManager />} />
         <Route path="telemetry" element={<StreamerTelemetryHub />} />
