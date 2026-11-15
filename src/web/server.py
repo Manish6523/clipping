@@ -158,6 +158,9 @@ class WebUIServer:
         # Serve static rendered video files & posters
         self.app.router.add_static("/renders", path=str(RENDER_DIR), name="renders", show_index=False)
         self.app.router.add_static("/output", path=str(OUTPUT_DIR), name="output_clips", show_index=False)
+        wm_static = Path("data/watermarks")
+        wm_static.mkdir(parents=True, exist_ok=True)
+        self.app.router.add_static("/data/watermarks", path=str(wm_static), name="watermarks_dir", show_index=False)
         from src.compositor.caption_styles import FONTS_DIR
         if FONTS_DIR.is_dir():
             self.app.router.add_static("/fonts", path=str(FONTS_DIR), name="caption_fonts", show_index=False)
@@ -1098,6 +1101,10 @@ class WebUIServer:
         story_cpu_budget = float(db_settings.get("story_seed_cpu_budget", {}).get("value") or getattr(s, "STORY_SEED_CPU_BUDGET", 0.35))
         story_grace_minutes = int(db_settings.get("story_session_grace_minutes", {}).get("value") or getattr(s, "STORY_SESSION_GRACE_MINUTES", 35))
 
+        auto_edit_enabled = (db_settings.get("auto_edit_enabled", {}).get("value") or str(getattr(s, "AUTO_EDIT_ENABLED", False))).lower() in ("true", "1", "yes")
+        auto_edit_style = db_settings.get("auto_edit_style", {}).get("value") or getattr(s, "AUTO_EDIT_STYLE", "punchy")
+        auto_edit_hook = (db_settings.get("auto_edit_hook_card", {}).get("value") or str(getattr(s, "AUTO_EDIT_HOOK_CARD", True))).lower() in ("true", "1", "yes")
+
         return web.json_response({
             "gemini_api_keys": keys_list,
             "gemini_model": model_val,
@@ -1110,6 +1117,9 @@ class WebUIServer:
             "story_mode": story_mode,
             "story_seed_cpu_budget": story_cpu_budget,
             "story_session_grace_minutes": story_grace_minutes,
+            "auto_edit_enabled": auto_edit_enabled,
+            "auto_edit_style": auto_edit_style,
+            "auto_edit_hook_card": auto_edit_hook,
         })
 
     async def handle_save_settings(self, request: web.Request) -> web.Response:
@@ -1203,6 +1213,23 @@ class WebUIServer:
                 s.STORY_SESSION_GRACE_MINUTES = grace_val
             except Exception:
                 pass
+
+        auto_edit_en = data.get("auto_edit_enabled")
+        if auto_edit_en is not None:
+            val_str = "true" if auto_edit_en else "false"
+            await set_system_setting("auto_edit_enabled", val_str, category="compositor", description="Enable auto edit (jump cuts, punch zooms, SFX) on live moments")
+            s.AUTO_EDIT_ENABLED = bool(auto_edit_en)
+
+        auto_edit_st = data.get("auto_edit_style")
+        if auto_edit_st in ("punchy", "clean", "minimal"):
+            await set_system_setting("auto_edit_style", auto_edit_st, category="compositor", description="Auto edit pace preset: punchy, clean, or minimal")
+            s.AUTO_EDIT_STYLE = auto_edit_st
+
+        auto_edit_hk = data.get("auto_edit_hook_card")
+        if auto_edit_hk is not None:
+            val_str = "true" if auto_edit_hk else "false"
+            await set_system_setting("auto_edit_hook_card", val_str, category="compositor", description="Enable pop-in title hook card on auto edited clips")
+            s.AUTO_EDIT_HOOK_CARD = bool(auto_edit_hk)
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
 

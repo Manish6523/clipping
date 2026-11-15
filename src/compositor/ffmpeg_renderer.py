@@ -223,10 +223,31 @@ class FFmpegRenderer:
         last_v = "[graded]"
 
         # Watermark overlay (if provided and valid)
-        if has_watermark and watermark_path and os.path.exists(watermark_path):
-            escaped_wm = escape_ffmpeg_path(watermark_path)
-            # Default to top-right
-            filters.append(f"movie='{escaped_wm}'[wm];{last_v}[wm]overlay=W-w-30:40[with_wm]")
+        wm_cfg = template.get("watermark") or template.get("anti_shadowban", {})
+        wm_file = watermark_path or wm_cfg.get("watermark_path")
+        if (has_watermark or wm_file) and wm_file and os.path.exists(wm_file):
+            escaped_wm = escape_ffmpeg_path(wm_file)
+            pos = (wm_cfg.get("watermark_position") or "top_right").lower()
+            opacity = float(wm_cfg.get("watermark_opacity", 0.85))
+            scale_w = int(wm_cfg.get("watermark_width", 220))
+
+            if pos == "top_left":
+                overlay_expr = "40:50"
+            elif pos == "top_center":
+                overlay_expr = "(W-w)/2:50"
+            elif pos == "bottom_left":
+                overlay_expr = "40:H-h-60"
+            elif pos == "bottom_right":
+                overlay_expr = "W-w-40:H-h-60"
+            elif pos == "bottom_center":
+                overlay_expr = "(W-w)/2:H-h-60"
+            else:
+                overlay_expr = "W-w-40:50"
+
+            wm_filters = f"movie='{escaped_wm}',scale={scale_w}:-1"
+            if opacity < 1.0:
+                wm_filters += f",format=rgba,colorchannelmixer=aa={opacity:.2f}"
+            filters.append(f"{wm_filters}[wm];{last_v}[wm]overlay={overlay_expr}[with_wm]")
             last_v = "[with_wm]"
 
         # Subtitle burning (.ass)
@@ -270,8 +291,9 @@ class FFmpegRenderer:
 
         duration = max(5.0, end_time - start_time)
         anti = template.get("anti_shadowban", {})
+        wm_cfg = template.get("watermark") or anti
         speed = anti.get("speed_multiplier", 1.02)
-        wm_path = anti.get("watermark_path")
+        wm_path = wm_cfg.get("watermark_path")
         has_wm = bool(wm_path and os.path.exists(wm_path))
 
         src_size = await probe_video_size(source_path)

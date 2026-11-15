@@ -140,3 +140,8 @@ STORY_ASSET_RETENTION_DAYS = int(os.getenv("STORY_ASSET_RETENTION_DAYS", "14"))
 STORY_SEEDS_DIR = Path(os.getenv("STORY_SEEDS_DIR", DATA_DIR / "story_seeds"))
 STORY_SEEDS_DIR.mkdir(parents=True, exist_ok=True)
 
+# Auto Edit Configuration (Jump Cuts, Punch Zooms, SFX, Loudnorm)
+AUTO_EDIT_ENABLED = os.getenv("AUTO_EDIT_ENABLED", "false").lower() in ("true", "1", "yes")
+AUTO_EDIT_STYLE = os.getenv("AUTO_EDIT_STYLE", "punchy")  # 'punchy' | 'clean' | 'minimal'
+AUTO_EDIT_HOOK_CARD = os.getenv("AUTO_EDIT_HOOK_CARD", "true").lower() in ("true", "1", "yes")
+

@@ -137,9 +137,33 @@ def build_filter_graph(
     last_v = graded_tag
 
     # 4. Optional Watermark
-    if watermark_path and os.path.exists(watermark_path):
-        escaped_wm = watermark_path.replace("\\", "/").replace(":", "\\:")
-        filters.append(f"movie='{escaped_wm}'[wm];{last_v}[wm]overlay=W-w-30:40[with_wm]")
+    wm_config = template_config.get("watermark") or template_config.get("anti_shadowban", {})
+    wm_file = watermark_path or wm_config.get("watermark_path")
+    if wm_file and os.path.exists(wm_file):
+        escaped_wm = wm_file.replace("\\", "/").replace(":", "\\:")
+        pos = (wm_config.get("watermark_position") or "top_right").lower()
+        opacity = float(wm_config.get("watermark_opacity", 0.85))
+        scale_w = int(wm_config.get("watermark_width", 220))
+
+        # Overlay positioning calculations
+        if pos == "top_left":
+            overlay_expr = "40:50"
+        elif pos == "top_center":
+            overlay_expr = "(W-w)/2:50"
+        elif pos == "bottom_left":
+            overlay_expr = "40:H-h-60"
+        elif pos == "bottom_right":
+            overlay_expr = "W-w-40:H-h-60"
+        elif pos == "bottom_center":
+            overlay_expr = "(W-w)/2:H-h-60"
+        else: # top_right default
+            overlay_expr = "W-w-40:50"
+
+        # Apply scaling and opacity to watermark movie
+        wm_filters = f"movie='{escaped_wm}',scale={scale_w}:-1"
+        if opacity < 1.0:
+            wm_filters += f",format=rgba,colorchannelmixer=aa={opacity:.2f}"
+        filters.append(f"{wm_filters}[wm];{last_v}[wm]overlay={overlay_expr}[with_wm]")
         last_v = "[with_wm]"
 
     # 5. Burn Subtitles (ASS)

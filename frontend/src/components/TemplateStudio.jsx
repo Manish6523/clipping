@@ -30,6 +30,8 @@ import {
   Undo2,
   Redo2,
   MoreHorizontal,
+  ShieldCheck,
+  ImageIcon,
 } from 'lucide-react';
 import { 
   getTemplates, 
@@ -79,6 +81,16 @@ export default function TemplateStudio() {
   const [showStyleDefaults, setShowStyleDefaults] = useState(false);
   const [defaultCaptionStyle, setDefaultCaptionStyle] = useState('template'); // 'template' = typography below
   const [defaultHookStyle, setDefaultHookStyle] = useState('classic');
+
+  // Watermark state
+  const [showWatermarkModal, setShowWatermarkModal] = useState(false);
+  const [watermarkEnabled, setWatermarkEnabled] = useState(false);
+  const [watermarkPath, setWatermarkPath] = useState('');
+  const [watermarkUrl, setWatermarkUrl] = useState('');
+  const [watermarkPosition, setWatermarkPosition] = useState('top_right');
+  const [watermarkOpacity, setWatermarkOpacity] = useState(0.85);
+  const [watermarkWidth, setWatermarkWidth] = useState(220);
+  const [uploadingWatermark, setUploadingWatermark] = useState(false);
 
   // Direct channel assignment
   const [assigningStreamer, setAssigningStreamer] = useState('');
@@ -240,6 +252,21 @@ export default function TemplateStudio() {
     }
     setDefaultCaptionStyle(target.caption_style || 'template');
     setDefaultHookStyle(target.hook_style || 'classic');
+
+    const wm = target.watermark || target.anti_shadowban || {};
+    if (wm.watermark_path) {
+      setWatermarkEnabled(true);
+      setWatermarkPath(wm.watermark_path);
+      setWatermarkUrl(wm.watermark_path.startsWith('http') ? wm.watermark_path : `/${wm.watermark_path.replace(/\\/g, '/')}`);
+      setWatermarkPosition(wm.watermark_position || 'top_right');
+      setWatermarkOpacity(wm.watermark_opacity ?? 0.85);
+      setWatermarkWidth(wm.watermark_width || 220);
+    } else {
+      setWatermarkEnabled(false);
+      setWatermarkPath('');
+      setWatermarkUrl('');
+    }
+
     setIsDirty(false);
     showToast(`Loaded "${target.name}"`);
   };
@@ -305,6 +332,12 @@ export default function TemplateStudio() {
       // Defaults for clips made with this template (Quick Clip / swipe can override per clip)
       caption_style: defaultCaptionStyle !== 'template' ? defaultCaptionStyle : undefined,
       hook_style: defaultHookStyle,
+      watermark: watermarkEnabled && watermarkPath ? {
+        watermark_path: watermarkPath,
+        watermark_position: watermarkPosition,
+        watermark_opacity: Number(watermarkOpacity),
+        watermark_width: Number(watermarkWidth),
+      } : undefined,
     };
   };
 
@@ -395,6 +428,30 @@ export default function TemplateStudio() {
     };
     reader.readAsText(file);
     e.target.value = ''; // Reset input to allow re-uploading same file if edited
+  };
+
+  const handleWatermarkUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingWatermark(true);
+    try {
+      const formData = new FormData();
+      formData.append('watermark', file);
+      const res = await axios.post('/api/templates/watermark/upload', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      if (res.data?.success) {
+        setWatermarkPath(res.data.watermark_path);
+        setWatermarkUrl(res.data.url);
+        setWatermarkEnabled(true);
+        setIsDirty(true);
+        showToast('Watermark image uploaded successfully!');
+      }
+    } catch (err) {
+      alert('Watermark upload failed: ' + (err.response?.data?.error?.message || err.message));
+    } finally {
+      setUploadingWatermark(false);
+    }
   };
 
   const handleCustomImageUpload = (e) => {
@@ -1013,6 +1070,19 @@ export default function TemplateStudio() {
 
           <button
             type="button"
+            onClick={() => setShowWatermarkModal(true)}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 ${
+              watermarkEnabled && watermarkPath
+                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+            }`}
+            title="Channel watermark logo overlay"
+          >
+            <ShieldCheck size={11} /> Watermark {watermarkEnabled && watermarkPath ? '●' : ''}
+          </button>
+
+          <button
+            type="button"
             onClick={() => setShowStyleDefaults(true)}
             className="flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 bg-pink-500/10 border-pink-400/40 text-pink-200"
             title="Default caption style and hook title card for clips made with this template"
@@ -1251,6 +1321,198 @@ export default function TemplateStudio() {
                 className="bg-accent text-black font-bold px-4 py-2 rounded-xl text-xs hover:bg-accent transition-all shadow"
               >
                 Apply & Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Watermark Branding Modal */}
+      {showWatermarkModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-surface border border-white/10 rounded-2xl w-full max-w-lg p-5 shadow-2xl flex flex-col gap-4 max-h-[92vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                  <ShieldCheck size={18} />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">Channel Watermark & Logo</h3>
+                  <p className="text-[11px] text-muted">Burn channel logo / handle overlay into all clips made with this template</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowWatermarkModal(false)}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/10"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Master Toggle */}
+            <div className="flex items-center justify-between bg-raised p-3 rounded-xl border border-white/5">
+              <div>
+                <div className="text-xs font-bold text-white">Enable Watermark Overlay</div>
+                <div className="text-[11px] text-muted">Stamp this logo on top of every rendered vertical short</div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setWatermarkEnabled(!watermarkEnabled);
+                  setIsDirty(true);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
+                  watermarkEnabled
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                    : 'bg-white/5 border-white/10 text-slate-400'
+                }`}
+              >
+                {watermarkEnabled ? 'Active (ON)' : 'Disabled (OFF)'}
+              </button>
+            </div>
+
+            {/* Logo Upload Dropzone */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-muted">Watermark Image (PNG / Transparent)</label>
+              <div className="border-2 border-dashed border-white/15 rounded-xl p-4 flex flex-col items-center justify-center gap-2 bg-raised/50 hover:border-emerald-500/50 transition-colors">
+                {watermarkUrl || watermarkPath ? (
+                  <div className="flex items-center gap-3 w-full">
+                    <div className="w-16 h-16 rounded-lg bg-black/60 border border-white/10 flex items-center justify-center overflow-hidden p-1 shrink-0">
+                      <img
+                        src={watermarkUrl || `/data/watermarks/${watermarkPath.split(/[/\\]/).pop()}`}
+                        alt="Watermark preview"
+                        className="max-w-full max-h-full object-contain"
+                        onError={(e) => { e.target.style.display = 'none'; }}
+                      />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-mono text-emerald-400 truncate">{watermarkPath || 'watermark.png'}</div>
+                      <div className="text-[11px] text-slate-400">Image loaded & ready for burning</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setWatermarkPath('');
+                        setWatermarkUrl('');
+                        setWatermarkEnabled(false);
+                        setIsDirty(true);
+                      }}
+                      className="p-1.5 rounded-lg bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 text-xs flex items-center gap-1 border border-rose-500/20 shrink-0"
+                    >
+                      <Trash2 size={13} /> Remove
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <ImageIcon size={28} className="text-slate-500" />
+                    <div className="text-xs text-slate-300 text-center">
+                      Upload your channel logo, handle stamp, or sponsor mark (PNG with transparency works best)
+                    </div>
+                  </>
+                )}
+
+                <label className="mt-1 cursor-pointer">
+                  <span className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs px-3.5 py-1.5 rounded-xl shadow transition-all">
+                    {uploadingWatermark ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                    {watermarkPath ? 'Upload New Image' : 'Choose PNG / JPG Image'}
+                  </span>
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handleWatermarkUpload}
+                    disabled={uploadingWatermark}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* Position Picker */}
+            <div className="flex flex-col gap-2">
+              <label className="text-[11px] font-bold uppercase tracking-wider text-muted">Placement Anchor</label>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  { id: 'top_left', label: 'Top Left' },
+                  { id: 'top_center', label: 'Top Center' },
+                  { id: 'top_right', label: 'Top Right' },
+                  { id: 'bottom_left', label: 'Bottom Left' },
+                  { id: 'bottom_center', label: 'Bottom Center' },
+                  { id: 'bottom_right', label: 'Bottom Right' },
+                ].map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => {
+                      setWatermarkPosition(pos.id);
+                      setIsDirty(true);
+                    }}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center ${
+                      watermarkPosition === pos.id
+                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-sm'
+                        : 'bg-raised border-white/5 text-slate-300 hover:text-white hover:border-white/15'
+                    }`}
+                  >
+                    {pos.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Opacity & Width Sliders */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5 bg-raised p-3 rounded-xl border border-white/5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] uppercase font-bold text-slate-400">Opacity / Transparency</label>
+                  <span className="font-mono text-emerald-400 text-[11px] font-bold">{Math.round(watermarkOpacity * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  min="0.1"
+                  max="1.0"
+                  step="0.05"
+                  value={watermarkOpacity}
+                  onChange={(e) => {
+                    setWatermarkOpacity(parseFloat(e.target.value));
+                    setIsDirty(true);
+                  }}
+                  className="accent-emerald-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Subtle (10%)</span>
+                  <span>Solid (100%)</span>
+                </div>
+              </div>
+
+              <div className="flex flex-col gap-1.5 bg-raised p-3 rounded-xl border border-white/5">
+                <div className="flex justify-between items-center">
+                  <label className="text-[11px] uppercase font-bold text-slate-400">Watermark Width</label>
+                  <span className="font-mono text-emerald-400 text-[11px] font-bold">{watermarkWidth}px</span>
+                </div>
+                <input
+                  type="range"
+                  min="80"
+                  max="450"
+                  step="10"
+                  value={watermarkWidth}
+                  onChange={(e) => {
+                    setWatermarkWidth(parseInt(e.target.value, 10));
+                    setIsDirty(true);
+                  }}
+                  className="accent-emerald-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-slate-500">
+                  <span>Compact (80px)</span>
+                  <span>Prominent (450px)</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t border-white/10">
+              <button
+                onClick={() => setShowWatermarkModal(false)}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-5 py-2 rounded-xl text-xs transition-all shadow"
+              >
+                Apply & Done
               </button>
             </div>
           </div>

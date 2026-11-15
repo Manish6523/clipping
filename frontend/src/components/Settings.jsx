@@ -53,6 +53,7 @@ const WHISPER_MODELS = [
 const SETTINGS_TABS = [
   { id: 'ai', label: 'AI & Scoring', icon: Sparkles, desc: 'Gemini API keys, models & virality thresholds' },
   { id: 'story', label: 'Narrative Storylines', icon: BookOpen, desc: 'Same-stream setup seed staging & stitch settings' },
+  { id: 'autoedit', label: 'Auto Edit & Pacing', icon: Zap, desc: 'Jump cuts, punch zooms, sound effects & hook cards' },
   { id: 'transcription', label: 'Whisper Models', icon: Cpu, desc: 'Speech-to-text models for VODs and live clips' },
   { id: 'downloads', label: 'YouTube & Engine', icon: Download, desc: 'yt-dlp health, cookies.txt & bot bypass' },
   { id: 'censor', label: 'Profanity Censor', icon: VolumeX, desc: 'Word lists, bleep audio & asterisks' },
@@ -81,6 +82,9 @@ export default function Settings() {
   const [storyMode, setStoryMode] = useState('shadow');
   const [storyCpuBudget, setStoryCpuBudget] = useState(0.35);
   const [storyGraceMinutes, setStoryGraceMinutes] = useState(35);
+  const [autoEditEnabled, setAutoEditEnabled] = useState(false);
+  const [autoEditStyle, setAutoEditStyle] = useState('punchy');
+  const [autoEditHookCard, setAutoEditHookCard] = useState(true);
   const [banner, setBanner] = useState(null);
 
   useEffect(() => {
@@ -100,6 +104,9 @@ export default function Settings() {
       setStoryMode(res.data.story_mode || 'shadow');
       setStoryCpuBudget(res.data.story_seed_cpu_budget ?? 0.35);
       setStoryGraceMinutes(res.data.story_session_grace_minutes ?? 35);
+      setAutoEditEnabled(Boolean(res.data.auto_edit_enabled));
+      setAutoEditStyle(res.data.auto_edit_style || 'punchy');
+      setAutoEditHookCard(res.data.auto_edit_hook_card ?? true);
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -182,6 +189,9 @@ export default function Settings() {
         story_mode: storyMode,
         story_seed_cpu_budget: storyCpuBudget,
         story_session_grace_minutes: storyGraceMinutes,
+        auto_edit_enabled: autoEditEnabled,
+        auto_edit_style: autoEditStyle,
+        auto_edit_hook_card: autoEditHookCard,
         ...(censor ? { censor } : {}),
       });
       setSaveSuccess(true);
@@ -514,6 +524,56 @@ export default function Settings() {
                   value={storyGraceMinutes}
                   onChange={(e) => setStoryGraceMinutes(parseInt(e.target.value, 10) || 35)}
                 />
+              </Field>
+            </div>
+          </Panel>
+        </div>
+      )}
+
+      {/* TAB: AUTO EDIT & PACING */}
+      {activeTab === 'autoedit' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <Panel title="Auto Edit & Video Pacing" icon={Zap} className="space-y-5">
+            <div className="bg-canvas border border-line rounded-xl p-4 text-xs text-muted flex items-start gap-3">
+              <Zap size={18} className="text-accent shrink-0 mt-0.5" />
+              <div>
+                <span className="text-slate-200 font-bold block mb-1">Autonomous TikTok / Reels Style Video Pacing</span>
+                When enabled, AutoClip analyzes word timestamps and measured audio loudness to jump-cut silent pauses, trim filler words (<em>"um"</em>, <em>"uh"</em>), punch-in camera zooms on shout words, and add pop-in hook title cards with sound effects.
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5">
+              <Field
+                label="Auto Edit Live Moments"
+                hint="Automatically tighten and pace live stream clips into finished Shorts."
+              >
+                <Select value={autoEditEnabled ? 'true' : 'false'} onChange={(e) => setAutoEditEnabled(e.target.value === 'true')}>
+                  <option value="false">Disabled (Standard Render)</option>
+                  <option value="true">Enabled (Apply Cuts, Zooms & SFX)</option>
+                </Select>
+              </Field>
+
+              <Field
+                label="Editing Pace & Style"
+                hint="Punchy (fast cuts & hype zooms), Clean (subtle zooms, no loud SFX), Minimal (trims dead air only)."
+              >
+                <Select value={autoEditStyle} onChange={(e) => setAutoEditStyle(e.target.value)}>
+                  <option value="punchy">Punchy — Fast jump cuts, frequent zooms & SFX</option>
+                  <option value="clean">Clean — Polished cuts, gentle zooms, no SFX</option>
+                  <option value="minimal">Minimal — Trims silent dead air only</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="pt-2 border-t border-line">
+              <Field
+                label="Pop-in Hook Title Card"
+                hint="Displays a bold animated title card in the first 2.5s with the punchiest word highlighted."
+              >
+                <Select value={autoEditHookCard ? 'true' : 'false'} onChange={(e) => setAutoEditHookCard(e.target.value === 'true')}>
+                  <option value="true">Enabled (Show Title Card)</option>
+                  <option value="false">Disabled (No Title Card)</option>
+                </Select>
               </Field>
             </div>
           </Panel>

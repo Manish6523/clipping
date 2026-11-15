@@ -709,7 +709,7 @@ class AutoClipEngine:
                 rendered_mp4 = str(Path(OUTPUT_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
 
                 # Method 1: Permanently preserve 16:9 source footage in SOURCES_DIR so it can never be deleted by buffer rotation
-                from config.settings import SOURCES_DIR
+                from config.settings import SOURCES_DIR, AUTO_EDIT_ENABLED, AUTO_EDIT_STYLE, AUTO_EDIT_HOOK_CARD
                 import shutil
                 permanent_source_path = str(Path(SOURCES_DIR) / f"live_{channel_id}_{timestamp_id}_source.mp4")
                 try:
@@ -721,18 +721,41 @@ class AutoClipEngine:
                     permanent_source_path = video_path
                     metadata["_keep_file"] = True  # the clip points at the queued file; don't delete it
 
-                await self.renderer.render_clip(
-                    source_path=permanent_source_path,
-                    start_time=clip_start,
-                    end_time=clip_end,
-                    output_path=rendered_mp4,
-                    template=template,
-                    ass_path=ass_path,
-                    teaser_timestamp=teaser_ts,
-                    include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
-                    censor_words=words,
-                    censor_cfg=censor_cfg,
-                )
+                # Dynamic Auto Edit Check (Settings / DB override)
+                from src.database import get_system_setting
+                auto_edit_db = await get_system_setting("auto_edit_enabled", str(AUTO_EDIT_ENABLED))
+                do_auto_edit = auto_edit_db.lower() in ("true", "1", "yes")
+                auto_style_db = await get_system_setting("auto_edit_style", AUTO_EDIT_STYLE)
+                auto_hook_db = (await get_system_setting("auto_edit_hook_card", str(AUTO_EDIT_HOOK_CARD))).lower() in ("true", "1", "yes")
+
+                if do_auto_edit:
+                    auto_cfg = resolve_auto_edit({"enabled": True, "style": auto_style_db, "hook_card": auto_hook_db})
+                    work_dir = Path(RENDER_DIR) / f"work_{timestamp_id}"
+                    hook_txt = suggested_title if auto_hook_db else None
+                    try:
+                        edited = await auto_edit_clip(
+                            self.renderer, permanent_source_path, words, clip_dur, template, auto_cfg,
+                            censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt
+                        )
+                        flags_json = merge_flags(flags_json, json.dumps([summary_flag(edited["summary"])]), censor_cfg)
+                        logger.info("Live clip #%s auto-edited (%s): %s", timestamp_id, auto_style_db, edited["summary"])
+                    except Exception as ae_err:
+                        logger.warning("Auto-edit failed on live clip, falling back to standard render: %s", ae_err)
+                        do_auto_edit = False
+
+                if not do_auto_edit:
+                    await self.renderer.render_clip(
+                        source_path=permanent_source_path,
+                        start_time=clip_start,
+                        end_time=clip_end,
+                        output_path=rendered_mp4,
+                        template=template,
+                        ass_path=ass_path,
+                        teaser_timestamp=teaser_ts,
+                        include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
+                        censor_words=words,
+                        censor_cfg=censor_cfg,
+                    )
                 flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
                 suggested_title = censor_text(suggested_title, censor_cfg)
 

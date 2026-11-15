@@ -246,9 +246,38 @@ async def render_preview_frame(request: web.Request) -> web.Response:
         return make_json_error("ERROR", str(e), status=500)
 
 
+async def upload_watermark_image(request: web.Request) -> web.Response:
+    """Upload a watermark PNG/JPEG image for template branding."""
+    reader = await request.multipart()
+    field = await reader.next()
+    if not field or field.name != "watermark":
+        return make_json_error("NO_FILE", "Field 'watermark' expected")
+
+    filename = field.filename or "watermark.png"
+    clean_name = f"watermark_{int(asyncio.get_event_loop().time() * 1000)}_{Path(filename).name}"
+    wm_dir = Path("data/watermarks")
+    wm_dir.mkdir(parents=True, exist_ok=True)
+    target_path = wm_dir / clean_name
+
+    with open(target_path, "wb") as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            f.write(chunk)
+
+    rel_url = f"/data/watermarks/{clean_name}"
+    return web.json_response({
+        "success": True,
+        "watermark_path": str(target_path),
+        "url": rel_url,
+    })
+
+
 def register_template_routes(app: web.Application):
     app.router.add_get("/api/templates", get_templates)
     app.router.add_post("/api/templates", save_template)
+    app.router.add_post("/api/templates/watermark/upload", upload_watermark_image)
     app.router.add_delete("/api/templates/{name}", delete_template)
     app.router.add_post("/api/templates/test-sample", render_test_sample)
     app.router.add_post("/api/layout/preview-frame", render_preview_frame)
