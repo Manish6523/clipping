@@ -27,6 +27,7 @@ import ContextualInspector from './editor/ContextualInspector';
 import LayoutBuilder from './LayoutBuilder';
 import MobileStage from './editor/MobileStage';
 import { useLayoutMode } from '../hooks/useLayoutMode';
+import { assToHex } from '../utils/colorConversions';
 
 export default function TemplateStudioEditor() {
   const { name: routeName } = useParams();
@@ -442,6 +443,12 @@ export default function TemplateStudioEditor() {
                 sourceMediaUrl={previewMediaUrl}
                 captionsConfig={{
                   ...subtitles,
+                  font: subtitles.font_name || subtitles.font,
+                  color: subtitles.primary_color?.startsWith('&H') ? assToHex(subtitles.primary_color).hex : (subtitles.color || '#FFFFFF'),
+                  highlight: subtitles.highlight_color?.startsWith('&H') ? assToHex(subtitles.highlight_color).hex : (subtitles.highlight || '#FACC15'),
+                  outline_color: subtitles.outline_color?.startsWith('&H') ? assToHex(subtitles.outline_color).hex : (subtitles.outline_color || '#000000'),
+                  outline_width: subtitles.outline,
+                  shadow_blur: subtitles.shadow,
                   onChangePos: (newPos) => {
                     if (newPos && typeof newPos.y === 'number') {
                       useTemplateEditorStore.getState().updateSubtitles({ position: newPos });

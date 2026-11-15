@@ -22,9 +22,11 @@ import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { hexToAss, assToHex } from '../../utils/colorConversions';
 import { CAPTION_STYLES } from '../../lib/captionStyles';
 import { useHookStyles } from '../../lib/hookStyles';
+import { uploadWatermark } from '../../api';
 
 export default function ContextualInspector({ channels = [] }) {
   const hookStyles = useHookStyles() || [];
+  const [uploadingWatermark, setUploadingWatermark] = useState(false);
   const { 
     selection, 
     layout, 
@@ -419,7 +421,40 @@ export default function ContextualInspector({ channels = [] }) {
 
         {/* Upload Dropzone */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] uppercase font-bold text-muted">Logo Image (PNG)</label>
+          <label className="text-[11px] uppercase font-bold text-muted flex items-center justify-between">
+            <span>Logo Image (PNG)</span>
+            <label className="text-[10px] text-accent font-bold cursor-pointer hover:underline flex items-center gap-1">
+              <Upload size={11} />
+              <span>{uploadingWatermark ? 'Uploading...' : 'Upload Image'}</span>
+              <input
+                type="file"
+                accept="image/*"
+                className="hidden"
+                disabled={uploadingWatermark}
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  setUploadingWatermark(true);
+                  try {
+                    const formData = new FormData();
+                    formData.append('watermark', file);
+                    const res = await uploadWatermark(formData);
+                    if (res?.success) {
+                      updateWatermark({
+                        enabled: true,
+                        path: res.watermark_path,
+                        url: res.url
+                      });
+                    }
+                  } catch (err) {
+                    alert('Watermark upload failed: ' + (err.response?.data?.error?.message || err.message));
+                  } finally {
+                    setUploadingWatermark(false);
+                  }
+                }}
+              />
+            </label>
+          </label>
           <div className="border border-dashed border-white/15 rounded-xl p-3 flex flex-col items-center justify-center gap-2 bg-raised/40">
             {watermark.url || watermark.path ? (
               <div className="flex items-center gap-2.5 w-full">
@@ -438,7 +473,38 @@ export default function ContextualInspector({ channels = [] }) {
                 </button>
               </div>
             ) : (
-              <div className="text-center text-muted text-[11px]">No watermark uploaded</div>
+              <label className="flex flex-col items-center justify-center gap-1 cursor-pointer py-2 text-center w-full">
+                <Upload size={16} className="text-emerald-400" />
+                <span className="text-xs font-bold text-slate-200">Click to upload channel logo</span>
+                <span className="text-[10px] text-muted">PNG or transparent recommended</span>
+                <input
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  disabled={uploadingWatermark}
+                  onChange={async (e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    setUploadingWatermark(true);
+                    try {
+                      const formData = new FormData();
+                      formData.append('watermark', file);
+                      const res = await uploadWatermark(formData);
+                      if (res?.success) {
+                        updateWatermark({
+                          enabled: true,
+                          path: res.watermark_path,
+                          url: res.url
+                        });
+                      }
+                    } catch (err) {
+                      alert('Watermark upload failed: ' + (err.response?.data?.error?.message || err.message));
+                    } finally {
+                      setUploadingWatermark(false);
+                    }
+                  }}
+                />
+              </label>
             )}
           </div>
         </div>
