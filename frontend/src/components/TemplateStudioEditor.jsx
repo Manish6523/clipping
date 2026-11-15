@@ -93,7 +93,28 @@ export default function TemplateStudioEditor() {
 
         const target = (allTemplates || []).find((t) => t.name === routeName);
         if (target) {
-          loadTemplate(target);
+          // Check for recoverable draft
+          try {
+            const rawDraft = localStorage.getItem(`template_draft_${target.name}`);
+            if (rawDraft) {
+              const draftObj = JSON.parse(rawDraft);
+              if (draftObj && draftObj.data && (Date.now() - draftObj.timestamp < 24 * 3600 * 1000)) {
+                if (window.confirm(`Unsaved draft found for "${target.name}". Restore it?`)) {
+                  loadTemplate(draftObj.data);
+                  useTemplateEditorStore.setState({ isDirty: true });
+                } else {
+                  localStorage.removeItem(`template_draft_${target.name}`);
+                  loadTemplate(target);
+                }
+              } else {
+                loadTemplate(target);
+              }
+            } else {
+              loadTemplate(target);
+            }
+          } catch (e) {
+            loadTemplate(target);
+          }
           if (allChannels.length > 0) {
             const assigned = allChannels.find((c) => c.template_name === target.name);
             if (assigned) {
@@ -169,12 +190,28 @@ export default function TemplateStudioEditor() {
     try {
       await saveTemplate(payload);
       useTemplateEditorStore.setState({ isDirty: false });
+      localStorage.removeItem(`template_draft_${templateName}`);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 2000);
     } catch (err) {
       alert('Failed to save template: ' + (err.response?.data?.error?.message || err.message));
     }
   };
+
+  // Autosave dirty state to localStorage draft
+  useEffect(() => {
+    if (!templateName || !isDirty) return;
+    const timer = setTimeout(() => {
+      try {
+        const payload = getPayload();
+        localStorage.setItem(`template_draft_${templateName}`, JSON.stringify({
+          timestamp: Date.now(),
+          data: payload
+        }));
+      } catch (e) {}
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [templateName, isDirty, layout, subtitles, watermark, defaultCaptionStyle, defaultHookStyle]);
 
   // Test Render Execution
   const handleTestRender = async () => {
