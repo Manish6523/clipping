@@ -19,7 +19,8 @@ import {
   Sparkles,
   Server,
   Layers,
-  ArrowRight
+  ArrowRight,
+  BookOpen,
 } from 'lucide-react';
 import axios from 'axios';
 import CensorSettings from './CensorSettings';
@@ -51,6 +52,7 @@ const WHISPER_MODELS = [
 
 const SETTINGS_TABS = [
   { id: 'ai', label: 'AI & Scoring', icon: Sparkles, desc: 'Gemini API keys, models & virality thresholds' },
+  { id: 'story', label: 'Narrative Storylines', icon: BookOpen, desc: 'Same-stream setup seed staging & stitch settings' },
   { id: 'transcription', label: 'Whisper Models', icon: Cpu, desc: 'Speech-to-text models for VODs and live clips' },
   { id: 'downloads', label: 'YouTube & Engine', icon: Download, desc: 'yt-dlp health, cookies.txt & bot bypass' },
   { id: 'censor', label: 'Profanity Censor', icon: VolumeX, desc: 'Word lists, bleep audio & asterisks' },
@@ -75,6 +77,10 @@ export default function Settings() {
   const [censor, setCensor] = useState(null);
   const [whisperModel, setWhisperModel] = useState('small');
   const [liveWhisperModel, setLiveWhisperModel] = useState('base');
+  const [storyEnabled, setStoryEnabled] = useState(false);
+  const [storyMode, setStoryMode] = useState('shadow');
+  const [storyCpuBudget, setStoryCpuBudget] = useState(0.35);
+  const [storyGraceMinutes, setStoryGraceMinutes] = useState(35);
   const [banner, setBanner] = useState(null);
 
   useEffect(() => {
@@ -90,6 +96,10 @@ export default function Settings() {
       setCensor(res.data.censor || null);
       setWhisperModel(res.data.whisper_model || 'small');
       setLiveWhisperModel(res.data.live_whisper_model || 'base');
+      setStoryEnabled(Boolean(res.data.story_engine_enabled));
+      setStoryMode(res.data.story_mode || 'shadow');
+      setStoryCpuBudget(res.data.story_seed_cpu_budget ?? 0.35);
+      setStoryGraceMinutes(res.data.story_session_grace_minutes ?? 35);
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -168,6 +178,10 @@ export default function Settings() {
         min_virality_score: minScore,
         whisper_model: whisperModel,
         live_whisper_model: liveWhisperModel,
+        story_engine_enabled: storyEnabled,
+        story_mode: storyMode,
+        story_seed_cpu_budget: storyCpuBudget,
+        story_session_grace_minutes: storyGraceMinutes,
         ...(censor ? { censor } : {}),
       });
       setSaveSuccess(true);
@@ -436,6 +450,73 @@ export default function Settings() {
               </div>
             </Panel>
           </div>
+        </div>
+      )}
+
+      {/* TAB: NARRATIVE STORYLINES */}
+      {activeTab === 'story' && (
+        <div className="space-y-5 animate-in fade-in duration-200">
+          <Panel title="Same-Stream Narrative Storylines" icon={BookOpen} className="space-y-5">
+            <div className="bg-canvas border border-line rounded-xl p-4 text-xs text-muted flex items-start gap-3">
+              <BookOpen size={18} className="text-accent shrink-0 mt-0.5" />
+              <div>
+                <span className="text-slate-200 font-bold block mb-1">Session Setup Capture & Multi-Source Auto-Edit Stitching</span>
+                Automatically detects when streamers make promises, bets, challenges, or running jokes (e.g. <em>"Every time I die I'll do 10 pushups"</em>), stages the snippet from the ring buffer, and stitches it when the payoff happens later in the same stream.
+              </div>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5">
+              <Field
+                label="Story Engine Master Switch"
+                hint="Enable background seed detection and payoff matching for active streams."
+              >
+                <Select value={storyEnabled ? 'true' : 'false'} onChange={(e) => setStoryEnabled(e.target.value === 'true')}>
+                  <option value="false">Disabled (Off)</option>
+                  <option value="true">Enabled (Active)</option>
+                </Select>
+              </Field>
+
+              <Field
+                label="Operational Mode"
+                hint="Shadow logs matches without altering video; Live stitches setup snippets into final clips."
+              >
+                <Select value={storyMode} onChange={(e) => setStoryMode(e.target.value)}>
+                  <option value="shadow">Shadow Mode (Log & Record Only)</option>
+                  <option value="live">Live Mode (Multi-Source Stitched Clips)</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="grid md:grid-cols-2 gap-5 pt-2 border-t border-line">
+              <Field
+                label="Seed Detection CPU Budget (Max 1.0)"
+                hint="Hard cap for background seed transcription (Default 0.35 = 35% of 1 CPU core)."
+              >
+                <Input
+                  type="number"
+                  step="0.05"
+                  min="0.10"
+                  max="1.0"
+                  value={storyCpuBudget}
+                  onChange={(e) => setStoryCpuBudget(parseFloat(e.target.value) || 0.35)}
+                />
+              </Field>
+
+              <Field
+                label="Session Disconnect Grace Period (Minutes)"
+                hint="Keeps active stream seeds alive during stream drops or OBS restarts (Default: 35 min)."
+              >
+                <Input
+                  type="number"
+                  step="5"
+                  min="5"
+                  max="120"
+                  value={storyGraceMinutes}
+                  onChange={(e) => setStoryGraceMinutes(parseInt(e.target.value, 10) || 35)}
+                />
+              </Field>
+            </div>
+          </Panel>
         </div>
       )}
 

@@ -1093,6 +1093,11 @@ class WebUIServer:
         whisper_model = db_settings.get("whisper_model", {}).get("value") or getattr(s, "WHISPER_MODEL", "small")
         live_whisper_model = db_settings.get("live_whisper_model", {}).get("value") or getattr(s, "LIVE_WHISPER_MODEL", "base")
 
+        story_enabled = (db_settings.get("story_engine_enabled", {}).get("value") or str(getattr(s, "STORY_ENGINE_ENABLED", False))).lower() in ("true", "1", "yes")
+        story_mode = db_settings.get("story_mode", {}).get("value") or getattr(s, "STORY_MODE", "shadow")
+        story_cpu_budget = float(db_settings.get("story_seed_cpu_budget", {}).get("value") or getattr(s, "STORY_SEED_CPU_BUDGET", 0.35))
+        story_grace_minutes = int(db_settings.get("story_session_grace_minutes", {}).get("value") or getattr(s, "STORY_SESSION_GRACE_MINUTES", 35))
+
         return web.json_response({
             "gemini_api_keys": keys_list,
             "gemini_model": model_val,
@@ -1101,6 +1106,10 @@ class WebUIServer:
             "censor": censor_cfg,
             "whisper_model": whisper_model,
             "live_whisper_model": live_whisper_model,
+            "story_engine_enabled": story_enabled,
+            "story_mode": story_mode,
+            "story_seed_cpu_budget": story_cpu_budget,
+            "story_session_grace_minutes": story_grace_minutes,
         })
 
     async def handle_save_settings(self, request: web.Request) -> web.Response:
@@ -1165,6 +1174,35 @@ class WebUIServer:
                 return web.json_response({"error": {"code": "BAD_MODEL", "message": f"live_whisper_model must be one of {sorted(allowed)}"}}, status=400)
             await set_system_setting("live_whisper_model", live_model, category="ai", description="faster-whisper model for live moments")
             s.LIVE_WHISPER_MODEL = live_model
+
+        story_enabled = data.get("story_engine_enabled")
+        if story_enabled is not None:
+            val_str = "true" if story_enabled else "false"
+            await set_system_setting("story_engine_enabled", val_str, category="story", description="Enable same-stream narrative storyline engine")
+            s.STORY_ENGINE_ENABLED = bool(story_enabled)
+
+        story_mode = data.get("story_mode")
+        if story_mode in ("shadow", "live"):
+            await set_system_setting("story_mode", story_mode, category="story", description="Storyline engine operational mode: shadow or live")
+            s.STORY_MODE = story_mode
+
+        story_cpu = data.get("story_seed_cpu_budget")
+        if story_cpu is not None:
+            try:
+                story_cpu_val = min(1.0, max(0.1, float(story_cpu)))
+                await set_system_setting("story_seed_cpu_budget", str(story_cpu_val), category="story", description="CPU budget for background seed transcription")
+                s.STORY_SEED_CPU_BUDGET = story_cpu_val
+            except Exception:
+                pass
+
+        story_grace = data.get("story_session_grace_minutes")
+        if story_grace is not None:
+            try:
+                grace_val = max(5, int(story_grace))
+                await set_system_setting("story_session_grace_minutes", str(grace_val), category="story", description="Grace period in minutes for active stream sessions")
+                s.STORY_SESSION_GRACE_MINUTES = grace_val
+            except Exception:
+                pass
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
 
