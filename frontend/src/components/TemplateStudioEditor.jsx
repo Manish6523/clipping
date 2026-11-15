@@ -117,13 +117,11 @@ export default function TemplateStudioEditor() {
           }
           if (allChannels.length > 0) {
             const assigned = allChannels.find((c) => c.template_name === target.name);
-            if (assigned) {
-              setSelectedChannel(assigned.channel_id_or_handle);
-              setPreviewMediaUrl(`/data/channels/${assigned.channel_id_or_handle}/preview_frame.jpg`);
-            } else {
-              setSelectedChannel(allChannels[0].channel_id_or_handle);
-              setPreviewMediaUrl(`/data/channels/${allChannels[0].channel_id_or_handle}/preview_frame.jpg`);
-            }
+            const targetChannel = assigned ? assigned.channel_id_or_handle : allChannels[0].channel_id_or_handle;
+            setSelectedChannel(targetChannel);
+            setPreviewMediaUrl(`/api/channels/${targetChannel}/frame?t=${Date.now()}`);
+          } else {
+            setPreviewMediaUrl('/placeholders/streamer_reference_16_9.jpg');
           }
         } else {
           // If template doesn't exist, redirect back to gallery
@@ -468,6 +466,9 @@ export default function TemplateStudioEditor() {
                 }}
                 selectedLayerId={selection.type === 'layer' ? selection.id : null}
                 onSelectLayer={(id) => setSelection({ type: 'layer', id })}
+                onChange={(nextLayout) => {
+                  useTemplateEditorStore.setState({ layout: nextLayout, isDirty: true });
+                }}
                 mode="template"
                 showToolbar={false}
                 showBottomPanel={false}

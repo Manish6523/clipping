@@ -597,14 +597,20 @@ export default function LayoutBuilder({
   // Image reference for static snapshot in Template Studio
   const imgRef = useRef(null);
   useEffect(() => {
-    if (sourceMediaUrl) {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.src = sourceMediaUrl;
-      img.onload = () => {
-        imgRef.current = img;
+    const url = sourceMediaUrl || '/placeholders/streamer_reference_16_9.jpg';
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.src = url;
+    img.onload = () => {
+      imgRef.current = img;
+    };
+    img.onerror = () => {
+      const fallback = new Image();
+      fallback.src = '/placeholders/streamer_reference_16_9.jpg';
+      fallback.onload = () => {
+        imgRef.current = fallback;
       };
-    }
+    };
   }, [sourceMediaUrl]);
 
   // ----------------------------------------------------
@@ -1054,10 +1060,19 @@ export default function LayoutBuilder({
                   key={sourceMediaUrl}
                   src={sourceMediaUrl}
                   alt="Source Frame"
+                  onError={(e) => {
+                    // Fallback to high-res streamer test pattern if channel snapshot fails to load
+                    e.target.onerror = null;
+                    e.target.src = '/placeholders/streamer_reference_16_9.jpg';
+                  }}
                   className="w-full h-full object-cover pointer-events-none"
                 />
               ) : (
-                <div className="text-slate-600 text-xs">No media loaded</div>
+                <img
+                  src="/placeholders/streamer_reference_16_9.jpg"
+                  alt="Default Streamer Reference"
+                  className="w-full h-full object-cover pointer-events-none"
+                />
               )}
 
               {/* Source Crop Boxes Overlay */}
