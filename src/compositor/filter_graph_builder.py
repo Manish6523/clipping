@@ -20,6 +20,7 @@ def build_filter_graph(
     input_tag: str = "0:v",
     ass_path: Optional[str] = None,
     watermark_path: Optional[str] = None,
+    watermark_config: Optional[Dict[str, Any]] = None,
     speed_multiplier: float = 1.0,
     contrast: float = 1.0,
     saturation: float = 1.0,
@@ -137,10 +138,11 @@ def build_filter_graph(
     last_v = graded_tag
 
     # 4. Optional Watermark
-    raw_wm = template_config.get("watermark")
-    wm_config = raw_wm if isinstance(raw_wm, dict) else (template_config.get("anti_shadowban") or {})
-    if not isinstance(wm_config, dict):
-        wm_config = {}
+    wm_config = watermark_config if isinstance(watermark_config, dict) else {}
+    if not wm_config:
+        raw_layout_wm = v2_layout.get("watermark")
+        if isinstance(raw_layout_wm, dict):
+            wm_config = raw_layout_wm
     wm_file = watermark_path or wm_config.get("watermark_path")
     if wm_file and os.path.exists(wm_file):
         escaped_wm = wm_file.replace("\\", "/").replace(":", "\\:")

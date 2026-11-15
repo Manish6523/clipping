@@ -151,6 +151,7 @@ class FFmpegRenderer:
                 input_tag="0:v",
                 ass_path=ass_path,
                 watermark_path=watermark_path if has_watermark else None,
+                watermark_config=template.get("watermark") or anti,
                 speed_multiplier=speed,
                 contrast=contrast,
                 saturation=saturation,
