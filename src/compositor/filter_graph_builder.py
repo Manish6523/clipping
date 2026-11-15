@@ -50,12 +50,16 @@ def build_filter_graph(
 
     # 1. Base Canvas / Background Pipeline
     if bg_type == "blur":
-        # Gentle blur to preserve colorful atmospheric backlight (like TikTok/YouTube Shorts ambient mode)
-        blur_rad = int(bg_cfg.get("blur", 20))
-        # Keep dimming minimal (0.00 to 0.05 max) so the background glows brightly and never turns black
+        blur_rad = int(bg_cfg.get("blur", 40))
+        dim_val = float(bg_cfg.get("dim", 0.35))
+        # High-quality cinematic ambient Gaussian blur matching Template Studio & modern social apps:
+        # Downscale -> Gaussian blur (gblur) -> Bicubic upscale back to canvas + slight dimming & saturation
+        # This completely eliminates rectangular streaks/box artifacts and dissolves UI text into smooth glow.
+        eq_filter = f"eq=brightness={-dim_val * 0.4:.3f}:saturation=1.2" if dim_val > 0 else "eq=saturation=1.2"
         filters.append(
-            f"[{input_tag}]scale={canvas_w}:{canvas_h}:force_original_aspect_ratio=increase,"
-            f"crop={canvas_w}:{canvas_h},boxblur={blur_rad}:1,eq=brightness=0.02:saturation=1.25[base_bg]"
+            f"[{input_tag}]scale=270:480:force_original_aspect_ratio=increase,"
+            f"crop=270:480,gblur=sigma=18:steps=2,"
+            f"scale={canvas_w}:{canvas_h}:flags=bicubic,{eq_filter}[base_bg]"
         )
         current_base = "[base_bg]"
     else:
