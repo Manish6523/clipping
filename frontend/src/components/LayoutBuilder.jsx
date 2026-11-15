@@ -526,7 +526,10 @@ export default function LayoutBuilder({
         let wx = cw - targetW - 40;
         let wy = 50;
 
-        if (pos === 'top_left') {
+        if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
+          wx = watermarkConfig.x * cw;
+          wy = watermarkConfig.y * ch;
+        } else if (pos === 'top_left') {
           wx = 40;
           wy = 50;
         } else if (pos === 'top_center') {
@@ -799,6 +802,87 @@ export default function LayoutBuilder({
       window.removeEventListener('pointerup', handleCaptionUp);
     };
   }, [captionDragState, enableSnapping, captionsConfig]);
+
+  // Watermark drag handling
+  const [watermarkDragState, setWatermarkDragState] = useState(null);
+
+  const handleWatermarkPointerDown = (e) => {
+    e.stopPropagation();
+    e.preventDefault();
+
+    const canvasElem = dstCanvasRef.current;
+    if (!canvasElem) return;
+    const rect = canvasElem.getBoundingClientRect();
+
+    let curNormX = watermarkConfig.x;
+    let curNormY = watermarkConfig.y;
+
+    if (curNormX === undefined || curNormX === null || curNormY === undefined || curNormY === null) {
+      const pos = (watermarkConfig.position || 'top_right').toLowerCase();
+      const targetW = (watermarkConfig.width || 220) / 1080;
+      const targetH = ((watermarkConfig.width || 220) * 0.5) / 1920;
+
+      if (pos === 'top_left') {
+        curNormX = 40 / 1080;
+        curNormY = 50 / 1920;
+      } else if (pos === 'top_center') {
+        curNormX = (1 - targetW) / 2;
+        curNormY = 50 / 1920;
+      } else if (pos === 'bottom_left') {
+        curNormX = 40 / 1080;
+        curNormY = 1 - targetH - 60 / 1920;
+      } else if (pos === 'bottom_right') {
+        curNormX = 1 - targetW - 40 / 1080;
+        curNormY = 1 - targetH - 60 / 1920;
+      } else if (pos === 'bottom_center') {
+        curNormX = (1 - targetW) / 2;
+        curNormY = 1 - targetH - 60 / 1920;
+      } else {
+        curNormX = 1 - targetW - 40 / 1080;
+        curNormY = 50 / 1920;
+      }
+    }
+
+    setWatermarkDragState({
+      startX: e.clientX,
+      startY: e.clientY,
+      canvasW: rect.width,
+      canvasH: rect.height,
+      origX: curNormX,
+      origY: curNormY,
+    });
+  };
+
+  useEffect(() => {
+    const handleWatermarkMove = (e) => {
+      if (!watermarkDragState) return;
+      const deltaXNorm = (e.clientX - watermarkDragState.startX) / watermarkDragState.canvasW;
+      const deltaYNorm = (e.clientY - watermarkDragState.startY) / watermarkDragState.canvasH;
+
+      let newX = Math.max(0.01, Math.min(0.85, watermarkDragState.origX + deltaXNorm));
+      let newY = Math.max(0.01, Math.min(0.92, watermarkDragState.origY + deltaYNorm));
+
+      if (watermarkConfig && watermarkConfig.onChangePos) {
+        watermarkConfig.onChangePos(
+          Math.round(newX * 1000) / 1000,
+          Math.round(newY * 1000) / 1000
+        );
+      }
+    };
+
+    const handleWatermarkUp = () => {
+      if (watermarkDragState) setWatermarkDragState(null);
+    };
+
+    if (watermarkDragState) {
+      window.addEventListener('pointermove', handleWatermarkMove);
+      window.addEventListener('pointerup', handleWatermarkUp);
+    }
+    return () => {
+      window.removeEventListener('pointermove', handleWatermarkMove);
+      window.removeEventListener('pointerup', handleWatermarkUp);
+    };
+  }, [watermarkDragState, watermarkConfig]);
 
   const selectedLayer = layers.find((l) => l.id === selectedLayerId);
   const captionPos = captionsConfig?.position || { x: 0.5, y: 0.76, max_width: 0.85 };
@@ -1173,6 +1257,55 @@ export default function LayoutBuilder({
                   Captions ({Math.round(captionPos.x * 100)}%, {Math.round(captionPos.y * 100)}%)
                 </span>
               </div>
+
+              {/* Draggable Watermark Overlay Hit Box */}
+              {watermarkConfig?.enabled && (watermarkConfig.url || watermarkConfig.path) && (() => {
+                let leftPct = 100 - ((watermarkConfig.width || 220) + 40) / 10.8;
+                let topPct = (50 / 1920) * 100;
+                const widthPct = ((watermarkConfig.width || 220) / 1080) * 100;
+                const heightPct = widthPct * 0.45; // Approximate bounding box height
+
+                if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
+                  leftPct = watermarkConfig.x * 100;
+                  topPct = watermarkConfig.y * 100;
+                } else {
+                  const pos = (watermarkConfig.position || 'top_right').toLowerCase();
+                  if (pos === 'top_left') {
+                    leftPct = (40 / 1080) * 100;
+                    topPct = (50 / 1920) * 100;
+                  } else if (pos === 'top_center') {
+                    leftPct = (50 - widthPct / 2);
+                    topPct = (50 / 1920) * 100;
+                  } else if (pos === 'bottom_left') {
+                    leftPct = (40 / 1080) * 100;
+                    topPct = 100 - heightPct - (60 / 19.2);
+                  } else if (pos === 'bottom_right') {
+                    leftPct = 100 - widthPct - (40 / 10.8);
+                    topPct = 100 - heightPct - (60 / 19.2);
+                  } else if (pos === 'bottom_center') {
+                    leftPct = (50 - widthPct / 2);
+                    topPct = 100 - heightPct - (60 / 19.2);
+                  }
+                }
+
+                return (
+                  <div
+                    style={{
+                      left: `${leftPct}%`,
+                      top: `${topPct}%`,
+                      width: `${widthPct}%`,
+                      height: `${heightPct}%`,
+                    }}
+                    onPointerDown={handleWatermarkPointerDown}
+                    className="absolute z-40 border-2 border-dashed border-emerald-400/50 hover:border-emerald-400 hover:bg-emerald-400/10 cursor-move rounded-lg flex items-center justify-center transition-all group shadow-sm"
+                    title="Click and drag to freely position the watermark anywhere on the screen"
+                  >
+                    <span className="text-[10px] font-mono font-bold text-emerald-300 opacity-0 group-hover:opacity-100 transition-opacity bg-black/90 px-1.5 py-0.5 rounded border border-emerald-500/30 pointer-events-none">
+                      Drag Logo
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>

@@ -90,6 +90,8 @@ export default function TemplateStudio() {
   const [watermarkPath, setWatermarkPath] = useState('');
   const [watermarkUrl, setWatermarkUrl] = useState('');
   const [watermarkPosition, setWatermarkPosition] = useState('top_right');
+  const [watermarkX, setWatermarkX] = useState(null);
+  const [watermarkY, setWatermarkY] = useState(null);
   const [watermarkOpacity, setWatermarkOpacity] = useState(0.85);
   const [watermarkWidth, setWatermarkWidth] = useState(220);
   const [uploadingWatermark, setUploadingWatermark] = useState(false);
@@ -261,12 +263,16 @@ export default function TemplateStudio() {
       setWatermarkPath(wm.watermark_path);
       setWatermarkUrl(wm.watermark_path.startsWith('http') ? wm.watermark_path : `/${wm.watermark_path.replace(/\\/g, '/')}`);
       setWatermarkPosition(wm.watermark_position || 'top_right');
+      setWatermarkX(typeof wm.watermark_x === 'number' ? wm.watermark_x : null);
+      setWatermarkY(typeof wm.watermark_y === 'number' ? wm.watermark_y : null);
       setWatermarkOpacity(wm.watermark_opacity ?? 0.85);
       setWatermarkWidth(wm.watermark_width || 220);
     } else {
       setWatermarkEnabled(false);
       setWatermarkPath('');
       setWatermarkUrl('');
+      setWatermarkX(null);
+      setWatermarkY(null);
     }
 
     setIsDirty(false);
@@ -337,6 +343,8 @@ export default function TemplateStudio() {
       watermark: watermarkEnabled && watermarkPath ? {
         watermark_path: watermarkPath,
         watermark_position: watermarkPosition,
+        watermark_x: watermarkX,
+        watermark_y: watermarkY,
         watermark_opacity: Number(watermarkOpacity),
         watermark_width: Number(watermarkWidth),
       } : undefined,
@@ -837,8 +845,16 @@ export default function TemplateStudio() {
                 path: watermarkPath,
                 url: watermarkUrl,
                 position: watermarkPosition,
+                x: watermarkX,
+                y: watermarkY,
                 opacity: watermarkOpacity,
                 width: watermarkWidth,
+                onChangePos: (newX, newY) => {
+                  setWatermarkX(newX);
+                  setWatermarkY(newY);
+                  setWatermarkPosition('custom');
+                  setIsDirty(true);
+                }
               }}
               selectedLayerId={selectedLayerId}
               onSelectLayer={setSelectedLayerId}

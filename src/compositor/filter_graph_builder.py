@@ -151,7 +151,13 @@ def build_filter_graph(
         scale_w = int(wm_config.get("watermark_width", 220))
 
         # Overlay positioning calculations
-        if pos == "top_left":
+        custom_x = wm_config.get("watermark_x")
+        custom_y = wm_config.get("watermark_y")
+
+        if custom_x is not None and custom_y is not None:
+            # Normalized coordinates (0.0 to 1.0)
+            overlay_expr = f"{float(custom_x):.4f}*W:{float(custom_y):.4f}*H"
+        elif pos == "top_left":
             overlay_expr = "40:50"
         elif pos == "top_center":
             overlay_expr = "(W-w)/2:50"
