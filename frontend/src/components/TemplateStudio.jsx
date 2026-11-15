@@ -2,11 +2,11 @@ import React, { useState, useEffect } from 'react';
 import CaptionStylePicker from './CaptionStylePicker';
 import HookStylePicker from './HookStylePicker';
 import { styleById } from '../lib/captionStyles';
-import { 
-  Palette, 
-  Save, 
-  Layers, 
-  Type, 
+import {
+  Palette,
+  Save,
+  Layers,
+  Type,
   Sparkles,
   CheckCircle2,
   AlertTriangle,
@@ -33,17 +33,18 @@ import {
   ShieldCheck,
   ImageIcon,
 } from 'lucide-react';
-import { 
-  getTemplates, 
-  saveTemplate, 
-  deleteTemplate, 
-  getChannels, 
+import {
+  getTemplates,
+  saveTemplate,
+  deleteTemplate,
+  getChannels,
   patchChannelSettings,
   testTemplateSample
 } from '../api';
 import LayoutBuilder, { PRESET_STARTERS } from './LayoutBuilder';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import MobileStage from './editor/MobileStage';
+import axios from 'axios';
 
 export default function TemplateStudio() {
   const { isPhone, isLandscape } = useLayoutMode();
@@ -614,188 +615,188 @@ export default function TemplateStudio() {
 
       {/* Sleek Minimal Top Control Bar */}
       {!isPhone && (
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/[0.06] shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-canvas font-black text-xs shadow-md shadow-accent/20 shrink-0">
-            <LayoutTemplate size={14} />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xs sm:text-sm font-extrabold text-white">Template Studio</h2>
-              {isDirty && (
-                <span className="flex items-center gap-1 text-[10.5px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
-                  <AlertTriangle size={9} /> Unsaved
-                </span>
-              )}
-              {feedback && (
-                <span className="flex items-center gap-1 text-[10.5px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
-                  <CheckCircle2 size={9} /> {feedback}
-                </span>
-              )}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-2 border-b border-white/[0.06] shrink-0">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-canvas font-black text-xs shadow-md shadow-accent/20 shrink-0">
+              <LayoutTemplate size={14} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-xs sm:text-sm font-extrabold text-white">Template Studio</h2>
+                {isDirty && (
+                  <span className="flex items-center gap-1 text-[10.5px] font-bold text-amber-400 bg-amber-500/15 border border-amber-500/30 px-1.5 py-0.5 rounded-full">
+                    <AlertTriangle size={9} /> Unsaved
+                  </span>
+                )}
+                {feedback && (
+                  <span className="flex items-center gap-1 text-[10.5px] font-bold text-emerald-300 bg-emerald-500/15 border border-emerald-500/30 px-1.5 py-0.5 rounded-full">
+                    <CheckCircle2 size={9} /> {feedback}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Center & Right Control Actions */}
-        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
-          {/* Template Picker Dropdown */}
-          <div className="flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
-            <span className="text-[10.5px] uppercase font-bold text-muted">Active:</span>
-            <select
-              value={templateName}
-              onChange={(e) => handleLoadPreset(e.target.value)}
-              className="bg-transparent text-xs text-accent font-bold focus:outline-none cursor-pointer pr-1"
-            >
-              {templates.map((t) => (
-                <option key={t.name} value={t.name} className="bg-slate-900 text-white font-mono">
-                  {t.name}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => handleDeleteTemplate(templateName)}
-              title="Delete this template"
-              className="p-0.5 rounded text-slate-500 hover:text-rose-400 transition-colors"
-            >
-              <Trash2 size={11} />
-            </button>
-          </div>
+          {/* Center & Right Control Actions */}
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            {/* Template Picker Dropdown */}
+            <div className="flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
+              <span className="text-[10.5px] uppercase font-bold text-muted">Active:</span>
+              <select
+                value={templateName}
+                onChange={(e) => handleLoadPreset(e.target.value)}
+                className="bg-transparent text-xs text-accent font-bold focus:outline-none cursor-pointer pr-1"
+              >
+                {templates.map((t) => (
+                  <option key={t.name} value={t.name} className="bg-slate-900 text-white font-mono">
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => handleDeleteTemplate(templateName)}
+                title="Delete this template"
+                className="p-0.5 rounded text-slate-500 hover:text-rose-400 transition-colors"
+              >
+                <Trash2 size={11} />
+              </button>
+            </div>
 
-          {/* Sample Streamer Picker & Custom Upload */}
-          <div className="flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
-            <span className="text-[10.5px] text-slate-400 font-bold uppercase">Frame:</span>
-            <select
-              value={selectedChannel}
-              onChange={(e) => {
-                setCustomImage(null);
-                handleChannelSelect(e.target.value);
-              }}
-              className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[95px] truncate"
-            >
-              {channels.map((c) => (
-                <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
-                  @{c.display_name || c.channel_id_or_handle}
-                </option>
-              ))}
-            </select>
+            {/* Sample Streamer Picker & Custom Upload */}
+            <div className="flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
+              <span className="text-[10.5px] text-slate-400 font-bold uppercase">Frame:</span>
+              <select
+                value={selectedChannel}
+                onChange={(e) => {
+                  setCustomImage(null);
+                  handleChannelSelect(e.target.value);
+                }}
+                className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[95px] truncate"
+              >
+                {channels.map((c) => (
+                  <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                    @{c.display_name || c.channel_id_or_handle}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => {
+                  setCustomImage(null);
+                  fetchChannelFrame(selectedChannel);
+                }}
+                title="Refresh streamer snapshot"
+                className="p-0.5 rounded text-slate-400 hover:text-white"
+              >
+                <RefreshCw size={10} />
+              </button>
+              <label
+                title="Upload custom reference image"
+                className="p-0.5 rounded text-slate-400 hover:text-accent cursor-pointer"
+              >
+                <Upload size={11} />
+                <input type="file" accept="image/*" onChange={handleCustomImageUpload} className="hidden" />
+              </label>
+              {customImage && (
+                <span className="text-[10.5px] font-bold text-cyan-400 bg-cyan-500/10 px-1 rounded">Custom</span>
+              )}
+            </div>
+
+            {/* Quick Assign to Streamer */}
+            <div className="hidden md:flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
+              <span className="text-[10.5px] text-slate-400 font-bold uppercase">Assign:</span>
+              <select
+                value={assigningStreamer}
+                onChange={(e) => setAssigningStreamer(e.target.value)}
+                className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[90px] truncate"
+              >
+                <option value="" className="bg-slate-900 text-slate-400">Streamer...</option>
+                {channels.map((c) => (
+                  <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                    @{c.display_name || c.channel_id_or_handle}
+                  </option>
+                ))}
+              </select>
+              <button
+                onClick={() => handleApplyToChannel(assigningStreamer)}
+                disabled={!assigningStreamer}
+                title="Map active template to this streamer"
+                className="p-1 rounded text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <UserCheck size={12} />
+              </button>
+            </div>
+
+            {/* Test Render Button */}
             <button
-              onClick={() => {
-                setCustomImage(null);
-                fetchChannelFrame(selectedChannel);
-              }}
-              title="Refresh streamer snapshot"
-              className="p-0.5 rounded text-slate-400 hover:text-white"
+              onClick={handleTestRenderSample}
+              disabled={testingSample}
+              title="Render real 3-second FFmpeg test short"
+              className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-amber-300 font-bold py-1 px-2 rounded-xl text-xs border border-amber-500/30"
             >
-              <RefreshCw size={10} />
+              {testingSample ? <Loader2 size={11} className="animate-spin text-amber-400" /> : <Play size={11} className="text-amber-400" />}
+              <span className="hidden sm:inline">Test Render</span>
             </button>
+
+            {/* Undo and Redo Controls */}
+            <div className="flex items-center gap-0.5 bg-surface border border-white/[0.08] rounded-xl p-0.5">
+              <button
+                onClick={handleUndo}
+                disabled={history.length === 0}
+                title="Undo (Ctrl+Z)"
+                className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <Undo2 size={13} />
+              </button>
+              <button
+                onClick={handleRedo}
+                disabled={redoStack.length === 0}
+                title="Redo (Ctrl+Y)"
+                className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
+              >
+                <Redo2 size={13} />
+              </button>
+            </div>
+
+            {/* Export Template Button */}
+            <button
+              onClick={handleExportTemplate}
+              title="Export template as .json file"
+              className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08]"
+            >
+              <FileDown size={11} className="text-accent" />
+              <span className="hidden sm:inline">Export</span>
+            </button>
+
+            {/* Import Template Button */}
             <label
-              title="Upload custom reference image"
-              className="p-0.5 rounded text-slate-400 hover:text-accent cursor-pointer"
+              title="Import template from .json file"
+              className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08] cursor-pointer"
             >
-              <Upload size={11} />
-              <input type="file" accept="image/*" onChange={handleCustomImageUpload} className="hidden" />
+              <FileUp size={11} className="text-accent" />
+              <span className="hidden sm:inline">Import</span>
+              <input
+                type="file"
+                accept=".json,application/json"
+                onChange={handleImportTemplate}
+                className="hidden"
+              />
             </label>
-            {customImage && (
-              <span className="text-[10.5px] font-bold text-cyan-400 bg-cyan-500/10 px-1 rounded">Custom</span>
-            )}
-          </div>
 
-          {/* Quick Assign to Streamer */}
-          <div className="hidden md:flex items-center gap-1 bg-surface border border-white/[0.08] rounded-xl px-2 py-1">
-            <span className="text-[10.5px] text-slate-400 font-bold uppercase">Assign:</span>
-            <select
-              value={assigningStreamer}
-              onChange={(e) => setAssigningStreamer(e.target.value)}
-              className="bg-transparent text-xs text-slate-200 focus:outline-none cursor-pointer max-w-[90px] truncate"
-            >
-              <option value="" className="bg-slate-900 text-slate-400">Streamer...</option>
-              {channels.map((c) => (
-                <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
-                  @{c.display_name || c.channel_id_or_handle}
-                </option>
-              ))}
-            </select>
             <button
-              onClick={() => handleApplyToChannel(assigningStreamer)}
-              disabled={!assigningStreamer}
-              title="Map active template to this streamer"
-              className="p-1 rounded text-emerald-400 hover:bg-emerald-500/20 disabled:opacity-30 disabled:hover:bg-transparent"
+              onClick={handleNewTemplate}
+              className="flex items-center gap-1 bg-surface text-white font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08]"
             >
-              <UserCheck size={12} />
+              <Plus size={11} className="text-accent" /> New
+            </button>
+
+            <button
+              onClick={handleSave}
+              className="flex items-center gap-1 bg-gradient-to-r from-accent to-accent text-canvas font-black py-1 px-2.5 rounded-xl text-xs shadow-md shadow-accent/20"
+            >
+              <Save size={11} /> Save
             </button>
           </div>
-
-          {/* Test Render Button */}
-          <button
-            onClick={handleTestRenderSample}
-            disabled={testingSample}
-            title="Render real 3-second FFmpeg test short"
-            className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-amber-300 font-bold py-1 px-2 rounded-xl text-xs border border-amber-500/30"
-          >
-            {testingSample ? <Loader2 size={11} className="animate-spin text-amber-400" /> : <Play size={11} className="text-amber-400" />}
-            <span className="hidden sm:inline">Test Render</span>
-          </button>
-
-          {/* Undo and Redo Controls */}
-          <div className="flex items-center gap-0.5 bg-surface border border-white/[0.08] rounded-xl p-0.5">
-            <button
-              onClick={handleUndo}
-              disabled={history.length === 0}
-              title="Undo (Ctrl+Z)"
-              className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Undo2 size={13} />
-            </button>
-            <button
-              onClick={handleRedo}
-              disabled={redoStack.length === 0}
-              title="Redo (Ctrl+Y)"
-              className="p-1 rounded-lg text-slate-300 hover:text-white hover:bg-white/[0.08] disabled:opacity-30 disabled:hover:bg-transparent"
-            >
-              <Redo2 size={13} />
-            </button>
-          </div>
-
-          {/* Export Template Button */}
-          <button
-            onClick={handleExportTemplate}
-            title="Export template as .json file"
-            className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08]"
-          >
-            <FileDown size={11} className="text-accent" />
-            <span className="hidden sm:inline">Export</span>
-          </button>
-
-          {/* Import Template Button */}
-          <label
-            title="Import template from .json file"
-            className="flex items-center gap-1 bg-surface hover:bg-white/[0.06] text-slate-300 font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08] cursor-pointer"
-          >
-            <FileUp size={11} className="text-accent" />
-            <span className="hidden sm:inline">Import</span>
-            <input
-              type="file"
-              accept=".json,application/json"
-              onChange={handleImportTemplate}
-              className="hidden"
-            />
-          </label>
-
-          <button
-            onClick={handleNewTemplate}
-            className="flex items-center gap-1 bg-surface text-white font-bold py-1 px-2 rounded-xl text-xs border border-white/[0.08]"
-          >
-            <Plus size={11} className="text-accent" /> New
-          </button>
-
-          <button
-            onClick={handleSave}
-            className="flex items-center gap-1 bg-gradient-to-r from-accent to-accent text-canvas font-black py-1 px-2.5 rounded-xl text-xs shadow-md shadow-accent/20"
-          >
-            <Save size={11} /> Save
-          </button>
         </div>
-      </div>
       )}
 
       {/* Main Studio Viewport */}
@@ -852,11 +853,10 @@ export default function TemplateStudio() {
             <button
               key={l.id}
               onClick={() => setSelectedLayerId(l.id)}
-              className={`h-5 px-2 rounded text-[11px] font-bold flex items-center gap-1 shrink-0 border transition-all ${
-                selectedLayerId === l.id
-                  ? 'bg-white/20 border-white text-white shadow-sm'
-                  : 'bg-white/[0.04] border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
-              }`}
+              className={`h-5 px-2 rounded text-[11px] font-bold flex items-center gap-1 shrink-0 border transition-all ${selectedLayerId === l.id
+                ? 'bg-white/20 border-white text-white shadow-sm'
+                : 'bg-white/[0.04] border-white/5 text-slate-400 hover:text-white hover:bg-white/10'
+                }`}
             >
               <span className="w-2 h-2 rounded-full" style={{ backgroundColor: l.color }} />
               <span>{l.name}</span>
@@ -925,11 +925,10 @@ export default function TemplateStudio() {
                   setIsDirty(true);
                   showToast(`Aspect ratio ${newLockState ? 'Locked' : 'Unlocked (Freeform)'}`);
                 }}
-                className={`flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-bold border transition-all shrink-0 ${
-                  (layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock
-                    ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
-                    : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-                }`}
+                className={`flex items-center gap-1 h-6 px-2 rounded-md text-[11px] font-bold border transition-all shrink-0 ${(layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-300'
+                  : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+                  }`}
                 title="Toggle Aspect Ratio Lock (Locked keeps shape, Unlocked allows freeform stretch/resize)"
               >
                 {(layoutState.layers || []).find((l) => l.id === selectedLayerId)?.aspect_lock ? (
@@ -1058,11 +1057,10 @@ export default function TemplateStudio() {
           <button
             type="button"
             onClick={() => setShowAdvancedTypography(!showAdvancedTypography)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 ${
-              showAdvancedTypography 
-                ? 'bg-accent/20 border-accent text-accent' 
-                : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
-            }`}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 ${showAdvancedTypography
+              ? 'bg-accent/20 border-accent text-accent'
+              : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+              }`}
             title="Open Advanced Subtitle Styling (Colors, Outline, Shadow, Case)"
           >
             <Sliders size={11} /> Advanced
@@ -1071,11 +1069,10 @@ export default function TemplateStudio() {
           <button
             type="button"
             onClick={() => setShowWatermarkModal(true)}
-            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 ${
-              watermarkEnabled && watermarkPath
-                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
-                : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
-            }`}
+            className={`flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-all shrink-0 ${watermarkEnabled && watermarkPath
+              ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+              : 'bg-white/5 border-white/10 text-slate-300 hover:text-white'
+              }`}
             title="Channel watermark logo overlay"
           >
             <ShieldCheck size={11} /> Watermark {watermarkEnabled && watermarkPath ? '●' : ''}
@@ -1106,11 +1103,10 @@ export default function TemplateStudio() {
               setIsDirty(true);
               showToast(`Background set to ${nextType === 'blur' ? 'Blurred 9:16' : 'Solid Black'}`);
             }}
-            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all border shrink-0 ${
-              layoutState.background?.type === 'blur'
-                ? 'bg-accent/20 border-accent text-accent shadow-sm'
-                : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
-            }`}
+            className={`px-2 py-0.5 rounded text-[11px] font-bold transition-all border shrink-0 ${layoutState.background?.type === 'blur'
+              ? 'bg-accent/20 border-accent text-accent shadow-sm'
+              : 'bg-white/5 border-white/10 text-slate-400 hover:text-white'
+              }`}
             title="Toggle between Blurred video backdrop and Solid black background"
           >
             {layoutState.background?.type === 'blur' ? '💧 Blur' : '⬛ Black'}
@@ -1304,11 +1300,10 @@ export default function TemplateStudio() {
                 <button
                   type="button"
                   onClick={() => { setUppercase(!uppercase); setIsDirty(true); }}
-                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border ${
-                    uppercase
-                      ? 'bg-accent/20 border-accent text-accent'
-                      : 'bg-white/5 border-white/10 text-slate-400'
-                  }`}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-all border ${uppercase
+                    ? 'bg-accent/20 border-accent text-accent'
+                    : 'bg-white/5 border-white/10 text-slate-400'
+                    }`}
                 >
                   {uppercase ? 'ALL CAPS (ON)' : 'Original Case'}
                 </button>
@@ -1361,11 +1356,10 @@ export default function TemplateStudio() {
                   setWatermarkEnabled(!watermarkEnabled);
                   setIsDirty(true);
                 }}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${
-                  watermarkEnabled
-                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
-                    : 'bg-white/5 border-white/10 text-slate-400'
-                }`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all border ${watermarkEnabled
+                  ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                  : 'bg-white/5 border-white/10 text-slate-400'
+                  }`}
               >
                 {watermarkEnabled ? 'Active (ON)' : 'Disabled (OFF)'}
               </button>
@@ -1446,11 +1440,10 @@ export default function TemplateStudio() {
                       setWatermarkPosition(pos.id);
                       setIsDirty(true);
                     }}
-                    className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center ${
-                      watermarkPosition === pos.id
-                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-sm'
-                        : 'bg-raised border-white/5 text-slate-300 hover:text-white hover:border-white/15'
-                    }`}
+                    className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all text-center ${watermarkPosition === pos.id
+                      ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300 shadow-sm'
+                      : 'bg-raised border-white/5 text-slate-300 hover:text-white hover:border-white/15'
+                      }`}
                   >
                     {pos.label}
                   </button>
