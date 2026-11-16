@@ -33,16 +33,32 @@ function scoreTone(v) { return v >= 80 ? 'text-good' : v >= 65 ? 'text-warn' : '
 
 function Tile({ clip, selecting, selected, onToggle, onOpen }) {
   const [hover, setHover] = useState(false);
+  const press = useRef({ t: 0, fired: false });
+  // long-press a tile (touch) to start selecting
+  const onDown = (e) => {
+    if (e.pointerType === 'mouse') return;
+    press.current.fired = false;
+    clearTimeout(press.current.t);
+    press.current.t = setTimeout(() => { press.current.fired = true; try { navigator.vibrate?.(8); } catch { /* unsupported */ } onToggle(clip.id); }, 450);
+  };
+  const cancelPress = () => clearTimeout(press.current.t);
   const m = meta(clip.status);
   const score = Math.round(clip.final_score ?? clip.virality_score ?? 0);
-  const click = () => (selecting ? onToggle(clip.id) : onOpen(clip));
+  const click = () => {
+    if (press.current.fired) { press.current.fired = false; return; }    // the long-press already handled it
+    if (selecting) onToggle(clip.id); else onOpen(clip);
+  };
   return (
     <div
       data-testid="clip-tile" data-clip-id={clip.id} data-selected={selected ? 'true' : 'false'}
       className={`group relative overflow-hidden rounded-2xl border bg-black ${selected ? 'border-accent ring-2 ring-accent/60' : 'border-line'}`}
       onPointerEnter={(e) => e.pointerType === 'mouse' && setHover(true)} onPointerLeave={() => setHover(false)}
     >
-      <button type="button" onClick={click} className="block w-full text-left" aria-label={`Clip ${clip.id}: ${clip.title || 'untitled'}`}>
+      <button
+        type="button" onClick={click} className="block w-full text-left select-none" aria-label={`Clip ${clip.id}: ${clip.title || 'untitled'}`}
+        onPointerDown={onDown} onPointerUp={cancelPress} onPointerLeave={cancelPress} onPointerCancel={cancelPress} onContextMenu={(e) => e.preventDefault()}
+        style={{ WebkitTouchCallout: 'none' }}
+      >
         <div className="relative aspect-[9/16] bg-raised">
           {hover && clip.video_url
             ? <video src={clip.video_url} muted autoPlay loop playsInline className="absolute inset-0 h-full w-full object-cover" />
@@ -70,7 +86,8 @@ function Tile({ clip, selecting, selected, onToggle, onOpen }) {
       <button
         type="button" aria-label={selected ? `Deselect clip ${clip.id}` : `Select clip ${clip.id}`} aria-pressed={selected}
         onClick={() => onToggle(clip.id)}
-        className={`absolute left-1.5 top-8 flex h-8 w-8 items-center justify-center rounded-full border ${selected ? 'border-accent bg-accent text-white' : selecting ? 'border-white/60 bg-black/50 text-transparent' : 'border-white/30 bg-black/40 text-white/0 group-hover:text-white/70'}`}
+        data-compact
+        className={`absolute left-1 top-7 h-9 w-9 items-center justify-center rounded-full border ${selecting || selected ? 'flex' : 'hidden [@media(hover:hover)]:group-hover:flex'} ${selected ? 'border-accent bg-accent text-white' : 'border-white/60 bg-black/55 text-transparent'}`}
       >
         <Check size={16} />
       </button>
@@ -142,7 +159,7 @@ export default function Overview({ onOpenReview }) {
 
   return (
     <Page
-      title="Overview" icon={Activity} subtitle="Every clip at a glance - tap one to preview, select several to change their template together."
+      title="Overview" icon={Activity} subtitle="Every clip at a glance. Tap to preview - long-press (or Select) to pick several."
       actions={(
         <>
           <Button size="sm" icon={ListChecks} variant={selecting ? 'primary' : 'secondary'} onClick={() => (selecting ? clearSelection() : startSelecting())}>{selecting ? 'Done' : 'Select'}</Button>

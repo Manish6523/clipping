@@ -413,58 +413,64 @@ function ObjectToolbar({ tab, layer, index, count, actions }) {
 }
 
 /**
- * Two rows above the stage (nothing ever sits on the picture):
- *  1. Crop | Layout tabs, the reference image, zoom
+ * Minimal bar above the stage (nothing ever sits on the picture). Visually light - text tabs, small chips - while every
+ * control keeps a 40px+ invisible touch area.
+ *  1. Crop | Layout (underlined text tabs) ... reference image + zoom on the right
  *  2. layer chips - select a layer without hunting for its box
  */
 function StageBar({ tab, onTab, referenceLabel, referenceLoaded, onPickReference, view, onZoom, onResetZoom, chips, selection, onChip, onAdd }) {
   const zoomed = view.scale > 1.001;
-  const pill = 'flex h-[36px] shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold';
+  const hit = 'flex h-[42px] shrink-0 items-center';                       // touch area (transparent)
   return (
-    <div data-testid="stage-bar" className="absolute inset-x-2 top-0 flex flex-col">
-      <div className="flex h-[44px] items-center gap-1.5">
-        <div role="tablist" aria-label="Edit mode" className="flex h-[36px] shrink-0 rounded-full border border-white/12 bg-white/[0.04] p-0.5">
+    <div data-testid="stage-bar" className="absolute inset-x-1 top-0 flex flex-col">
+      <div className="flex h-[42px] items-center gap-1 border-b border-white/[0.06]">
+        <div role="tablist" aria-label="Edit mode" className="flex h-[42px] shrink-0 items-stretch">
           {[['crop', 'Crop'], ['layout', 'Layout']].map(([id, label]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} data-testid={`tab-${id}`} onClick={() => onTab(id)}
-              className={`h-full rounded-full px-3 text-[12.5px] font-semibold ${tab === id ? 'bg-accent-strong text-white' : 'text-slate-300'}`}>
+            <button key={id} type="button" role="tab" data-compact aria-selected={tab === id} data-testid={`tab-${id}`} onClick={() => onTab(id)}
+              className={`relative px-3 text-[13px] font-semibold ${tab === id ? 'text-ink' : 'text-muted'}`}>
               {label}
+              {tab === id && <span className="absolute inset-x-3 bottom-0 h-0.5 rounded-full bg-accent" aria-hidden="true" />}
             </button>
           ))}
         </div>
+        <span className="flex-1" />
         <button
-          type="button" data-testid="reference-chip" onClick={onPickReference} aria-label={`Reference image: ${referenceLabel || 'none'} - change`}
-          className={`${pill} min-w-0 flex-1 ${referenceLoaded ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-warn/50 bg-warn/15 text-warn'}`}
+          type="button" data-compact data-testid="reference-chip" onClick={onPickReference} aria-label={`Reference image: ${referenceLabel || 'none'} - change`}
+          className={`${hit} min-w-0 gap-1 px-2 text-[12px] font-medium ${referenceLoaded ? 'text-slate-300' : 'text-warn'}`}
         >
-          <ImageIcon size={14} className="shrink-0" />
-          <span className="truncate">{referenceLoaded ? (referenceLabel || 'Reference') : 'No frame'}</span>
-          <ChevronDown size={14} className="ml-auto shrink-0 opacity-70" />
+          <ImageIcon size={14} className="shrink-0 opacity-80" />
+          <span className="max-w-[110px] truncate">{referenceLoaded ? (referenceLabel || 'Reference') : 'No frame'}</span>
+          <ChevronDown size={12} className="shrink-0 opacity-60" />
         </button>
-        <button type="button" data-testid="zoom-button" onClick={onZoom} aria-label={`Zoom (now ${view.scale.toFixed(1)}×)`}
-          className={`${pill} border-white/12 bg-white/[0.06] tabular-nums text-slate-100`}>
-          <ZoomIn size={14} />{view.scale.toFixed(view.scale % 1 ? 1 : 0)}×
+        <button type="button" data-compact data-testid="zoom-button" onClick={onZoom} aria-label={`Zoom (now ${view.scale.toFixed(1)}×)`}
+          className={`${hit} gap-0.5 px-2 text-[12px] font-medium tabular-nums text-slate-300`}>
+          <ZoomIn size={14} className="opacity-80" />{view.scale.toFixed(view.scale % 1 ? 1 : 0)}×
         </button>
         {zoomed && (
-          <button type="button" data-testid="zoom-reset" onClick={onResetZoom} aria-label="Reset zoom"
-            className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/[0.06] text-slate-100">
+          <button type="button" data-compact data-testid="zoom-reset" onClick={onResetZoom} aria-label="Reset zoom"
+            className={`${hit} w-9 justify-center text-slate-300`}>
             <ZoomOut size={15} />
           </button>
         )}
       </div>
-      <div className="flex h-[44px] items-center gap-1.5 overflow-x-auto no-scrollbar" data-testid="layer-chips" role="listbox" aria-label="Select a layer">
+      <div className="flex h-[42px] items-center gap-0.5 overflow-x-auto no-scrollbar" data-testid="layer-chips" role="listbox" aria-label="Select a layer">
         {chips.map((c) => {
           const on = selection.type === c.type && (c.type !== 'layer' || selection.id === c.id);
           return (
-            <button key={`${c.type}:${c.id || ''}`} type="button" role="option" aria-selected={on} data-testid="layer-chip" onClick={() => onChip(c)}
-              className={`flex h-[36px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold ${on ? 'border-transparent text-[#0b0d12]' : 'border-white/12 bg-white/[0.04] text-slate-200'} ${c.hidden ? 'opacity-50' : ''}`}
-              style={on ? { background: c.color } : undefined}
-            >
-              <span className="h-2.5 w-2.5 rounded-full" style={{ background: on ? '#0b0d12' : c.color }} aria-hidden="true" />
-              {c.label}{c.locked && <Lock size={11} />}
+            <button key={`${c.type}:${c.id || ''}`} type="button" role="option" data-compact aria-selected={on} data-testid="layer-chip" onClick={() => onChip(c)}
+              className={`${hit} px-0.5 ${c.hidden ? 'opacity-50' : ''}`}>
+              <span
+                className={`flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[12px] font-semibold ${on ? 'text-[#0b0d12]' : 'text-slate-300'}`}
+                style={on ? { background: c.color } : undefined}
+              >
+                <span className="h-2 w-2 rounded-full" style={{ background: on ? '#0b0d12' : c.color }} aria-hidden="true" />
+                {c.label}{c.locked && <Lock size={10} />}
+              </span>
             </button>
           );
         })}
-        <button type="button" onClick={onAdd} aria-label="Add layer" className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full border border-dashed border-white/25 text-slate-300">
-          <Plus size={15} />
+        <button type="button" data-compact onClick={onAdd} aria-label="Add layer" className={`${hit} w-[42px] justify-center text-slate-400`}>
+          <span className="flex h-7 w-7 items-center justify-center rounded-full border border-dashed border-white/25"><Plus size={13} /></span>
         </button>
       </div>
     </div>

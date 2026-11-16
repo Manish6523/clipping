@@ -252,7 +252,7 @@ export default function Timeline({ videoRef }) {
         </div>
 
         {/* Time Counters & Zoom Controls */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 font-mono text-[11px] sm:text-xs shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 font-mono text-xs shrink-0">
           <span className="text-white font-bold">
             {(currentTime - startOffset).toFixed(1)}s
           </span>
@@ -370,16 +370,16 @@ export default function Timeline({ videoRef }) {
                     ))}
                   </div>
 
-                  <span className="truncate pl-2 z-10 drop-shadow-md font-bold">
-                    Segment ({(seg.src_out - seg.src_in).toFixed(1)}s)
+                  <span className="sticky left-0 flex items-center gap-1 z-10 pl-2 min-w-0">
+                    <span className="truncate drop-shadow-md font-bold">Segment ({(seg.src_out - seg.src_in).toFixed(1)}s)</span>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); deleteSegment(seg.id); }}
+                      className="p-1 shrink-0 hover:text-rose-400 transition-colors"
+                      title="Ripple Delete Section" aria-label="Delete this section"
+                    >
+                      <Trash2 size={12} />
+                    </button>
                   </span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); deleteSegment(seg.id); }}
-                    className="p-1 hover:text-rose-400 z-10 pr-2 transition-colors"
-                    title="Ripple Delete Section"
-                  >
-                    <Trash2 size={12} />
-                  </button>
                 </div>
               );
             })}

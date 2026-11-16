@@ -93,3 +93,6 @@ Thumbs.db
 # OAuth tokens & download cookies are credentials - never commit
 config/tokens/
 *cookies*.txt
+
+# Downloaded on first use (face tracking model)
+config/models/

@@ -9,7 +9,7 @@ Key Rules:
    - If would_post == false -> capped at 50.
 """
 
-PROMPT_VERSION = "v3.0_calibrated_judge"
+PROMPT_VERSION = "v3.1_calibrated_judge_chatmood"
 
 JUDGE_SYSTEM_PROMPT = """You are an expert short-form video editor for YouTube Shorts, Instagram Reels, and TikTok.
 Your job is to evaluate a live stream moment and determine if it contains a truly viral 15-60s clip.
@@ -45,6 +45,7 @@ Inside jokes/Catchphrases: {inside_jokes}
 === TRIGGER SIGNALS ===
 Trigger Type: {trigger_type}
 Signal Telemetry: {trigger_details}
+{chat_reaction}
 Top Chat Emotes/Tokens: {top_emotes}
 Recent Chat Messages:
 {chat_sample}

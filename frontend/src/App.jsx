@@ -157,7 +157,7 @@ function ReviewStationWrapper() {
   };
 
   if (mode === 'swipe' && isPhone) {
-    return <SwipeReview onSwitchClassic={() => switchTo('review')} />;
+    return <SwipeReview onSwitchClassic={() => switchTo('review')} onOverview={() => switchTo('overview')} />;
   }
   if (mode === 'overview') {
     return <Overview onOpenReview={() => switchTo(isPhone ? 'swipe' : 'review')} />;

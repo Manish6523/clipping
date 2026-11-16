@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import { useEditorStore } from '../store/editorStore';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import TopBar from '../components/editor/TopBar';
@@ -47,7 +47,15 @@ export default function ClipEditorPage() {
     closeSheet
   } = useEditorStore();
 
-  const { isPhone, isTablet, isDesktop, isLandscape, isTouch } = useLayoutMode();
+  const { isPhone, isTablet, isDesktop, isLandscape, isTouch, height: viewH } = useLayoutMode();
+  // a phone held sideways is reported as 'tablet' by width; the editor wants its phone-landscape layout there
+  const phoneLandscape = isLandscape && isTouch && viewH < 520;
+  const phonePortrait = isPhone && !isLandscape;
+  const navigate = useNavigate();
+  const leaveTo = (path) => {
+    if (useEditorStore.getState().hasUnsavedChanges && !window.confirm('Leave the editor with unsaved changes?')) return;
+    navigate(path);
+  };
   const videoRef = useRef(null);
   const [rendering, setRendering] = useState(false);
   const [showSafeAreas, setShowSafeAreas] = useState(false);
@@ -197,13 +205,35 @@ export default function ClipEditorPage() {
   // =========================================================================
   // 1. PHONE PORTRAIT LAYOUT: Height 100dvh, TopBar / Stage (Resizes) / Timeline / ToolBar
   // =========================================================================
-  if (isPhone && !isLandscape) {
+  const fullTimelineOverlay = (
+    <>
+        {fullTimelineOpen && (
+          <div className="fixed inset-x-0 bottom-0 top-12 bg-surface/98 backdrop-blur-2xl border-t border-white/10 z-50 flex flex-col p-3 shadow-2xl">
+            <div className="flex items-center justify-between pb-2 border-b border-white/10">
+              <span className="font-extrabold text-xs text-white">Full Timeline &amp; Word Cuts</span>
+              <button
+                onClick={() => setFullTimelineOpen(false)}
+                className="text-slate-200 hover:text-white min-h-[44px] px-4 rounded-xl bg-white/5 text-xs font-bold"
+              >
+                Done
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto pt-3">
+              <Timeline videoRef={videoRef} />
+            </div>
+          </div>
+        )}
+    </>
+  );
+
+  if (phonePortrait) {
     return (
       <div 
-        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-hidden select-none"
+        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-clip select-none"
         style={{ overscrollBehavior: 'none' }}
+        data-editor-root
       >
-        {/* 1. Mobile Top Bar (48dp) */}
+        {/* 1. Mobile Top Bar (48dp) - overflow-clip on the root: nothing can scroll it out of view */}
         <MobileTopBar 
           onRender={handleRender}
           rendering={rendering}
@@ -212,7 +242,7 @@ export default function ClipEditorPage() {
         />
 
         {/* 2. Responsive Stage (Resizes gracefully when bottom sheet opens so you always see live video) */}
-        <div className="flex-1 min-h-[30vh] overflow-hidden flex flex-col relative">
+        <div className="flex-1 min-h-0 overflow-clip flex flex-col relative">
           <MobileStage 
             layout={edl?.layout}
             onChange={(nextLayout) => {
@@ -241,8 +271,8 @@ export default function ClipEditorPage() {
           />
         </div>
 
-        {/* 3. Layer Chip Quick Selector Strip */}
-        <LayerChipStrip />
+        {/* 3. Layer Chip Quick Selector Strip (hidden while a tool sheet is open: the stage needs that room) */}
+        {(!activePanel || sheetSnap === 'closed') && <LayerChipStrip />}
 
         {/* 4. Transport & Fixed-Center Scrub Strip */}
         <MobileTimelineStrip 
@@ -262,23 +292,7 @@ export default function ClipEditorPage() {
         {/* 6. Mobile Bottom Tool Bar (56dp + Safe Area) */}
         <MobileToolBar />
 
-        {/* Full Timeline Modal Sheet if expanded */}
-        {fullTimelineOpen && (
-          <div className="fixed inset-x-0 bottom-0 top-12 bg-surface/98 backdrop-blur-2xl border-t border-white/10 z-50 flex flex-col p-3 shadow-2xl">
-            <div className="flex items-center justify-between pb-2 border-b border-white/10">
-              <span className="font-extrabold text-xs text-white">Full Timeline &amp; Word Cuts</span>
-              <button
-                onClick={() => setFullTimelineOpen(false)}
-                className="text-slate-400 hover:text-white px-2 py-1 rounded bg-white/5 text-xs font-bold"
-              >
-                Done
-              </button>
-            </div>
-            <div className="flex-1 overflow-y-auto pt-3">
-              <Timeline videoRef={videoRef} />
-            </div>
-          </div>
-        )}
+        {fullTimelineOverlay}
       </div>
     );
   }
@@ -286,13 +300,14 @@ export default function ClipEditorPage() {
   // =========================================================================
   // 2. PHONE LANDSCAPE LAYOUT: Side-by-Side Dual Canvases + Side Drawer
   // =========================================================================
-  if (isPhone && isLandscape) {
+  if (phoneLandscape) {
     return (
       <div 
-        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-hidden select-none"
+        className="h-[100dvh] w-screen bg-canvas text-ink flex flex-col overflow-clip select-none"
         style={{ overscrollBehavior: 'none' }}
+        data-editor-root
       >
-        {/* Slim Top Bar (36dp) */}
+        {/* Slim Top Bar */}
         <MobileTopBar 
           onRender={handleRender}
           rendering={rendering}
@@ -333,7 +348,7 @@ export default function ClipEditorPage() {
 
           {/* Side Drawer for Tool Panel */}
           {activePanel && (
-            <div className="w-80 h-full border-l border-white/10 bg-surface shrink-0 z-40">
+            <div className="w-[min(320px,45vw)] h-full border-l border-white/10 bg-surface shrink-0 z-40">
               <PanelHost 
                 mode="landscape"
                 activePanel={activePanel}
@@ -343,15 +358,16 @@ export default function ClipEditorPage() {
           )}
         </div>
 
-        {/* Bottom Timeline + Toolbar Strip */}
-        <div className="h-14 shrink-0 flex items-center border-t border-white/[0.06] bg-canvas">
-          <div className="flex-1 h-full">
-            <MobileTimelineStrip videoRef={videoRef} onExpandTimeline={() => setFullTimelineOpen(true)} />
+        {/* Bottom: compact transport + scrub (left) and the tool buttons (right) */}
+        <div className="shrink-0 flex items-stretch border-t border-white/[0.06] bg-canvas">
+          <div className="min-w-0 flex-1">
+            <MobileTimelineStrip videoRef={videoRef} compact onExpandTimeline={() => setFullTimelineOpen(true)} />
           </div>
-          <div className="w-auto h-full flex items-center pr-2">
-            <MobileToolBar />
+          <div className="flex shrink-0 items-center pr-1">
+            <MobileToolBar compact />
           </div>
         </div>
+        {fullTimelineOverlay}
       </div>
     );
   }
@@ -360,25 +376,26 @@ export default function ClipEditorPage() {
   // 3. DESKTOP & TABLET LAYOUT: 3 Columns with shared panels
   // =========================================================================
   return (
-    <div className="h-screen w-screen bg-canvas text-ink flex flex-col md:flex-row overflow-hidden">
+    <div className="h-screen w-screen bg-canvas text-ink flex flex-col md:flex-row overflow-hidden" data-editor-root>
       {/* Slim 48px Far-Left Icon Rail */}
       <aside className="hidden md:flex w-12 bg-canvas border-r border-white/[0.06] flex-col items-center justify-between py-4 select-none shrink-0 z-40">
         <div className="flex flex-col items-center gap-5">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-canvas font-black text-sm shadow-md shadow-accent/20">
+          <button type="button" onClick={() => leaveTo('/')} title="AutoClip home" aria-label="AutoClip home"
+            className="w-8 h-8 [@media(pointer:coarse)]:w-11 [@media(pointer:coarse)]:h-11 rounded-xl bg-gradient-to-tr from-accent to-accent flex items-center justify-center text-canvas font-black text-sm shadow-md shadow-accent/20">
             M
-          </div>
-          <nav className="flex flex-col items-center gap-3">
-            <button className="p-2 rounded-xl text-accent bg-white/[0.06]">
+          </button>
+          <nav className="flex flex-col items-center gap-3" aria-label="Go to">
+            <button type="button" onClick={() => leaveTo('/')} title="Clips (Review)" aria-label="Clips (Review)" className="p-2 rounded-xl text-accent bg-white/[0.06]">
               <FolderKanban size={15} />
             </button>
-            <button className="p-2 rounded-xl text-muted hover:text-white transition-all">
+            <button type="button" onClick={() => leaveTo('/templates')} title="Templates" aria-label="Templates" className="p-2 rounded-xl text-muted hover:text-white transition-all">
               <Palette size={15} />
             </button>
           </nav>
         </div>
 
         <div className="flex flex-col items-center gap-3">
-          <button className="p-2 rounded-xl text-muted hover:text-white transition-all">
+          <button type="button" onClick={() => leaveTo('/settings')} title="Settings" aria-label="Settings" className="p-2 rounded-xl text-muted hover:text-white transition-all">
             <Settings size={15} />
           </button>
         </div>
@@ -390,7 +407,7 @@ export default function ClipEditorPage() {
         <TopBar />
 
         {/* 2-Column Studio: Center Dual Canvases | Right Unified Inspector & Tool Host */}
-        <div className="flex-1 px-3 py-2 grid grid-cols-[1fr_320px] gap-3 min-h-0 overflow-hidden">
+        <div className="flex-1 px-3 py-2 grid grid-cols-[1fr_340px] xl:grid-cols-[1fr_380px] gap-3 min-h-0 overflow-hidden">
           {/* Center Stage Row: Dual Canvases */}
           <div className="h-full min-h-0 flex flex-col">
             <PreviewStage videoRef={videoRef} />

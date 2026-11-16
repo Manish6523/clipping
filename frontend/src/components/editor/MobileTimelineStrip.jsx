@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 
-export default function MobileTimelineStrip({ videoRef }) {
+export default function MobileTimelineStrip({ videoRef, compact = false, onExpandTimeline }) {
   const { 
     clipId, 
     clip, 
@@ -138,14 +138,15 @@ export default function MobileTimelineStrip({ videoRef }) {
   const relTime = Math.max(0, currentTime - startOffset);
 
   return (
-    <div className={`w-full bg-canvas border-t border-white/[0.06] flex flex-col select-none shrink-0 z-20 transition-all ${isExpanded ? 'h-52' : 'h-24'}`}>
+    <div className={`w-full bg-canvas flex select-none shrink-0 z-20 ${compact ? 'flex-row items-center' : 'flex-col border-t border-white/[0.06]'}`}>
       {/* 1. Transport Bar: Play / Pause, Time, Split, Expand */}
-      <div className="h-10 px-3 flex items-center justify-between gap-2 border-b border-white/[0.04]">
+      <div className={`min-h-10 py-1 px-3 flex items-center justify-between gap-2 ${compact ? 'shrink-0' : 'border-b border-white/[0.04]'}`}>
         <div className="flex items-center gap-2">
           {/* Large 36x36 Play / Pause */}
           <button
             onClick={togglePlay}
             className="w-8 h-8 rounded-xl bg-accent text-canvas font-black flex items-center justify-center active:scale-95 shadow-md shadow-accent/20"
+            aria-label={isPlaying ? 'Pause' : 'Play'} title={isPlaying ? 'Pause' : 'Play'}
           >
             {isPlaying ? <Pause size={14} /> : <Play size={14} className="ml-0.5" />}
           </button>
@@ -177,7 +178,8 @@ export default function MobileTimelineStrip({ videoRef }) {
           )}
 
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            onClick={() => (compact && onExpandTimeline ? onExpandTimeline() : setIsExpanded(!isExpanded))}
+            aria-label={isExpanded ? 'Collapse timeline' : 'Expand timeline'}
             className="h-7 px-2 rounded-lg bg-white/[0.04] active:bg-white/10 text-accent font-bold text-[11px] flex items-center gap-1 border border-white/[0.06]"
             title={isExpanded ? 'Collapse Timeline' : 'Expand Timeline'}
           >
@@ -190,7 +192,7 @@ export default function MobileTimelineStrip({ videoRef }) {
       <div 
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
-        className="w-full flex-1 relative overflow-hidden cursor-ew-resize touch-none"
+        className={`relative overflow-hidden cursor-ew-resize touch-none ${compact ? 'h-11 min-w-0 flex-1' : isExpanded ? 'h-40 w-full' : 'h-12 w-full'}`}
       >
         <canvas
           ref={canvasRef}

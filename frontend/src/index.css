@@ -83,6 +83,22 @@
   input, select, textarea { font-size: 16px; }
   @media (min-width: 640px) { input, select, textarea { font-size: 14px; } }
 
+  /* Touch screens: every control is at least 44px tall (icon-only ones 44px wide too), small fixed-px text is
+     raised to 11px and inputs stay at 16px so iOS never zooms. `data-compact` opts a control out (dense editors). */
+  @media (pointer: coarse) {
+    button:not([data-compact]), [role="tab"]:not([data-compact]), [role="option"]:not([data-compact]), select,
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]) {
+      min-height: 44px;
+    }
+    button:not([data-compact]):has(> svg:only-child) { min-width: 44px; }
+    input, select, textarea { font-size: 16px !important; }
+    .text-\[8px\], .text-\[8\.5px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\] { font-size: 11px !important; }
+  }
+
+  /* Clip editor: no label below 11px, body labels 12px (all screens) */
+  [data-editor-root] .text-xs { font-size: 12px !important; }
+  [data-editor-root] :is(.text-\[8px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\], .text-\[10\.5px\]) { font-size: 11px !important; }
+
   :focus-visible { outline: 2px solid var(--color-accent); outline-offset: 2px; border-radius: 6px; }
   button, a, [role="button"] { -webkit-tap-highlight-color: transparent; }
   button:disabled { cursor: not-allowed; }

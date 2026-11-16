@@ -22,7 +22,10 @@
       (function() {
         var scale = localStorage.getItem('agy_ui_scale') || 'medium';
         var sizeMap = { small: '12px', medium: '13px', large: '14px' };
-        document.documentElement.style.fontSize = sizeMap[scale] || '13px';
+        // touch screens (phones / tablets) get +2px so text and controls are readable and tappable
+        var touchMap = { small: '14px', medium: '15px', large: '16px' };
+        var touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+        document.documentElement.style.fontSize = (touch ? touchMap[scale] : sizeMap[scale]) || (touch ? '15px' : '13px');
       })();
     </script>
     <div id="root"></div>

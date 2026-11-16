@@ -118,7 +118,7 @@ export default function TopBar() {
 
   return (
     <>
-      <header className="h-11 bg-canvas border-b border-white/[0.06] px-2 sm:px-4 flex items-center justify-between gap-1.5 select-none shrink-0 z-30 text-xs">
+      <header className="min-h-11 py-1 [@media(pointer:coarse)]:py-1.5 bg-canvas border-b border-white/[0.06] px-2 sm:px-4 flex items-center justify-between gap-1.5 select-none shrink-0 z-30 text-xs">
         {/* Left: Back & Clip Title */}
         <div className="flex items-center gap-1.5 sm:gap-3 min-w-0">
           <button

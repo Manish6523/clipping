@@ -151,16 +151,36 @@ async def record_usage(db, account_key: str, project_key: str, operation: str, u
     )
 
 
-async def schedule_clip(clip_id: int, account_keys: Optional[Sequence[str]] = None) -> List[Dict[str, Any]]:
+PLATFORMS = ("youtube", "instagram", "tiktok")
+
+
+async def schedule_clip(
+    clip_id: int,
+    account_keys: Optional[Sequence[str]] = None,
+    platforms: Optional[Sequence[str]] = None,
+    when: Optional[datetime] = None,
+    replace_pending: bool = False,
+) -> List[Dict[str, Any]]:
     """Queue a clip for each destination YouTube account in that account's next free slot.
 
     ``account_keys`` defaults to the accounts mapped to the clip's streamer. Clips with no
     mapped account get a single legacy row (account_key NULL) at the drip interval.
-    Instagram (if configured on the template) is handled once, on the first row only.
-    Idempotent: an account that already has a pending/uploaded row for this clip is skipped.
+    Instagram (if configured on the template) and TikTok (if an account is mapped to the
+    streamer) are handled once, on the first row only.
+
+    ``platforms`` limits the destinations (any of youtube / instagram / tiktok); None = all that
+    are set up. ``when`` overrides the slot time for every row (e.g. "post now" or a picked time).
+    ``replace_pending`` first drops this clip's rows that have not uploaded anything (re-publishing
+    with a different choice). Idempotent: an account that already has a pending/uploaded row for
+    this clip is skipped.
     """
     from src.database import get_db_connection
     from config.settings import DRIP_INTERVAL_HOURS
+    from src.publisher.tiktok import account_for_streamer
+
+    chosen = set(PLATFORMS if platforms is None else [p for p in platforms if p in PLATFORMS])
+    if not chosen:
+        raise ValueError("Pick at least one platform")
 
     async with get_db_connection() as db:
         cur = await db.execute("SELECT id, channel_id FROM clips WHERE id = ?", (clip_id,))
@@ -169,7 +189,14 @@ async def schedule_clip(clip_id: int, account_keys: Optional[Sequence[str]] = No
             raise ValueError(f"Clip #{clip_id} not found")
         channel = (clip["channel_id"] or "").strip()
 
-        if account_keys is None:
+        if replace_pending:
+            await db.execute(
+                """DELETE FROM scheduled_queue WHERE clip_id = ?
+                   AND yt_status != 'uploaded' AND ig_status != 'uploaded' AND COALESCE(tt_status, 'skipped') != 'uploaded'""",
+                (clip_id,),
+            )
+
+        if account_keys is None and "youtube" in chosen:
             cur = await db.execute(
                 """SELECT DISTINCT m.account_key FROM streamer_yt_mappings m
                    JOIN youtube_accounts a ON a.account_key = m.account_key AND a.is_active = 1
@@ -179,26 +206,48 @@ async def schedule_clip(clip_id: int, account_keys: Optional[Sequence[str]] = No
             account_keys = [r[0] for r in await cur.fetchall()]
 
         cur = await db.execute(
-            "SELECT account_key FROM scheduled_queue WHERE clip_id = ? AND yt_status IN ('pending', 'uploaded')",
+            "SELECT account_key, yt_status, ig_status, COALESCE(tt_status, 'skipped') AS tt_status FROM scheduled_queue WHERE clip_id = ?",
             (clip_id,),
         )
-        already = {r[0] for r in await cur.fetchall()}
+        existing = [dict(r) for r in await cur.fetchall()]
+        already = {r["account_key"] for r in existing if r["yt_status"] in ("pending", "uploaded")}
+        ig_taken = any(r["ig_status"] in ("pending", "uploaded") for r in existing)
+        tt_taken = any(r["tt_status"] in ("pending", "uploaded") for r in existing)
+
+        tt_key = await account_for_streamer(channel) if "tiktok" in chosen else None
+        want_ig = "instagram" in chosen and not ig_taken
+        want_tt = bool(tt_key) and not tt_taken
+        if platforms is not None and "tiktok" in chosen and not tt_key:
+            raise ValueError("No TikTok account is connected for this streamer")
+
+        if "youtube" in chosen:
+            targets = [k for k in account_keys if k not in already] if account_keys else ([] if already else [None])
+            yt_status = "pending"
+        else:
+            targets = [None] if (want_ig or want_tt) else []
+            yt_status = "skipped"
 
         created: List[Dict[str, Any]] = []
-        targets = [k for k in account_keys if k not in already] if account_keys else ([] if already else [None])
         for i, key in enumerate(targets):
-            if key is None:
-                when = datetime.now(timezone.utc) + timedelta(hours=DRIP_INTERVAL_HOURS)
+            if when is not None:
+                at = when
+            elif key is None:
+                at = datetime.now(timezone.utc) + timedelta(hours=DRIP_INTERVAL_HOURS)
             else:
                 cur = await db.execute("SELECT * FROM youtube_accounts WHERE account_key = ?", (key,))
                 acc = await cur.fetchone()
-                when = next_slot(dict(acc) if acc else {}, await account_taken_times(db, key))
-            ig_status = "pending" if (i == 0 and not already) else "skipped"
+                at = next_slot(dict(acc) if acc else {}, await account_taken_times(db, key))
+            first = i == 0
+            ig_status = "pending" if (first and want_ig) else "skipped"
+            tt_status = "pending" if (first and want_tt) else "skipped"
             cur = await db.execute(
-                "INSERT INTO scheduled_queue (clip_id, account_key, scheduled_for, yt_status, ig_status) VALUES (?, ?, ?, 'pending', ?)",
-                (clip_id, key, when.isoformat(), ig_status),
+                """INSERT INTO scheduled_queue (clip_id, account_key, scheduled_for, yt_status, ig_status, tt_status, tt_account_key)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (clip_id, key, at.isoformat(), yt_status, ig_status, tt_status, tt_key if tt_status == "pending" else None),
             )
-            created.append({"queue_id": cur.lastrowid, "account_key": key, "scheduled_for": when.isoformat()})
+            created.append({"queue_id": cur.lastrowid, "account_key": key, "scheduled_for": at.isoformat(),
+                            "youtube": yt_status == "pending", "instagram": ig_status == "pending",
+                            "tiktok": tt_status == "pending"})
 
         if created or already:
             await db.execute("UPDATE clips SET status = 'queued', updated_at = CURRENT_TIMESTAMP WHERE id = ?", (clip_id,))

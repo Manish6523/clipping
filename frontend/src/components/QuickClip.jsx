@@ -240,7 +240,7 @@ export default function QuickClip() {
         </div>
 
         <div className="lg:col-span-5 flex flex-col gap-3 min-w-0">
-          <Panel title="Layout template" icon={Wand2} right={<Link to="/templates" className="text-[11.5px] text-accent font-medium">Design in Studio →</Link>}>
+          <Panel title="Layout template" icon={Wand2} right={<Link to="/templates" className="inline-flex min-h-[44px] items-center px-1 text-[11.5px] text-accent font-medium">Design in Studio →</Link>}>
             <Select id="qc-template" value={template} onChange={(e) => setTemplate(e.target.value)} aria-label="Layout template">
               {templates.length === 0 && <option value="">Loading templates…</option>}
               {templates.map((t) => <option key={t} value={t}>{t}</option>)}

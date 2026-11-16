@@ -175,7 +175,7 @@ export function Segmented({ value, onChange, options, size = 'md', className = '
         const Icon = o.icon;
         return (
           <button key={String(o.value)} type="button" role="tab" aria-selected={on} onClick={() => onChange(o.value)}
-            className={cx('shrink-0 inline-flex items-center gap-1.5 rounded-[10px] font-semibold transition-colors whitespace-nowrap',
+            className={cx('shrink-0 inline-flex items-center justify-center gap-1.5 rounded-[10px] font-semibold transition-colors whitespace-nowrap [@media(pointer:coarse)]:min-w-[44px]',
               size === 'sm' ? 'h-7 px-2.5 text-[11.5px]' : 'h-9 px-3 text-xs',
               on ? 'bg-white/[0.12] text-ink shadow-sm' : 'text-muted hover:text-ink')}>
             {Icon && <Icon size={13} />}

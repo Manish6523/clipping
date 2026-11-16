@@ -55,7 +55,7 @@ async def get_protected_file_paths() -> Set[str]:
                 FROM clips c
                 LEFT JOIN scheduled_queue q ON q.clip_id = c.id
                 WHERE c.status != 'rejected'
-                   OR q.yt_status = 'pending' OR q.ig_status = 'pending'
+                   OR q.yt_status = 'pending' OR q.ig_status = 'pending' OR COALESCE(q.tt_status, 'skipped') = 'pending'
                 """
             )
             rows = await cursor.fetchall()
@@ -208,7 +208,7 @@ async def purge_published_sources(days: float, now: datetime = None) -> dict:
               AND c.source_video_path IS NOT NULL
               AND COALESCE(c.published_at, c.updated_at) < ?
               AND NOT EXISTS (SELECT 1 FROM scheduled_queue q WHERE q.clip_id = c.id
-                              AND (q.yt_status = 'pending' OR q.ig_status = 'pending'))
+                              AND (q.yt_status = 'pending' OR q.ig_status = 'pending' OR COALESCE(q.tt_status, 'skipped') = 'pending'))
             """,
             (cutoff,),
         )

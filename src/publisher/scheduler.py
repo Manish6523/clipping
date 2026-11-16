@@ -16,6 +16,7 @@ from src.database import (
 )
 from src.publisher.youtube_shorts import YouTubeShortsPublisher, token_project_key
 from src.publisher.instagram_reels import InstagramReelsPublisher
+from src.publisher.tiktok import TikTokPublisher
 from src.publisher.slots import DEFAULT_QUOTA_UNITS, UPLOAD_UNITS, next_quota_reset, record_usage, units_used
 
 logger = logging.getLogger(__name__)
@@ -121,19 +122,25 @@ class DripScheduler:
             if not yt_keys and destinations.get("youtube_account_key"):
                 yt_keys = [destinations["youtube_account_key"]]
         ig_key = destinations.get("instagram_account_key")
+        tt_key = item.get("tt_account_key") or destinations.get("tiktok_account_key")
+        if not tt_key and item.get("tt_status") == "pending":
+            from src.publisher.tiktok import account_for_streamer
+            tt_key = await account_for_streamer(channel_id)
 
         account = await self._account(yt_keys[0]) if yt_keys else None
         yt_wanted = bool(yt_keys) and item.get("yt_status") == "pending"
         ig_wanted = bool(ig_key) and item.get("ig_status") == "pending"
+        tt_wanted = bool(tt_key) and item.get("tt_status") == "pending"
 
-        if not yt_wanted and not ig_wanted:
+        if not yt_wanted and not ig_wanted and not tt_wanted:
             from src.database import get_db_connection
-            msg = f"No YouTube account mapped to @{channel_id} (Distribution > Mappings) and no Instagram destination"
+            msg = f"No YouTube account mapped to @{channel_id} (Distribution > Mappings) and no Instagram/TikTok destination"
             logger.warning("Queue #%d: %s", queue_id, msg)
             async with get_db_connection() as db:
                 await db.execute(
                     "UPDATE scheduled_queue SET yt_status = CASE WHEN yt_status = 'pending' THEN 'skipped' ELSE yt_status END, "
-                    "ig_status = CASE WHEN ig_status = 'pending' THEN 'skipped' ELSE ig_status END, last_error = ? WHERE id = ?",
+                    "ig_status = CASE WHEN ig_status = 'pending' THEN 'skipped' ELSE ig_status END, "
+                "tt_status = CASE WHEN tt_status = 'pending' THEN 'skipped' ELSE tt_status END, last_error = ? WHERE id = ?",
                     (msg, queue_id),
                 )
                 await db.commit()
@@ -152,12 +159,14 @@ class DripScheduler:
                                    key=f"quota:{token_project_key(yt_keys[0])}:{blocked['until'].date()}")
                 return
 
-        logger.info("Publishing queue #%d (clip #%d, @%s) -> YT %s%s", queue_id, clip_id, channel_id,
-                    yt_keys or "none", f" + IG {ig_key}" if ig_wanted else "")
+        logger.info("Publishing queue #%d (clip #%d, @%s) -> YT %s%s%s", queue_id, clip_id, channel_id,
+                    yt_keys if yt_wanted else "none", f" + IG {ig_key}" if ig_wanted else "",
+                    f" + TikTok {tt_key}" if tt_wanted else "")
         await update_clip_status(clip_id, "publishing")
 
         yt_res: Dict[str, Any] = {"success": False, "error": "No YouTube account mapped", "skipped": True}
         ig_res: Dict[str, Any] = {"success": False, "error": "No Instagram account configured", "skipped": True}
+        tt_res: Dict[str, Any] = {"success": False, "error": "No TikTok account connected", "skipped": True}
 
         if yt_wanted:
             privacy = (account or {}).get("privacy_status") or "public"
@@ -180,6 +189,12 @@ class DripScheduler:
             except Exception as e:
                 ig_res = {"success": False, "error": str(e)}
 
+        if tt_wanted:
+            try:
+                tt_res = await TikTokPublisher(tt_key).upload(video_path, title, hashtags)
+            except Exception as e:
+                tt_res = {"success": False, "error": str(e)}
+
         def status_for(res: Dict[str, Any], wanted: bool, current: str) -> str:
             if not wanted:
                 return current if current in ("uploaded", "skipped") else "skipped"
@@ -187,12 +202,13 @@ class DripScheduler:
 
         yt_status = status_for(yt_res, yt_wanted, item.get("yt_status") or "pending")
         ig_status = status_for(ig_res, ig_wanted, item.get("ig_status") or "pending")
-        errors = [f"{name}: {r.get('error')}" for name, r, w in (("YT", yt_res, yt_wanted), ("IG", ig_res, ig_wanted))
-                  if w and not r.get("success")]
+        tt_status = status_for(tt_res, tt_wanted, item.get("tt_status") or "skipped")
+        outcomes = (("YT", yt_res, yt_wanted), ("IG", ig_res, ig_wanted), ("TikTok", tt_res, tt_wanted))
+        errors = [f"{name}: {r.get('error')}" for name, r, w in outcomes if w and not r.get("success")]
 
         # Retry transient failures (network / 5xx) up to 3 attempts, 30 min apart
-        retry = errors and attempts + 1 < MAX_ATTEMPTS and not any(_is_permanent(r.get("error")) for r, w in
-                                                                      ((yt_res, yt_wanted), (ig_res, ig_wanted)) if w and not r.get("success"))
+        retry = errors and attempts + 1 < MAX_ATTEMPTS and not any(_is_permanent(r.get("error")) for _n, r, w in
+                                                                      outcomes if w and not r.get("success"))
         from src.database import get_db_connection
         async with get_db_connection() as db:
             if retry:
@@ -201,22 +217,26 @@ class DripScheduler:
                     """UPDATE scheduled_queue SET attempts = ?, scheduled_for = ?, last_error = ?,
                        yt_status = CASE WHEN ? = 'failed' THEN 'pending' ELSE ? END,
                        ig_status = CASE WHEN ? = 'failed' THEN 'pending' ELSE ? END,
-                       yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id)
+                       tt_status = CASE WHEN ? = 'failed' THEN 'pending' ELSE ? END,
+                       yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id),
+                       tt_publish_id = COALESCE(?, tt_publish_id)
                        WHERE id = ?""",
                     (attempts + 1, when, " | ".join(errors) + f" (retry {attempts + 1}/{MAX_ATTEMPTS - 1})",
-                     yt_status, yt_status, ig_status, ig_status, yt_res.get("video_id"), ig_res.get("media_id"), queue_id),
+                     yt_status, yt_status, ig_status, ig_status, tt_status, tt_status,
+                     yt_res.get("video_id"), ig_res.get("media_id"), tt_res.get("publish_id"), queue_id),
                 )
             else:
                 await db.execute(
-                    """UPDATE scheduled_queue SET attempts = ?, yt_status = ?, ig_status = ?,
-                       yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id), last_error = ?
+                    """UPDATE scheduled_queue SET attempts = ?, yt_status = ?, ig_status = ?, tt_status = ?,
+                       yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id),
+                       tt_publish_id = COALESCE(?, tt_publish_id), last_error = ?
                        WHERE id = ?""",
-                    (attempts + 1, yt_status, ig_status, yt_res.get("video_id"), ig_res.get("media_id"),
-                     " | ".join(errors) or None, queue_id),
+                    (attempts + 1, yt_status, ig_status, tt_status, yt_res.get("video_id"), ig_res.get("media_id"),
+                     tt_res.get("publish_id"), " | ".join(errors) or None, queue_id),
                 )
             await db.commit()
 
-        if yt_res.get("success") or ig_res.get("success"):
+        if yt_res.get("success") or ig_res.get("success") or tt_res.get("success"):
             await update_clip_status(clip_id, "published")
         elif retry:
             await update_clip_status(clip_id, "queued")
@@ -226,7 +246,7 @@ class DripScheduler:
             await update_clip_status(clip_id, "approved")
             await _alert_upload_failure(clip_id, title, errors)
 
-        if self.on_post_published and (yt_wanted or ig_wanted) and not retry:
+        if self.on_post_published and (yt_wanted or ig_wanted or tt_wanted) and not retry:
             summary = {
                 "clip_id": clip_id,
                 "title": title,
@@ -235,6 +255,8 @@ class DripScheduler:
                 "ig_url": ig_res.get("url"),
                 "yt_success": yt_res.get("success"),
                 "ig_success": ig_res.get("success"),
+                "tt_success": tt_res.get("success") if tt_wanted else None,
+                "tt_note": tt_res.get("note") if tt_wanted else None,
                 "errors": " | ".join(errors),
             }
             asyncio.create_task(self.on_post_published(summary))
@@ -291,24 +313,26 @@ class DripScheduler:
         return next_time.isoformat()
 
 
-async def publish_clip_now(clip_id: int, notify: Optional[Callable[[Dict[str, Any]], Any]] = None) -> Dict[str, Any]:
+async def publish_clip_now(clip_id: int, notify: Optional[Callable[[Dict[str, Any]], Any]] = None,
+                           schedule: bool = True) -> Dict[str, Any]:
     """"Post now": same path as scheduled uploads (privacy, quota guard, retries, IG once),
     just due immediately. Reuses the clip's existing queue rows when it was already queued."""
     from src.database import get_db_connection
     from src.publisher.slots import schedule_clip
 
-    await schedule_clip(clip_id)  # idempotent: creates rows for mapped channels not yet queued
+    if schedule:
+        await schedule_clip(clip_id)  # idempotent: creates rows for mapped channels not yet queued
     now = datetime.now(timezone.utc).isoformat()
     async with get_db_connection() as db:
         await db.execute(
-            "UPDATE scheduled_queue SET scheduled_for = ? WHERE clip_id = ? AND (yt_status = 'pending' OR ig_status = 'pending')",
+            "UPDATE scheduled_queue SET scheduled_for = ? WHERE clip_id = ? AND (yt_status = 'pending' OR ig_status = 'pending' OR tt_status = 'pending')",
             (now, clip_id),
         )
         await db.commit()
         cur = await db.execute(
             """SELECT q.*, c.template_name, c.rendered_video_path, c.title, c.description, c.hashtags, c.channel_id
                FROM scheduled_queue q JOIN clips c ON q.clip_id = c.id
-               WHERE q.clip_id = ? AND (q.yt_status = 'pending' OR q.ig_status = 'pending')""",
+               WHERE q.clip_id = ? AND (q.yt_status = 'pending' OR q.ig_status = 'pending' OR q.tt_status = 'pending')""",
             (clip_id,),
         )
         rows = [dict(r) for r in await cur.fetchall()]
@@ -319,11 +343,11 @@ async def publish_clip_now(clip_id: int, notify: Optional[Callable[[Dict[str, An
 
     async with get_db_connection() as db:
         cur = await db.execute(
-            "SELECT id, account_key, scheduled_for, yt_status, ig_status, yt_video_id, last_error FROM scheduled_queue WHERE clip_id = ?",
+            "SELECT id, account_key, scheduled_for, yt_status, ig_status, tt_status, yt_video_id, ig_media_id, tt_publish_id, last_error FROM scheduled_queue WHERE clip_id = ?",
             (clip_id,),
         )
         results = [dict(r) for r in await cur.fetchall()]
-    uploaded = [r for r in results if r["yt_status"] == "uploaded" or r["ig_status"] == "uploaded"]
+    uploaded = [r for r in results if "uploaded" in (r["yt_status"], r["ig_status"], r.get("tt_status"))]
     return {
         "success": bool(uploaded),
         "results": results,

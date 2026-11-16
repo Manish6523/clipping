@@ -93,6 +93,15 @@ export const applyPreset = (id, clipId = null) =>
   api.post(`/api/presets/${id}/apply`, { clip_id: clipId }).then(r => r.data);
 
 // YouTube Accounts & Streamer Mappings
+export const getPublishTargets = (clipId) => api.get(`/api/publish/targets?clip_id=${clipId}`).then(r => r.data);
+export const publishClip = (id, platforms, when = 'slot') => api.post(`/api/clips/${id}/publish`, { platforms, when }).then(r => r.data);
+export const getPublishStatus = (id) => api.get(`/api/clips/${id}/publish-status`).then(r => r.data);
+export const getTikTokAppConfig = () => api.get('/api/tiktok/app-config').then(r => r.data);
+export const saveTikTokAppConfig = (data) => api.post('/api/tiktok/app-config', data).then(r => r.data);
+export const getTikTokAuthUrl = (mode = 'inbox') => api.get(`/api/tiktok/auth-url?mode=${mode}`).then(r => r.data);
+export const getTikTokAccounts = () => api.get('/api/tiktok/accounts').then(r => r.data);
+export const patchTikTokAccount = (key, data) => api.patch(`/api/tiktok/accounts/${encodeURIComponent(key)}`, data).then(r => r.data);
+export const deleteTikTokAccount = (key) => api.delete(`/api/tiktok/accounts/${encodeURIComponent(key)}`).then(r => r.data);
 export const getYouTubeAppConfig = () => api.get('/api/youtube/app-config').then(r => r.data);
 export const saveYouTubeAppConfig = (data) => api.post('/api/youtube/app-config', data).then(r => r.data);
 export const getYouTubeAuthUrl = (accountKey) => api.get(`/api/youtube/auth-url?account_key=${encodeURIComponent(accountKey)}`).then(r => r.data);

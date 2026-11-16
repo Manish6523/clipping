@@ -575,6 +575,14 @@ class AutoClipEngine:
                         audio_peaks=audio_peaks_list,
                     )
 
+                # Video-aware judge: re-rank the top candidates by what is seen/heard in the slice
+                video_verdicts: Dict[int, Any] = {}
+                try:
+                    calibrated_candidates, candidates, video_verdicts = await self._video_rerank_live(
+                        video_path, PIPELINE_MODE, calibrated_candidates, candidates)
+                except Exception as vj_err:
+                    logger.warning("Video judge skipped: %s", vj_err)
+
                 # Choose best candidate based on active pipeline mode
                 best_candidate = None
                 chosen_from_new = False
@@ -671,6 +679,15 @@ class AutoClipEngine:
                     formula_ver = "legacy_single_call"
                     prompt_ver = "legacy"
                     model_used = getattr(self.scorer, "model_name", "gemini-flash-lite-latest")
+
+                vj = video_verdicts.get(id(best_candidate)) if best_candidate is not None else None
+                if vj:
+                    try:
+                        sb = json.loads(score_breakdown_json) if score_breakdown_json else {}
+                    except Exception:
+                        sb = {}
+                    sb["video_judge"] = vj
+                    score_breakdown_json = json.dumps(sb)
 
                 if cand_score <= 0 and skip_unscored:
                     logger.info("Best candidate is unscored and skip_unscored=True for %s. Skipping clip creation.", channel_id)
@@ -1006,6 +1023,88 @@ class AutoClipEngine:
         except Exception:
             return None
 
+    async def _video_rerank_live(self, video_path: str, mode: str, calibrated: list, legacy: list):
+        """Run the video judge over whichever candidate list will be used; returns the (re-ordered)
+        lists plus {id(candidate): verdict} for the score breakdown."""
+        from src.intelligence.video_judge import video_rerank
+        use_new = (mode == "new" and calibrated) or (not legacy and calibrated)
+        if use_new:
+            views = [{"start": c["start_time"], "end": c["end_time"], "score": c.get("virality_score", 0),
+                      "title": c.get("title"), "text": (c.get("evidence") or {}).get("hook_quote", ""), "ref": c}
+                     for c in calibrated]
+        elif legacy:
+            views = [{"start": c.start_time, "end": c.end_time, "score": c.virality_score,
+                      "title": c.suggested_title, "text": f"{c.hook_summary} {c.punchline_summary}", "ref": c}
+                     for c in legacy]
+        else:
+            return calibrated, legacy, {}
+        ranked = await video_rerank(views, video_path)
+        if not any(v.get("video_judge") for v in ranked):
+            return calibrated, legacy, {}
+        for v in ranked:
+            if not v.get("video_judge"):
+                continue
+            new_score = int(round(v["blended_score"]))
+            ref = v["ref"]
+            if use_new:
+                ref["video_judge"] = v["video_judge"]
+                ref["virality_score"] = new_score
+                ref["final_score"] = v["blended_score"]
+            else:
+                try:
+                    ref.virality_score = max(0, min(100, new_score))
+                except Exception:
+                    pass
+        ordered = [v["ref"] for v in ranked]
+        verdicts = {id(v["ref"]): v["video_judge"] for v in ranked if v.get("video_judge")}
+        if use_new:
+            return ordered, legacy, verdicts
+        return calibrated, ordered, verdicts
+
+    async def _video_rerank_vod(self, picked: list, max_clips: int, vod_id: str, video_url: str, work_dir: Path) -> list:
+        """Download the slices of the best max_clips+2 candidates once, let the video judge re-rank
+        them, and return the top max_clips (each carrying its downloaded `_slice` for rendering)."""
+        from src.intelligence.video_judge import load_video_judge_settings, VideoJudge
+        cfg = await load_video_judge_settings()
+        if not cfg["enabled"] or not picked or not video_url:
+            return picked[:max_clips]
+        judge = VideoJudge()
+        if getattr(judge.client, "_client", None) is None:
+            return picked[:max_clips]
+        pool = picked[: max_clips + 2]
+        work_dir.mkdir(parents=True, exist_ok=True)
+        for i, cand in enumerate(pool[: max(cfg["top_k"], max_clips)]):
+            out = work_dir / f"{vod_id}_vj{i:02d}_slice.mp4"
+            try:
+                ok = await self.vod_watcher.download_video_section(
+                    video_url=video_url, start_time=cand["start"], end_time=cand["end"], output_file=out)
+            except Exception as e:
+                logger.warning("Video judge prefetch failed: %s", e)
+                ok = False
+            if ok and out.exists():
+                cand["_slice"] = str(out)
+        judged = [c for c in pool if c.get("_slice")]
+        for c in judged:
+            view = {"start": 0.0, "end": c["end"] - c["start"], "score": c["score"], "title": c["title"],
+                    "text": c.get("description", "")}
+            ranked = await judge.rerank([view], c["_slice"], top_k=1)
+            vj = ranked[0].get("video_judge")
+            if vj:
+                c["score"] = int(round(ranked[0]["blended_score"]))
+                c["final_score"] = ranked[0]["blended_score"]
+                try:
+                    sb = json.loads(c["score_breakdown"]) if c.get("score_breakdown") else {}
+                except Exception:
+                    sb = {}
+                sb["video_judge"] = vj
+                c["score_breakdown"] = json.dumps(sb)
+        pool.sort(key=lambda c: c["score"], reverse=True)
+        chosen, dropped = pool[:max_clips], pool[max_clips:]
+        for c in dropped:
+            if c.get("_slice"):
+                Path(c["_slice"]).unlink(missing_ok=True)
+        return chosen
+
     def _normalise_candidate(self, c: Any, from_new: bool) -> Dict[str, Any]:
         """One shape for both judges (legacy returns Pydantic objects, calibrated returns dicts)."""
         if from_new:
@@ -1045,9 +1144,15 @@ class AutoClipEngine:
         tag = f"{vod_id}_c{idx:02d}"
         slice_source = work_dir / f"{tag}_slice.mp4"
 
-        downloaded = await self.vod_watcher.download_video_section(
-            video_url=video_url, start_time=clip_start, end_time=clip_end, output_file=slice_source,
-        )
+        pre = cand.get("_slice")
+        if pre and Path(pre).exists():   # already downloaded for the video judge
+            if Path(pre) != slice_source:
+                Path(pre).replace(slice_source)
+            downloaded = True
+        else:
+            downloaded = await self.vod_watcher.download_video_section(
+                video_url=video_url, start_time=clip_start, end_time=clip_end, output_file=slice_source,
+            )
         if not downloaded or not slice_source.exists():
             logger.error("Failed to download section %.1f-%.1fs for VOD %s", clip_start, clip_end, vod_id)
             return None
@@ -1154,7 +1259,8 @@ class AutoClipEngine:
                     calibrated_candidates = await self.calibrated_judge.evaluate_moment(
                         channel_id=channel_id,
                         sentences=sentences,
-                        trigger_context={"type": "vod_heatmap", "peaks": metadata.get("heatmap_peaks", [])},
+                        trigger_context={"type": "vod_heatmap", "peaks": metadata.get("heatmap_peaks", []),
+                                         "chat_peaks": metadata.get("chat_peaks", [])},
                         min_score=min_score,
                     )
                 except Exception as e:
@@ -1167,6 +1273,7 @@ class AutoClipEngine:
                     transcript_data=transcription,
                     min_score=min_score,
                     heatmap_peaks=metadata.get("heatmap_peaks", []),
+                    chat_spikes=metadata.get("chat_peaks") or None,
                     max_clips=opts["max_clips"],
                     min_len=opts["min_len"],
                     max_len=opts["max_len"],
@@ -1181,7 +1288,8 @@ class AutoClipEngine:
             picked.sort(key=lambda c: c["score"], reverse=True)
             if skip_unscored:
                 picked = [c for c in picked if c["score"] > 0]
-            picked = picked[: opts["max_clips"]]
+            work_dir = Path(metadata.get("work_dir", RENDER_DIR))
+            picked = await self._video_rerank_vod(picked, opts["max_clips"], vod_id, video_url, work_dir)
 
             if not picked:
                 logger.info("No candidates above threshold for VOD %s.", vod_id)
@@ -1191,7 +1299,6 @@ class AutoClipEngine:
                     await db.commit()
                 return
 
-            work_dir = Path(metadata.get("work_dir", RENDER_DIR))
             words_all, censor_cfg = await prepare_censor(transcription.get("words", []), template)
             made: List[int] = []
             auto_cfg = await effective_auto_edit(metadata.get("auto_edit"))  # explicit request choice, else Settings default

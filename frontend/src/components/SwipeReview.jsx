@@ -3,13 +3,14 @@ import { useNavigate, Link } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   X, Check, Scissors, Zap, Undo2, Volume2, VolumeX, Pencil, LayoutList, PartyPopper, Loader2,
-  Maximize, LayoutTemplate, Type, Heading,
+  Maximize, LayoutTemplate, LayoutGrid, Type, Heading,
 } from 'lucide-react';
 import CaptionStylePicker from './CaptionStylePicker';
 import HookStylePicker from './HookStylePicker';
 import { styleById } from '../lib/captionStyles';
 import axios from 'axios';
-import { getClips, queueClip, discardClip, postClipNow, updateClip } from '../api';
+import { getClips, queueClip, discardClip, updateClip } from '../api';
+import PublishSheet from './PublishSheet';
 import { censorFlagInfo } from '../utils/profanity';
 import ScoreBreakdown from './ScoreBreakdown';
 import { Sheet, Button, EmptyState } from './ui';
@@ -192,7 +193,7 @@ function ClipCard({ clip, isTop, muted, onToggleMute, drag, onPointerDown, onPoi
   );
 }
 
-export default function SwipeReview({ onSwitchClassic }) {
+export default function SwipeReview({ onSwitchClassic, onOverview }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -299,23 +300,14 @@ export default function SwipeReview({ onSwitchClassic }) {
     navigate(`/clips/${clip.id}/editor`);
   };
 
-  const postNow = async (clip) => {
-    if (!window.confirm(`Upload clip #${clip.id} right now to its mapped accounts?`)) return;
-    flushPending();
-    setBusy(true);
-    try {
-      const res = await postClipNow(clip.id);
-      if (res && res.success === false) {
-        throw new Error(res.error || 'Upload failed');
-      }
+  const [publishing, setPublishing] = useState(null);
+  const postNow = (clip) => { flushPending(); setPublishing(clip); };
+  const onPublished = (st) => {
+    const clip = publishing;
+    if (clip && st && ['uploaded', 'pending', 'uploading'].some((x) => [st.youtube, st.tiktok, st.instagram].includes(x))) {
       setHandled((prev) => new Set(prev).add(clip.id));
-      flash(`Clip #${clip.id} is uploading`, 'ok');
-      queryClient.invalidateQueries({ queryKey: ['clips'] });
-    } catch (e) {
-      flash(`Upload failed: ${e.response?.data?.error || e.message}`, 'error');
-    } finally {
-      setBusy(false);
     }
+    queryClient.invalidateQueries({ queryKey: ['clips'] });
   };
 
   const saveTitle = async () => {
@@ -452,10 +444,14 @@ export default function SwipeReview({ onSwitchClassic }) {
 
   return (
     <div className="flex flex-col px-3 pt-2 h-[calc(100dvh-56px-64px-env(safe-area-inset-bottom))] min-h-[480px]">
+      <PublishSheet open={!!publishing} clip={publishing} onClose={() => setPublishing(null)} onDone={onPublished} />
       {/* Header */}
       <div className="flex items-center justify-between mb-2 shrink-0">
         <h1 className="text-[15px] font-semibold text-ink">{isLoading ? 'Loading…' : `${clips.length} to review`}</h1>
-        <Button size="sm" icon={LayoutList} onClick={() => { flushPending(); onSwitchClassic?.(); }}>Classic view</Button>
+        <div className="flex items-center gap-1.5">
+          {onOverview && <Button size="sm" icon={LayoutGrid} onClick={() => { flushPending(); onOverview(); }}>Overview</Button>}
+          <Button size="sm" icon={LayoutList} onClick={() => { flushPending(); onSwitchClassic?.(); }}>List</Button>
+        </div>
       </div>
 
       {/* Card stack */}
@@ -515,45 +511,25 @@ export default function SwipeReview({ onSwitchClassic }) {
         </div>
       )}
 
-      {/* Action buttons */}
-      <div className="shrink-0 flex items-center justify-center gap-2 sm:gap-4 py-3">
-        <button type="button" disabled={!top} onClick={() => top && startAction('reject', top)}
-          className="w-12 h-12 rounded-full bg-bad/15 border border-bad/40 text-bad flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Reject">
-          <X size={24} />
-        </button>
-        <button type="button" disabled={!top} onClick={() => top && goEdit(top)}
-          className="w-10 h-10 rounded-full bg-accent/15 border border-accent/40 text-accent flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Edit">
-          <Scissors size={18} />
-        </button>
-        <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openTemplates}
-          className="w-10 h-10 rounded-full bg-white/[0.07] border border-line-strong text-slate-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Change template">
-          <LayoutTemplate size={18} />
-        </button>
-        <button type="button" disabled={!top || !!(top && applying[top.id])} onClick={openCaptions}
-          className="w-10 h-10 rounded-full bg-white/[0.07] border border-line-strong text-slate-200 flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Change caption style">
-          <Type size={18} />
-        </button>
-        {top && isAutoEdited(top) && (
-          <button type="button" disabled={!!applying[top.id]} onClick={openHook}
-            className="w-10 h-10 rounded-full bg-warn/15 border border-warn/40 text-warn flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-            aria-label="Change hook card style">
-            <Heading size={18} />
+      {/* Action buttons (labelled: an icon alone does not say what it does) */}
+      <div className="shrink-0 grid grid-flow-col auto-cols-fr items-start gap-1 py-2" data-testid="swipe-actions">
+        {[
+          { key: 'reject', label: 'Reject', icon: X, tone: 'bg-bad/15 border-bad/40 text-bad', big: true, disabled: !top, run: () => top && startAction('reject', top) },
+          { key: 'edit', label: 'Edit', icon: Scissors, tone: 'bg-accent/15 border-accent/40 text-accent', disabled: !top, run: () => top && goEdit(top) },
+          { key: 'layout', label: 'Layout', icon: LayoutTemplate, tone: 'bg-white/[0.07] border-line-strong text-slate-200', disabled: !top || !!(top && applying[top.id]), run: openTemplates },
+          { key: 'captions', label: 'Captions', icon: Type, tone: 'bg-white/[0.07] border-line-strong text-slate-200', disabled: !top || !!(top && applying[top.id]), run: openCaptions },
+          ...(top && isAutoEdited(top) ? [{ key: 'hook', label: 'Hook', icon: Heading, tone: 'bg-warn/15 border-warn/40 text-warn', disabled: !!applying[top.id], run: openHook }] : []),
+          { key: 'post', label: 'Publish', icon: busy ? Loader2 : Zap, spin: busy, tone: 'bg-warn/15 border-warn/40 text-warn', disabled: !top || busy, run: () => top && postNow(top) },
+          { key: 'queue', label: 'Approve', icon: Check, tone: 'bg-good/15 border-good/40 text-good', big: true, disabled: !top, run: () => top && startAction('queue', top) },
+        ].map((a) => (
+          <button key={a.key} type="button" disabled={a.disabled} onClick={a.run} aria-label={a.key === 'queue' ? 'Approve and queue' : a.key === 'hook' ? 'Change hook card style' : a.key === 'layout' ? 'Change template' : a.key === 'captions' ? 'Change caption style' : a.label}
+            className="flex flex-col items-center gap-1 rounded-xl py-0.5 disabled:opacity-30 active:scale-95 transition">
+            <span className={`flex items-center justify-center rounded-full border ${a.tone} ${a.big ? 'h-12 w-12' : 'h-11 w-11'}`}>
+              <a.icon size={a.big ? 22 : 18} className={a.spin ? 'animate-spin' : ''} />
+            </span>
+            <span className="text-[11px] font-medium leading-none text-muted">{a.label}</span>
           </button>
-        )}
-        <button type="button" disabled={!top || busy} onClick={() => top && postNow(top)}
-          className="w-10 h-10 rounded-full bg-warn/15 border border-warn/40 text-warn flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Post now">
-          {busy ? <Loader2 size={18} className="animate-spin" /> : <Zap size={18} />}
-        </button>
-        <button type="button" disabled={!top} onClick={() => top && startAction('queue', top)}
-          className="w-12 h-12 rounded-full bg-good/15 border border-good/40 text-good flex items-center justify-center active:scale-90 transition disabled:opacity-30"
-          aria-label="Approve and queue">
-          <Check size={24} />
-        </button>
+        ))}
       </div>
 
       <Sheet open={templateSheet && !!top} onClose={() => setTemplateSheet(false)} title="Change layout">

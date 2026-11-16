@@ -15,6 +15,8 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
 import aiohttp
 
+from src.intelligence.chat_signals import chat_signal_score, emote_wall, is_emote_burst
+
 from config.settings import (
     AUDIO_PEAK_DB_THRESHOLD, BUFFER_DIR, CHAT_SPIKE_MULTIPLIER,
     LIVE_KEYWORD_MIN_HITS, LIVE_KEYWORD_MIN_RATIO, LIVE_TRIGGER_COOLDOWN_S,
@@ -479,6 +481,12 @@ class LiveStreamWatcher:
         now = time.time()
         self.chat_messages_timestamps.append(now)
         self.chat_history_buffer.append((now, message))
+        recent_msgs = getattr(self, "_recent_msgs", None)
+        if recent_msgs is None:
+            recent_msgs = self._recent_msgs = deque()
+        recent_msgs.append((now, user, message))
+        while recent_msgs and recent_msgs[0][0] < now - 5.0:
+            recent_msgs.popleft()
 
         # Baseline = chat rate over the previous 10 minutes, EXCLUDING the last 10s. The old 60s
         # window included the spike itself, so a burst raised its own baseline and hid itself.
@@ -541,12 +549,21 @@ class LiveStreamWatcher:
             and ratio >= LIVE_KEYWORD_MIN_RATIO
             and recent_5s >= 6
         )
-        should_trigger = velocity_spike or keyword_burst
+        # Emote wall: most of the last 5s is one reaction (KEKW / 💀 / W) from many people, even
+        # though chat isn't much faster than normal. Velocity alone misses these.
+        burst_msgs = [m for _, _, m in recent_msgs]
+        emote_burst, reaction = is_emote_burst(burst_msgs, [u for _, u, _ in recent_msgs], ratio)
+        emote_burst = warmed_up and emote_burst
+        should_trigger = velocity_spike or keyword_burst or emote_burst
 
         cooldown = max(60.0, float(getattr(self, "cooldown_seconds", LIVE_TRIGGER_COOLDOWN_S)))
         if should_trigger and (now - self.last_trigger_time > cooldown):
             trigger_context = {
-                "type": "chat_spike" if velocity_spike else "keyword_hit",
+                "type": "chat_spike" if velocity_spike else ("emote_burst" if emote_burst else "keyword_hit"),
+                "mood": reaction["mood"],
+                "mood_share": reaction["share"],
+                "unique_chatters_5s": reaction["unique_chatters"],
+                "emote_wall": emote_wall(burst_msgs).get("token"),
                 "mps_recent": round(current_5s_mps, 2),
                 "mps_baseline": round(self.chat_baseline_mps, 2),
                 "ratio": round(ratio, 2),
@@ -555,6 +572,7 @@ class LiveStreamWatcher:
                 "keyword": keyword_hit,
                 "t_trigger": now,
             }
+            trigger_context["signal_score"] = chat_signal_score(ratio, reaction["share"], reaction["unique_chatters"])
             trigger_context["moment_id"] = f"{self.channel_id.lower()}:{int(now)}"
             self._trigger_count += 1
             self._last_trigger_ctx = dict(trigger_context)

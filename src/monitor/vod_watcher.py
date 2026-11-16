@@ -91,6 +91,27 @@ class VODWatcher:
             logger.warning("Could not parse heatmap for %s: %s", video_url, e)
             return []
 
+    async def fetch_chat_peaks(self, video_url: str, work_dir: Path, timeout: float = 600) -> List[Dict[str, Any]]:
+        """Chat-replay velocity spikes for a YouTube past live stream (yt-dlp `live_chat` subtitles).
+        Anything else (Twitch, normal uploads, no replay, timeouts) -> []."""
+        if "youtube.com" not in video_url and "youtu.be" not in video_url:
+            return []
+        out_tmpl = str(work_dir / "chat.%(ext)s")
+        rc, _out, err = await ytdlp.run(
+            ["--skip-download", "--write-subs", "--sub-langs", "live_chat", "-o", out_tmpl, video_url],
+            timeout=timeout,
+        )
+        files = sorted(work_dir.glob("chat*.live_chat.json"))
+        if not files:
+            if rc != 0:
+                logger.info("No chat replay for %s: %s", video_url, ytdlp.explain(err))
+            return []
+        comments = parse_live_chat_replay(files[0])
+        from src.intelligence.chat_signals import spikes_from_replay
+        peaks = spikes_from_replay(comments)
+        logger.info("Chat replay: %d messages, %d spikes for %s", len(comments), len(peaks), video_url)
+        return peaks
+
     async def download_audio_first(self, video_url: str, output_dir: Path) -> str:
         """Download the audio track (first 3 hours) for transcription.
 
@@ -181,8 +202,17 @@ class VODWatcher:
             # 1. Parse heatmap peaks
             peaks = await self.fetch_heatmap_peaks(video_url)
 
-            # 2. Download audio-only
-            audio_path = await self.download_audio_first(video_url, work_dir)
+            # 2. Download audio-only (+ the chat replay in parallel, YouTube only; best-effort)
+            chat_task = asyncio.create_task(self.fetch_chat_peaks(video_url, work_dir))
+            try:
+                audio_path = await self.download_audio_first(video_url, work_dir)
+            except Exception:
+                chat_task.cancel()
+                raise
+            try:
+                chat_peaks = await chat_task
+            except Exception:
+                chat_peaks = []
 
             if self.on_vod_clip_ready:
                 await self.on_vod_clip_ready(
@@ -196,6 +226,7 @@ class VODWatcher:
                         "platform": platform,
                         "template_name": template_name,
                         "heatmap_peaks": peaks,
+                        "chat_peaks": chat_peaks,
                         "work_dir": str(work_dir),
                         **(options or {}),
                     },
@@ -253,3 +284,39 @@ class VODWatcher:
             except Exception as e:
                 logger.debug("Failed checking Twitch VODs for %s: %s", channel_id, e)
 
+
+
+def parse_live_chat_replay(path: Path) -> List[tuple]:
+    """yt-dlp's live_chat.json (one JSON object per line) -> [(offset_seconds, text), ...]."""
+    out: List[tuple] = []
+    with open(path, "r", encoding="utf-8", errors="ignore") as f:
+        for line in f:
+            try:
+                obj = json.loads(line)
+            except Exception:
+                continue
+            replay = obj.get("replayChatItemAction") or {}
+            try:
+                offset = int(replay.get("videoOffsetTimeMsec") or obj.get("videoOffsetTimeMsec") or -1) / 1000.0
+            except (TypeError, ValueError):
+                continue
+            if offset < 0:
+                continue
+            for action in replay.get("actions") or []:
+                item = (action.get("addChatItemAction") or {}).get("item") or {}
+                renderer = item.get("liveChatTextMessageRenderer") or item.get("liveChatPaidMessageRenderer")
+                if not renderer:
+                    continue
+                parts = []
+                for run in (renderer.get("message") or {}).get("runs") or []:
+                    if "text" in run:
+                        parts.append(run["text"])
+                    elif "emoji" in run:
+                        em = run["emoji"]
+                        shortcut = (em.get("shortcuts") or [None])[0]
+                        name = (shortcut or "").strip(":")
+                        parts.append(name if em.get("isCustomEmoji") else (em.get("emojiId") or name))
+                text = " ".join(p for p in parts if p).strip()
+                if text:
+                    out.append((offset, text))
+    return out

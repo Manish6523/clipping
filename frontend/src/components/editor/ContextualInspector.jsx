@@ -16,7 +16,8 @@ import {
   Check,
   CheckCircle2,
   RefreshCw,
-  Info
+  Info,
+  ScanFace
 } from 'lucide-react';
 import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { hexToAss, assToHex } from '../../utils/colorConversions';
@@ -55,6 +56,8 @@ export default function ContextualInspector({ channels = [] }) {
     const src = selectedLayer.src || { x: 0, y: 0, w: 1, h: 1 };
     const dst = selectedLayer.dst || { x: 0, y: 0, w: 1, h: 1 };
     const style = selectedLayer.style || {};
+    const tracking = selectedLayer.tracking || { mode: 'off', smooth: 0.8 };
+    const following = tracking.mode === 'face';
 
     return (
       <div className="w-full h-full flex flex-col bg-surface overflow-y-auto p-3 text-xs gap-4 custom-scrollbar select-none">
@@ -94,6 +97,41 @@ export default function ContextualInspector({ channels = [] }) {
               </button>
             ))}
           </div>
+        </div>
+
+        {/* Follow face (auto-reframe at render time) */}
+        <div className="flex flex-col gap-2 bg-raised p-2.5 rounded-xl border border-white/5" data-testid="follow-face">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <ScanFace size={16} className={following ? 'text-accent' : 'text-slate-400'} />
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-slate-200">Follow face</div>
+                <div className="text-[11px] text-slate-400 leading-snug">The crop moves with the streamer's face when the clip renders.</div>
+              </div>
+            </div>
+            <button
+              type="button" role="switch" aria-checked={following} aria-label="Follow face"
+              onClick={() => updateLayer(selectedLayer.id, { tracking: { ...tracking, mode: following ? 'off' : 'face' } })}
+              className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${following ? 'bg-accent' : 'bg-white/15'}`}
+            >
+              <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${following ? 'left-[22px]' : 'left-0.5'}`} />
+            </button>
+          </div>
+          {following && (
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 w-16">Smoothness</span>
+              <input
+                type="range" min="0" max="1" step="0.05" aria-label="Follow smoothness"
+                value={tracking.smooth ?? 0.8}
+                onChange={(e) => updateLayer(selectedLayer.id, { tracking: { ...tracking, smooth: parseFloat(e.target.value) } })}
+                className="flex-1 accent-accent cursor-pointer"
+              />
+              <span className="font-mono text-slate-300 text-[11px] w-12 text-right">{(tracking.smooth ?? 0.8) >= 0.7 ? 'Calm' : (tracking.smooth ?? 0.8) >= 0.35 ? 'Normal' : 'Snappy'}</span>
+            </div>
+          )}
+          {following && (
+            <p className="text-[11px] text-slate-400 leading-snug">Tip: draw the crop around where the face usually is. It can move up to about a third of its size in each direction.</p>
+          )}
         </div>
 
         {/* Output Placement (dst) */}

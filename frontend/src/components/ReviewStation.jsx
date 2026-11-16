@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { censorFlagInfo } from '../utils/profanity';
 import ScoreBreakdown from './ScoreBreakdown';
+import PublishSheet from './PublishSheet';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -8,7 +9,7 @@ import {
   VolumeX, AlertTriangle, Info, Star, Film, Tag, SkipBack, SkipForward, Clapperboard, LayoutTemplate,
 } from 'lucide-react';
 import {
-  getClips, getClip, getClipExplain, trimClip, toggleTeaser, updateClip, postClipNow, queueClip, discardClip, batchDiscardClips, sendClipFeedback,
+  getClips, getClip, getClipExplain, trimClip, toggleTeaser, updateClip, queueClip, discardClip, batchDiscardClips, sendClipFeedback,
 } from '../api';
 import BulkTemplateSheet from './BulkTemplateSheet';
 import { Panel, Segmented, Button, IconButton, Input, Select, Field, Badge, Pill, Notice, Sheet, Confirm, EmptyState, Skeleton, Spinner } from './ui';
@@ -258,22 +259,11 @@ export default function ReviewStation({ onStatusChange }) {
     }
   };
 
-  const handlePostNow = async () => {
-    if (!activeClipId) return;
-    setLoading(true);
-    try {
-      const res = await postClipNow(activeClipId);
-      if (res && res.success === false) {
-        throw new Error(res.error || 'Upload failed');
-      }
-      queryClient.invalidateQueries({ queryKey: ['clips'] });
-      if (onStatusChange) onStatusChange();
-      showFeedback(`Clip #${activeClipId} dispatched for immediate publishing!`);
-    } catch (err) {
-      setErrorMsg('Failed to post clip: ' + (err.response?.data?.error || err.message));
-    } finally {
-      setLoading(false);
-    }
+  const [publishing, setPublishing] = useState(null);
+  const handlePostNow = () => { if (activeClipSummary) setPublishing(activeClipSummary); };
+  const onPublished = () => {
+    queryClient.invalidateQueries({ queryKey: ['clips'] });
+    if (onStatusChange) onStatusChange();
   };
 
   const handleQueue = async () => {
@@ -361,6 +351,8 @@ export default function ReviewStation({ onStatusChange }) {
   };
 
   return (
+    <>
+    <PublishSheet open={!!publishing} clip={publishing} onClose={() => setPublishing(null)} onDone={onPublished} />
     <div className="w-full min-h-[calc(100dvh-56px)] lg:h-[calc(100dvh-56px)] flex flex-col px-3 sm:px-5 pt-3 pb-3 gap-3 overflow-y-auto lg:overflow-hidden bg-canvas select-none">
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -570,7 +562,7 @@ export default function ReviewStation({ onStatusChange }) {
                   </a>
                 )}
                 <Button size="sm" variant="warn" icon={Star} disabled={loading} onClick={handleMarkGreat}>Great</Button>
-                <Button size="sm" variant="good" icon={Send} disabled={loading} onClick={handlePostNow}>Post</Button>
+                <Button size="sm" variant="good" icon={Send} disabled={loading} onClick={handlePostNow}>Publish</Button>
                 <Button size="sm" variant="primary" icon={Calendar} disabled={loading} onClick={handleQueue}>Queue</Button>
                 <Button size="sm" icon={Save} disabled={loading} onClick={handleSaveMetadata}>Save</Button>
                 <Button size="sm" variant="danger" icon={Trash2} disabled={loading} onClick={() => setShowRejectModal(true)}>Reject</Button>
@@ -631,5 +623,6 @@ export default function ReviewStation({ onStatusChange }) {
       <Confirm open={confirmBatch} danger title={`Discard ${selectedClipIds.size} clip${selectedClipIds.size === 1 ? '' : 's'}?`} confirmLabel="Discard"
         text="They are permanently deleted, including their files." onCancel={() => setConfirmBatch(false)} onConfirm={handleBatchDiscard} />
     </div>
+    </>
   );
 }

@@ -786,6 +786,19 @@ async def migration_v22(db):
 
 
 
+
+@migration(23, "TikTok publishing columns on scheduled_queue")
+async def migration_v23(db):
+    cur = await db.execute("PRAGMA table_info(scheduled_queue)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "tt_status" not in cols:
+        # Existing rows never asked for TikTok
+        await db.execute("ALTER TABLE scheduled_queue ADD COLUMN tt_status TEXT DEFAULT 'skipped'")
+    if "tt_publish_id" not in cols:
+        await db.execute("ALTER TABLE scheduled_queue ADD COLUMN tt_publish_id TEXT")
+    if "tt_account_key" not in cols:
+        await db.execute("ALTER TABLE scheduled_queue ADD COLUMN tt_account_key TEXT")
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import ChannelPublishing from './ChannelPublishing';
-import { Plus, Trash2, CheckCircle2, AlertTriangle, ExternalLink, Share2, FileJson, Radio, Key } from 'lucide-react';
+import TikTokAccounts from './TikTokAccounts';
+import { Plus, Trash2, CheckCircle2, AlertTriangle, ExternalLink, Share2, FileJson, Radio, Key, AudioLines } from 'lucide-react';
 import {
   getYouTubeAppConfig, saveYouTubeAppConfig, getYouTubeAuthUrl, getYouTubeAccounts, patchYouTubeAccountConfig,
   deleteYouTubeAccount, importYouTubeAccount, getYouTubeMappings, setYouTubeMappings, getChannels,
@@ -175,13 +176,14 @@ export default function AccountsManager() {
   const tabs = [
     { value: 'accounts', label: 'Accounts', icon: () => <YoutubeIcon size={13} />, count: accounts.length },
     { value: 'mappings', label: 'Mappings', icon: Share2 },
+    { value: 'tiktok', label: 'TikTok', icon: AudioLines },
     { value: 'oauth_setup', label: 'Google app', icon: Key },
   ];
   const isMapped = (handle, key) => mappings.some((m) => m.streamer_handle.toLowerCase() === handle.toLowerCase() && m.account_key === key);
 
   return (
     <Page title="Distribution" icon={() => <YoutubeIcon size={20} />}
-      subtitle="Connect YouTube channels, choose which streamer posts where, and set each channel's schedule."
+      subtitle="Connect YouTube and TikTok, choose which streamer posts where, and set each channel's schedule."
       actions={<Segmented value={activeTab} onChange={setActiveTab} options={tabs} ariaLabel="Section" />}>
       {feedback && <Notice tone="good" icon={CheckCircle2}>{feedback}</Notice>}
       {error && <Notice tone="bad" icon={AlertTriangle}>{error}</Notice>}
@@ -271,6 +273,8 @@ export default function AccountsManager() {
           )}
         </Panel>
       )}
+
+      {activeTab === 'tiktok' && <TikTokAccounts channels={channels} />}
 
       {activeTab === 'oauth_setup' && (
         <Panel title="Google Cloud OAuth app" icon={Key} className="max-w-2xl">

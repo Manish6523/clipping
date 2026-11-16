@@ -83,6 +83,8 @@ export default function Settings() {
   const [storyCpuBudget, setStoryCpuBudget] = useState(0.35);
   const [storyGraceMinutes, setStoryGraceMinutes] = useState(35);
   const [autoEditEnabled, setAutoEditEnabled] = useState(false);
+  const [videoJudge, setVideoJudge] = useState(true);
+  const [videoJudgeTopK, setVideoJudgeTopK] = useState(3);
   const [autoEditStyle, setAutoEditStyle] = useState('punchy');
   const [autoEditHookCard, setAutoEditHookCard] = useState(true);
   const [banner, setBanner] = useState(null);
@@ -105,6 +107,8 @@ export default function Settings() {
       setStoryCpuBudget(res.data.story_seed_cpu_budget ?? 0.35);
       setStoryGraceMinutes(res.data.story_session_grace_minutes ?? 35);
       setAutoEditEnabled(Boolean(res.data.auto_edit_enabled));
+      setVideoJudge(res.data.video_judge_enabled !== false);
+      setVideoJudgeTopK(res.data.video_judge_top_k || 3);
       setAutoEditStyle(res.data.auto_edit_style || 'punchy');
       setAutoEditHookCard(res.data.auto_edit_hook_card ?? true);
     } catch (err) {
@@ -192,6 +196,8 @@ export default function Settings() {
         auto_edit_enabled: autoEditEnabled,
         auto_edit_style: autoEditStyle,
         auto_edit_hook_card: autoEditHookCard,
+        video_judge_enabled: videoJudge,
+        video_judge_top_k: videoJudgeTopK,
         ...(censor ? { censor } : {}),
       });
       setSaveSuccess(true);
@@ -428,15 +434,26 @@ export default function Settings() {
           <div className="grid md:grid-cols-2 gap-5">
             <Panel title="Scoring Model" icon={Cpu} className="space-y-4">
               <Field label="Gemini Evaluation Model" hint="Powers the CalibratedJudge prompt engine, hook cards, and virality scoring.">
-                <Select value={model} onChange={(e) => setModel(e.target.value)} className="font-mono !text-xs">
-                  <option value="gemini-flash-lite-latest">gemini-flash-lite-latest (Recommended - Ultra-fast & saves quota)</option>
-                  <option value="gemini-flash-latest">gemini-flash-latest (Deep reasoning)</option>
-                  <option value="gemini-2.5-flash">gemini-2.5-flash (Next-gen frontier)</option>
+                <Select value={model} onChange={(e) => setModel(e.target.value)}>
+                  <option value="gemini-flash-lite-latest">Flash Lite - fast, saves quota (recommended)</option>
+                  <option value="gemini-flash-latest">Flash - deeper reasoning</option>
+                  <option value="gemini-2.5-flash">2.5 Flash - newest</option>
                 </Select>
               </Field>
               <div className="p-3 bg-canvas border border-line rounded-xl text-xs text-muted">
                 <span className="text-slate-200 font-bold">Recommended:</span> <code>gemini-flash-lite-latest</code> evaluates moments in under 1.2s and uses 4x less quota.
               </div>
+              <Field label="Video AI judge" hint="Gemini also watches the best candidates (low-res preview) and re-ranks them by what happens on screen. Costs a little extra quota.">
+                <div className="grid grid-cols-2 gap-2">
+                  <Select value={videoJudge ? 'true' : 'false'} onChange={(e) => setVideoJudge(e.target.value === 'true')} aria-label="Video AI judge">
+                    <option value="true">On</option>
+                    <option value="false">Off (transcript only)</option>
+                  </Select>
+                  <Select value={String(videoJudgeTopK)} onChange={(e) => setVideoJudgeTopK(Number(e.target.value))} disabled={!videoJudge} aria-label="Candidates watched">
+                    {[1, 2, 3, 4, 5].map((n) => <option key={n} value={n}>Watch top {n}</option>)}
+                  </Select>
+                </div>
+              </Field>
             </Panel>
 
             <Panel title="Minimum Virality Gate" icon={Sliders} right={<Badge tone="good">{minScore}/100</Badge>}>
@@ -453,10 +470,10 @@ export default function Settings() {
                 aria-label="Minimum virality score"
                 className="w-full accent-accent cursor-pointer h-6 mb-2"
               />
-              <div className="flex justify-between text-xs text-faint font-mono">
-                <span>50 · Relaxed (More clips)</span>
-                <span className="font-bold text-slate-300">70 · Balanced</span>
-                <span>95 · Strict (Only tier-1)</span>
+              <div className="grid grid-cols-3 text-xs text-faint">
+                <span className="flex flex-col"><span className="font-mono">50</span>Relaxed</span>
+                <span className="flex flex-col items-center font-bold text-slate-300"><span className="font-mono">70</span>Balanced</span>
+                <span className="flex flex-col items-end"><span className="font-mono">95</span>Strict</span>
               </div>
             </Panel>
           </div>

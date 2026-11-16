@@ -80,7 +80,7 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], status 
   return (
     <header className="sticky top-0 z-50 h-14 border-b border-line bg-canvas/90 backdrop-blur-md select-none">
       <div className="h-full w-full px-3 sm:px-5 flex items-center gap-3">
-        <NavLink to="/" className="flex items-center gap-2.5 shrink-0" aria-label="AutoClip home">
+        <NavLink to="/" className="flex min-h-[44px] min-w-[44px] items-center gap-2.5 shrink-0" aria-label="AutoClip home">
           <img src="/logo.png" alt="" className="w-8 h-8 rounded-xl object-cover border border-line-strong" />
           <span className="font-bold text-[15px] tracking-tight text-ink hidden min-[400px]:inline">AutoClip</span>
         </NavLink>

@@ -504,7 +504,7 @@ async def get_due_queue_items() -> List[Dict[str, Any]]:
             SELECT q.*, c.template_name, c.rendered_video_path, c.title, c.description, c.hashtags, c.channel_id
             FROM scheduled_queue q
             JOIN clips c ON q.clip_id = c.id
-            WHERE q.scheduled_for <= ? AND (q.yt_status = 'pending' OR q.ig_status = 'pending')
+            WHERE q.scheduled_for <= ? AND (q.yt_status = 'pending' OR q.ig_status = 'pending' OR COALESCE(q.tt_status, 'skipped') = 'pending')
             ORDER BY q.scheduled_for ASC
             """,
             (now,),
@@ -522,7 +522,7 @@ async def get_upcoming_queue(limit: int = 10) -> List[Dict[str, Any]]:
             FROM scheduled_queue q
             JOIN clips c ON q.clip_id = c.id
             LEFT JOIN youtube_accounts a ON a.account_key = q.account_key
-            WHERE q.yt_status = 'pending' OR q.ig_status = 'pending'
+            WHERE q.yt_status = 'pending' OR q.ig_status = 'pending' OR COALESCE(q.tt_status, 'skipped') = 'pending'
             ORDER BY q.scheduled_for ASC
             LIMIT ?
             """,

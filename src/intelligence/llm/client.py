@@ -231,3 +231,71 @@ class GeminiClient:
 
         return None
 
+
+    async def generate_structured_media(
+        self,
+        system_instruction: str,
+        user_prompt: str,
+        media: bytes,
+        mime_type: str,
+        response_model: Type[BaseModel],
+        use_cache: bool = True,
+    ) -> Optional[BaseModel]:
+        """Like generate_structured, with one inline media part (video/audio/image, < 20 MB).
+        Only the google.genai SDK supports this; returns None otherwise (callers fail open)."""
+        await self._sync_keys_from_db()
+        media_hash = hashlib.sha256(media).hexdigest()
+        cache_key = self._compute_cache_key(system_instruction, f"{user_prompt}\n[media:{mime_type}:{media_hash}]")
+        if use_cache:
+            cached_text = await self._check_cache(cache_key)
+            if cached_text:
+                try:
+                    return response_model.model_validate(json.loads(cached_text))
+                except Exception:
+                    pass
+
+        if not self._client or self._mode != "genai":
+            logger.info("Media judging needs the google.genai SDK and a key; skipping.")
+            return None
+
+        from google.genai import types as gtypes
+
+        backoff = 2.0
+        for _attempt in range(3):
+            async with self._semaphore:
+                try:
+                    loop = asyncio.get_running_loop()
+                    response = await loop.run_in_executor(
+                        None,
+                        lambda: self._client.models.generate_content(
+                            model=self.model_name,
+                            contents=[
+                                gtypes.Part.from_bytes(data=media, mime_type=mime_type),
+                                f"{system_instruction}\n\n{user_prompt}",
+                            ],
+                            config={
+                                "response_mime_type": "application/json",
+                                "response_schema": response_model,
+                                "temperature": 0.2,
+                            },
+                        ),
+                    )
+                    raw_text = response.text
+                    validated = response_model.model_validate(json.loads(raw_text))
+                    await self._store_cache(cache_key, raw_text)
+                    return validated
+                except Exception as e:
+                    err_str = str(e).lower()
+                    if any(term in err_str for term in ["429", "resource_exhausted", "quota", "ratelimit"]):
+                        from src.database import mark_key_exhausted
+                        await mark_key_exhausted(self.current_api_key)
+                        self._rotate_key()
+                        await asyncio.sleep(backoff)
+                        backoff *= 1.5
+                    elif any(term in err_str for term in ["503", "unavailable", "overloaded", "high demand"]):
+                        await asyncio.sleep(backoff)          # transient: same key, try again
+                        backoff *= 2
+                    else:
+                        logger.warning("Gemini media invocation error: %s", e)
+                        break
+        return None

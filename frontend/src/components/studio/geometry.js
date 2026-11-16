@@ -220,7 +220,7 @@ export function handleAt(px, py, r, slop = 22) {
 
 /* ---------------------------------------------------------------- tabbed (one interactive stage) layout */
 
-export const BAR_ROWS_PX = 88;             // stage bar: tabs/reference/zoom row + layer-chip row
+export const BAR_ROWS_PX = 84;             // minimal stage bar: tabs/reference/zoom row + layer-chip row (2 x 42)
 export const MIN_PREVIEW_H = 120;          // below this the passive preview is not worth showing
 
 const fit = (aspect, maxW, maxH) => {

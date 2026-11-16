@@ -40,10 +40,12 @@ export function PhoneTopBar({ name, dirty, saved, canUndo, canRedo, onBack, onRe
       <IconBtn label="Undo" onClick={onUndo} disabled={!canUndo}><Undo2 size={18} /></IconBtn>
       <IconBtn label="Redo" onClick={onRedo} disabled={!canRedo}><Redo2 size={18} /></IconBtn>
       <button
-        type="button" onClick={onSave} data-testid="save-button"
-        className="mx-0.5 flex h-[44px] min-w-[72px] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-accent-strong px-3 text-[13px] font-semibold text-white active:bg-[#256abf]"
+        type="button" onClick={onSave} data-testid="save-button" data-compact aria-label={saved ? 'Saved' : 'Save'}
+        className="group flex h-[44px] shrink-0 items-center px-1"
       >
-        {saved ? <Check size={15} /> : <Save size={15} />}{saved ? 'Saved' : 'Save'}
+        <span className="flex h-8 items-center gap-1 rounded-full bg-accent-strong px-3 text-[13px] font-semibold text-white group-active:bg-[#256abf]">
+          {saved ? <Check size={14} /> : <Save size={14} />}{saved ? 'Saved' : 'Save'}
+        </span>
       </button>
       <IconBtn label="More actions" onClick={() => setOpen(!open)}><EllipsisVertical size={18} /></IconBtn>
 

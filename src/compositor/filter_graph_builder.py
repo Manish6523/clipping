@@ -9,6 +9,7 @@ Constructs complex filtergraphs:
 from src.compositor.caption_styles import fonts_dir_arg
 import os
 from typing import Dict, Any, List, Optional
+from src.compositor.face_tracker import crop_filter
 from src.compositor.layout_math import calculate_layer_geometry, to_even
 from src.compositor.template_migration import migrate_layout_to_v2
 
@@ -24,6 +25,7 @@ def build_filter_graph(
     speed_multiplier: float = 1.0,
     contrast: float = 1.0,
     saturation: float = 1.0,
+    motion: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """
     Builds the complete FFmpeg filter_complex string for a Schema v2 layout.
@@ -88,8 +90,9 @@ def build_filter_graph(
         border_col = border.get("color", "#FFFFFF").replace("#", "0x")
         opacity = float(style.get("opacity", 1.0))
 
-        # Crop from source video
-        pipe_steps = [f"crop={src_c['w']}:{src_c['h']}:{src_c['x']}:{src_c['y']}"]
+        # Crop from source video (moving when the layer follows a face: see face_tracker)
+        kfs = (motion or {}).get(layer.get("id", f"l_{idx}"))
+        pipe_steps = [crop_filter((src_c['x'], src_c['y'], src_c['w'], src_c['h']), kfs or [])]
 
         # Scale according to fit mode
         pipe_steps.append(f"scale={scale_sz['w']}:{scale_sz['h']}")

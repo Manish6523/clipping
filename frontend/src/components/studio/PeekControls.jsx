@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ChevronUp, Upload } from 'lucide-react';
+import { ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ChevronUp, Upload, ScanFace } from 'lucide-react';
 import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { CAPTION_STYLES } from '../../lib/captionStyles';
 import { useHookStyles } from '../../lib/hookStyles';
@@ -93,6 +93,11 @@ export default function PeekControls({ channels = [], onMore, onPickLogo }) {
               <Btn key={f} label={`Fit: ${f}`} active={(layer.fit || 'cover') === f} onClick={() => s.updateLayer(layer.id, { fit: f })} className="flex-1 capitalize">{f}</Btn>
             ))}
           </div>
+          <Btn
+            label="Follow face" active={layer.tracking?.mode === 'face'}
+            onClick={() => s.updateLayer(layer.id, { tracking: { smooth: 0.8, ...(layer.tracking || {}), mode: layer.tracking?.mode === 'face' ? 'off' : 'face' } })}
+            className="gap-1.5"
+          ><ScanFace size={16} />Follow face</Btn>
         </div>
         <div className={row}>
           <Btn label="Keep proportions when resizing" active={layer.aspect_lock !== false} onClick={() => s.updateLayer(layer.id, { aspect_lock: layer.aspect_lock === false })} className="flex-1">

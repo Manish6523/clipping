@@ -15,6 +15,7 @@ from src.intelligence.llm.client import GeminiClient
 from src.intelligence.llm.context_pack import ContextPackBuilder
 from src.intelligence.llm.judge_prompts import PROMPT_VERSION, JUDGE_SYSTEM_PROMPT, JUDGE_USER_TEMPLATE
 from src.intelligence.llm.judge_schemas import JudgeEvaluationResponse, JudgeClipEvaluation
+from src.intelligence.chat_signals import chat_signal_score, describe_reaction
 from src.intelligence.scoring_calculator import calculate_predicted_score, calculate_final_score
 
 logger = logging.getLogger(__name__)
@@ -85,6 +86,7 @@ class CalibratedJudge:
             inside_jokes=creator_profile["inside_jokes"],
             trigger_type=trigger_sig.get("type", "normal"),
             trigger_details=json.dumps(trigger_sig),
+            chat_reaction=describe_reaction(trigger_sig or {}),
             top_emotes=emotes_str,
             chat_sample=chat_str,
             feedback_sample=fb_str,
@@ -114,10 +116,13 @@ class CalibratedJudge:
         # Derive signal score from trigger context if available
         signal_score = None
         if trigger_sig:
-            if trigger_sig.get("type") in ("chat_spike", "keyword_hit"):
-                # Ratio 2.5x -> 75, ratio 4x -> 90
-                ratio = trigger_sig.get("ratio", 2.0)
-                signal_score = min(100.0, max(50.0, 50.0 + (ratio * 10.0)))
+            if trigger_sig.get("type") in ("chat_spike", "keyword_hit", "emote_burst"):
+                if trigger_sig.get("signal_score") is not None:
+                    signal_score = float(trigger_sig["signal_score"])   # velocity + agreement + breadth
+                else:
+                    ratio = trigger_sig.get("ratio", 2.0)
+                    signal_score = chat_signal_score(ratio, trigger_sig.get("mood_share", 0.0),
+                                                     trigger_sig.get("unique_chatters_5s", 0))
             elif trigger_sig.get("type") == "audio_peak":
                 # Peak -6dB -> 80
                 peak = trigger_sig.get("peak_db", -10.0)

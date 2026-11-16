@@ -89,18 +89,18 @@ export default function ClipPanel({ isCompact = false }) {
         <div className="grid grid-cols-2 gap-2 font-mono">
           <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
             <span className="text-[11px] text-slate-400 font-sans">Start Point</span>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-white font-bold">{curStart.toFixed(1)}s</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => changeClipBounds(Math.max(0, curStart - 1), curEnd)}
-                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
+                  className="w-7 h-7 [@media(pointer:coarse)]:w-11 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
                 >
                   -1
                 </button>
                 <button
                   onClick={() => changeClipBounds(Math.min(curEnd - 3, curStart + 1), curEnd)}
-                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
+                  className="w-7 h-7 [@media(pointer:coarse)]:w-11 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
                 >
                   +1
                 </button>
@@ -110,18 +110,18 @@ export default function ClipPanel({ isCompact = false }) {
 
           <div className="p-2.5 rounded-xl bg-white/[0.03] border border-white/[0.06] flex flex-col gap-1">
             <span className="text-[11px] text-slate-400 font-sans">End Point</span>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-1">
               <span className="text-white font-bold">{curEnd.toFixed(1)}s</span>
               <div className="flex items-center gap-1">
                 <button
                   onClick={() => changeClipBounds(curStart, Math.max(curStart + 3, curEnd - 1))}
-                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
+                  className="w-7 h-7 [@media(pointer:coarse)]:w-11 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
                 >
                   -1
                 </button>
                 <button
                   onClick={() => changeClipBounds(curStart, Math.min(maxAvailable, curEnd + 1))}
-                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
+                  className="w-7 h-7 [@media(pointer:coarse)]:w-11 rounded-lg bg-white/5 hover:bg-white/10 text-white font-bold text-xs"
                 >
                   +1
                 </button>

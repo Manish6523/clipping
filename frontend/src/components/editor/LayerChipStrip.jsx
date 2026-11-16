@@ -47,7 +47,7 @@ export default function LayerChipStrip() {
   };
 
   return (
-    <div className="h-9 px-3 bg-canvas/90 border-t border-white/[0.04] flex items-center gap-1.5 overflow-x-auto custom-scrollbar shrink-0 select-none z-20">
+    <div className="min-h-9 py-1 px-3 bg-canvas/90 border-t border-white/[0.04] flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0 select-none z-20">
       {layers.map((layer) => {
         const isSelected = selectedLayerId === layer.id;
         return (

@@ -694,7 +694,7 @@ export default function MobileStage({
               className="absolute -translate-x-1/2 -translate-y-1/2 z-50 h-12 border border-dashed border-accent/70 active:border-accent active:bg-accent/15 cursor-move rounded-lg flex items-center justify-center transition-all touch-none shadow-lg"
               title="Drag directly on mobile to reposition subtitles"
             >
-              <span className="absolute -top-2.5 left-2 text-[10.5px] leading-none font-mono font-bold text-accent bg-black/85 px-1.5 py-1 rounded border border-white/20 pointer-events-none shadow">
+              <span className="absolute bottom-full left-0 mb-1 whitespace-nowrap text-[10.5px] leading-none font-mono font-bold text-accent bg-black/85 px-1.5 py-1 rounded border border-white/20 pointer-events-none shadow">
                 Subtitles ({Math.round((captionsConfig.position?.y ?? 0.76) * 100)}%)
               </span>
             </div>

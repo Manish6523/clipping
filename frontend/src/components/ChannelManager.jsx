@@ -336,7 +336,7 @@ export default function ChannelManager() {
 
                 <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-line mt-auto">
                   <a href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
-                    target="_blank" rel="noreferrer" className="text-[12px] font-medium text-muted hover:text-ink flex items-center gap-1 py-2">
+                    target="_blank" rel="noreferrer" className="text-[12px] font-medium text-muted hover:text-ink flex min-h-[44px] items-center gap-1">
                     Open stream <ExternalLink size={11} />
                   </a>
                   <div className="flex items-center gap-1">

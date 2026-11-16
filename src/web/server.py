@@ -50,6 +50,7 @@ from src.web.routes_templates import register_template_routes
 from src.web.routes_health import register_health_routes
 from src.web.routes_presets import register_presets_routes
 from src.web.routes_youtube import register_youtube_routes
+from src.web.routes_publish import register_publish_routes
 from src.maintenance import execute_database_reset
 from src.compositor.render_swap import SafeRenderManager, compute_edl_hash, drain_pending_deletes
 
@@ -129,6 +130,7 @@ class WebUIServer:
         register_template_routes(self.app)
         register_presets_routes(self.app)
         register_youtube_routes(self.app)
+        register_publish_routes(self.app)
 
         self.app.router.add_post("/api/admin/reset", self.handle_admin_reset)
         self.app.router.add_get("/api/channels", self.handle_get_channels)
@@ -340,7 +342,7 @@ class WebUIServer:
             row2 = await c2.fetchone()
             pending_count = row2[0] if row2 else 0
 
-            c3 = await db.execute("SELECT COUNT(*) FROM scheduled_queue WHERE yt_status = 'pending' OR ig_status = 'pending'")
+            c3 = await db.execute("SELECT COUNT(*) FROM scheduled_queue WHERE yt_status = 'pending' OR ig_status = 'pending' OR COALESCE(tt_status, 'skipped') = 'pending'")
             row3 = await c3.fetchone()
             queued_count = row3[0] if row3 else 0
 
@@ -670,14 +672,15 @@ class WebUIServer:
         return web.json_response({"success": True, "words": annotated})
 
     async def handle_detect_faces(self, request: web.Request) -> web.Response:
-        """Run Haar-cascade face detector on video to suggest smart initial crop box."""
+        """Run the face tracker on the video to suggest a smart initial 9:16 crop box."""
         clip_id = int(request.match_info["id"])
         clip = await get_clip(clip_id)
         source_path = clip.get("source_video_path") or clip.get("rendered_video_path")
         
         from src.compositor.face_tracker import FaceTracker
         tracker = FaceTracker()
-        boxes = tracker.analyze_video_crops(source_path)
+        import asyncio as _asyncio
+        boxes = await _asyncio.to_thread(tracker.analyze_video_crops, source_path)
         first_box = boxes[0] if boxes else (656, 0, 608, 1080)
         
         # Normalize into percentage 0.0 - 1.0
@@ -1107,7 +1110,15 @@ class WebUIServer:
         auto_edit_style = db_settings.get("auto_edit_style", {}).get("value") or getattr(s, "AUTO_EDIT_STYLE", "punchy")
         auto_edit_hook = (db_settings.get("auto_edit_hook_card", {}).get("value") or str(getattr(s, "AUTO_EDIT_HOOK_CARD", True))).lower() in ("true", "1", "yes")
 
+        vj_raw = (db_settings.get("video_judge_enabled", {}).get("value") or "true").lower()
+        try:
+            vj_top_k = int(db_settings.get("video_judge_top_k", {}).get("value") or 3)
+        except ValueError:
+            vj_top_k = 3
+
         return web.json_response({
+            "video_judge_enabled": vj_raw in ("true", "1", "yes", "on"),
+            "video_judge_top_k": vj_top_k,
             "gemini_api_keys": keys_list,
             "gemini_model": model_val,
             "min_virality_score": int(min_score),
@@ -1214,6 +1225,17 @@ class WebUIServer:
                 await set_system_setting("story_session_grace_minutes", str(grace_val), category="story", description="Grace period in minutes for active stream sessions")
                 s.STORY_SESSION_GRACE_MINUTES = grace_val
             except Exception:
+                pass
+
+        if data.get("video_judge_enabled") is not None:
+            await set_system_setting("video_judge_enabled", "true" if data["video_judge_enabled"] else "false",
+                                     category="intelligence", description="Gemini watches the top candidates and re-ranks them")
+        if data.get("video_judge_top_k") is not None:
+            try:
+                k = max(1, min(6, int(data["video_judge_top_k"])))
+                await set_system_setting("video_judge_top_k", str(k), category="intelligence",
+                                         description="How many candidates the video judge watches")
+            except (TypeError, ValueError):
                 pass
 
         auto_edit_en = data.get("auto_edit_enabled")

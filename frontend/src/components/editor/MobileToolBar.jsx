@@ -25,7 +25,7 @@ const ADVANCED_ITEMS = [
   { id: 'presets', label: 'Presets', icon: Bookmark },
 ];
 
-export default function MobileToolBar() {
+export default function MobileToolBar({ compact = false }) {
   const { activePanel, setActivePanel } = useEditorStore();
   const [showAdvanced, setShowAdvanced] = useState(false);
   const advancedActive = ADVANCED_ITEMS.some((i) => i.id === activePanel);
@@ -45,7 +45,7 @@ export default function MobileToolBar() {
         type="button"
         onClick={() => handleTap(id)}
         aria-pressed={isActive}
-        className={`min-w-0 flex-1 h-12 px-0.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
+        className={`${compact ? 'w-[60px] shrink-0' : 'min-w-0 flex-1'} h-12 px-0.5 rounded-xl flex flex-col items-center justify-center gap-1 transition-all ${
           isActive
             ? 'bg-raised text-accent border border-accent/30 shadow-md shadow-accent/10'
             : 'text-slate-400 active:text-white active:bg-white/[0.04]'
@@ -59,14 +59,14 @@ export default function MobileToolBar() {
 
   return (
     <nav
-      className="bg-canvas border-t border-white/[0.08] px-1 pt-1 flex items-stretch gap-0.5 select-none shrink-0 z-30"
-      style={{ paddingBottom: 'max(env(safe-area-inset-bottom, 0px), 4px)' }}
+      className={`bg-canvas px-1 pt-1 flex items-stretch gap-0.5 select-none shrink-0 z-30 ${compact ? '' : 'border-t border-white/[0.08]'}`}
+      style={{ paddingBottom: compact ? 4 : 'max(env(safe-area-inset-bottom, 0px), 4px)' }}
     >
       {advanced && (
         <button
           type="button"
           onClick={() => { setShowAdvanced(false); if (advancedActive) setActivePanel(null); }}
-          className="min-w-0 flex-1 h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 active:text-white"
+          className={`${compact ? 'w-[60px] shrink-0' : 'min-w-0 flex-1'} h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 active:text-white`}
           aria-label="Back to main tools"
         >
           <ChevronLeft size={16} />
@@ -78,7 +78,7 @@ export default function MobileToolBar() {
         <button
           type="button"
           onClick={() => setShowAdvanced(true)}
-          className="min-w-0 flex-1 h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 active:text-white"
+          className={`${compact ? 'w-[60px] shrink-0' : 'min-w-0 flex-1'} h-12 rounded-xl flex flex-col items-center justify-center gap-1 text-slate-400 active:text-white`}
         >
           <SlidersHorizontal size={16} />
           <span className="text-[11px] font-bold">More</span>

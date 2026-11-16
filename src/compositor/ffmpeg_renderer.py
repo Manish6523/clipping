@@ -9,7 +9,8 @@ from typing import Any, Dict, List, Optional
 import logging
 
 from config.settings import USE_VAAPI, VAAPI_DEVICE, RENDER_DIR
-from src.compositor.face_tracker import FaceTracker
+from src.compositor.face_tracker import FaceTracker, crop_filter, track_crop
+from src.compositor.layout_math import calculate_layer_geometry
 from src.compositor.filter_graph_builder import build_filter_graph
 from src.compositor.crop_calculator import build_crop_filter
 from src.compositor.profanity import build_censor_audio_graph, compute_windows, resolve_sfx_path
@@ -130,6 +131,7 @@ class FFmpegRenderer:
         has_watermark: bool = False,
         watermark_path: Optional[str] = None,
         src_size: Optional[tuple] = None,
+        motion: Optional[Dict[str, Any]] = None,
     ) -> str:
         """
         Build the video filter_complex pipeline according to the template layout.
@@ -155,6 +157,7 @@ class FFmpegRenderer:
                 speed_multiplier=speed,
                 contrast=contrast,
                 saturation=saturation,
+                motion=motion,
             )
             return graph_res["filter_complex"]
 
@@ -176,18 +179,11 @@ class FFmpegRenderer:
             last_v = "[stacked]"
 
         elif l_type == "dynamic_face_track":
-            # Single 9:16 crop centered on active speaker face
-            crop_box = self.face_tracker.get_static_average_crop(source_path)
-            cx, cy, cw, ch = crop_box
-            if src_size and tuple(src_size) != (CANVAS_SRC_W, CANVAS_SRC_H):
-                # Face crop is in real source pixels; map it into the normalized 1920x1080 frame.
-                k = min(CANVAS_SRC_W / src_size[0], CANVAS_SRC_H / src_size[1])
-                ox = (CANVAS_SRC_W - src_size[0] * k) / 2
-                oy = (CANVAS_SRC_H - src_size[1] * k) / 2
-                cx, cy = int(cx * k + ox), int(cy * k + oy)
-                cw, ch = int(cw * k) // 2 * 2, int(ch * k) // 2 * 2
+            # One 9:16 crop over the (normalised 1920x1080) frame that follows the face over time
+            crop, kfs = (motion or {}).get("__full__") or (self.face_tracker.full_frame_crop(), [])
             filters.append(
-                f"[0:v]crop={cw}:{ch}:{cx}:{cy},scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2[tracked]"
+                f"[0:v]{crop_filter(crop, kfs)},scale=1080:1920:force_original_aspect_ratio=decrease,"
+                f"pad=1080:1920:(ow-iw)/2:(oh-ih)/2[tracked]"
             )
             last_v = "[tracked]"
 
@@ -271,6 +267,34 @@ class FFmpegRenderer:
 
         return ";".join(filters)
 
+    async def face_motion(self, template: Dict[str, Any], source_path: str, start: float, duration: float) -> Dict[str, Any]:
+        """Face-follow keyframes for every layer with tracking.mode == "face" (and the legacy
+        dynamic_face_track layout). Any failure -> {} (static crops)."""
+        layout = template.get("layout", {}) or {}
+        motion: Dict[str, Any] = {}
+        try:
+            if layout.get("schema") == 2 or "layers" in layout:
+                canvas = layout.get("canvas", {"w": 1080, "h": 1920})
+                for idx, layer in enumerate(l for l in layout.get("layers", []) if l.get("visible", True)):
+                    tr = layer.get("tracking") or {}
+                    if tr.get("mode") != "face":
+                        continue
+                    geo = calculate_layer_geometry(layer, CANVAS_SRC_W, CANVAS_SRC_H, canvas.get("w", 1080), canvas.get("h", 1920))
+                    c, d = geo["src_crop"], geo["dst_rect"]
+                    aspect = (d["w"] / d["h"]) if geo.get("fit") == "cover" and d.get("h") else None
+                    kfs = await asyncio.to_thread(track_crop, source_path, start, duration,
+                                                  (c["x"], c["y"], c["w"], c["h"]), float(tr.get("smooth", 0.8)),
+                                                  view_aspect=aspect)
+                    if kfs:
+                        motion[layer.get("id", f"l_{idx}")] = kfs
+                        logger.info("Face tracking '%s': %d keyframes", layer.get("name") or layer.get("id"), len(kfs))
+            elif layout.get("type") == "dynamic_face_track":
+                motion["__full__"] = await asyncio.to_thread(self.face_tracker.track_full_frame, source_path, start, duration)
+        except Exception as e:
+            logger.warning("Face tracking failed, using static crops: %s", e)
+            return {}
+        return motion
+
     async def render_clip(
         self,
         source_path: str,
@@ -306,6 +330,7 @@ class FFmpegRenderer:
         has_wm = bool(wm_path and os.path.exists(wm_path))
 
         src_size = await probe_video_size(source_path)
+        motion = await self.face_motion(template, source_path, start_time, duration)
         filter_complex = self.build_layout_filter(
             template=template,
             source_path=source_path,
@@ -313,6 +338,7 @@ class FFmpegRenderer:
             has_watermark=has_wm,
             watermark_path=wm_path,
             src_size=src_size,
+            motion=motion,
         )
 
         # Audio filter: atempo to match video speed, plus optional silence removal

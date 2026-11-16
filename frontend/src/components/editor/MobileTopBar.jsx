@@ -47,8 +47,8 @@ export default function MobileTopBar({
           <ArrowLeft size={16} />
         </button>
 
-        <div className="flex items-center gap-1.5 min-w-0 truncate">
-          <span className="font-extrabold text-white text-xs truncate max-w-[140px] sm:max-w-xs">
+        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+          <span className="font-extrabold text-white text-[13px] leading-tight line-clamp-2 min-w-0" title={clip?.title || 'Clip Editor'}>
             {clip?.title || 'Clip Editor'}
           </span>
           {/* Status Dot */}
@@ -70,14 +70,14 @@ export default function MobileTopBar({
         <button
           onClick={undo}
           className="w-8 h-8 rounded-lg text-muted active:text-white active:bg-white/10 flex items-center justify-center"
-          title="Undo"
+          title="Undo" aria-label="Undo"
         >
           <RotateCcw size={14} />
         </button>
         <button
           onClick={redo}
           className="w-8 h-8 rounded-lg text-muted active:text-white active:bg-white/10 flex items-center justify-center"
-          title="Redo"
+          title="Redo" aria-label="Redo"
         >
           <RotateCw size={14} />
         </button>
@@ -88,15 +88,17 @@ export default function MobileTopBar({
         <button
           onClick={onRender}
           disabled={rendering}
-          className="h-8 px-3 rounded-xl bg-gradient-to-r from-accent to-accent text-canvas font-black text-xs flex items-center gap-1.5 shadow-md shadow-accent/20 active:scale-95 transition-all disabled:opacity-50"
+          aria-label={rendering ? 'Rendering' : 'Render'}
+          className="h-8 min-w-[44px] justify-center px-3 rounded-xl bg-gradient-to-r from-accent to-accent text-canvas font-black text-xs flex items-center gap-1.5 shadow-md shadow-accent/20 active:scale-95 transition-all disabled:opacity-50"
         >
-          <Scissors size={13} className={rendering ? "animate-spin" : ""} />
-          <span>{rendering ? '...' : 'RENDER'}</span>
+          <Scissors size={14} className={rendering ? "animate-spin" : ""} />
+          <span className="max-[379px]:hidden">{rendering ? 'Rendering' : 'Render'}</span>
         </button>
 
         <div className="relative">
           <button
             onClick={() => setMenuOpen(!menuOpen)}
+            aria-label="More options"
             className="w-8 h-8 rounded-lg text-muted active:text-white active:bg-white/10 flex items-center justify-center"
           >
             <MoreVertical size={16} />

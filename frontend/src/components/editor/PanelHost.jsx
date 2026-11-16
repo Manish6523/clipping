@@ -111,7 +111,7 @@ export default function PanelHost({
     { id: 'captions', label: 'Captions', icon: Type },
     { id: 'transcript', label: 'Script', icon: FileText },
     { id: 'presets', label: 'Presets', icon: Bookmark },
-    { id: 'clip', label: 'Overview', icon: Clock },
+    { id: 'clip', label: 'Length', icon: Clock },
     { id: 'audio', label: 'Audio', icon: Volume2 },
     { id: 'publish', label: 'Publish', icon: Share2 },
   ];
@@ -120,7 +120,7 @@ export default function PanelHost({
     return (
       <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl flex flex-col shadow-xl select-none overflow-hidden">
         {/* Unified Tool Tabs Header */}
-        <div className="grid grid-cols-7 gap-0.5 bg-canvas p-1.5 border-b border-white/[0.06] shrink-0">
+        <div className="grid grid-cols-7 gap-0.5 bg-canvas p-1.5 border-b border-white/[0.06] shrink-0" role="tablist" aria-label="Tools">
           {tabs.map((t) => {
             const Icon = t.icon;
             const isActive = (resolvedPanel === t.id);
@@ -141,15 +141,16 @@ export default function PanelHost({
                     useEditorStore.getState().setSelection({ type: 'none', id: null });
                   }
                 }}
-                className={`flex flex-col items-center justify-center py-1.5 px-0.5 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer ${
+                role="tab" aria-selected={isActive}
+                className={`min-w-0 flex flex-col items-center justify-center gap-0.5 py-1.5 px-0 rounded-lg text-[11px] font-semibold tracking-tight transition-all cursor-pointer ${
                   isActive
                     ? 'bg-raised text-accent shadow-sm border border-white/[0.08]'
                     : 'text-muted hover:text-ink hover:bg-white/[0.02]'
                 }`}
                 title={t.label}
               >
-                <Icon size={13} />
-                <span className="truncate mt-0.5">{t.label}</span>
+                <Icon size={14} />
+                <span className="block max-w-full truncate">{t.label}</span>
               </button>
             );
           })}
@@ -157,6 +158,27 @@ export default function PanelHost({
 
         <div className="flex-1 overflow-y-auto p-3 custom-scrollbar">
           <PanelComponent isCompact={false} />
+        </div>
+      </div>
+    );
+  }
+
+  // 2a. PHONE LANDSCAPE: the page gives us a side column - header + scrolling content filling it
+  if (mode === 'landscape') {
+    if (!activePanel) return null;
+    return (
+      <div className="h-full flex flex-col" data-testid="panel-drawer">
+        <div className="min-h-[48px] px-3 border-b border-white/[0.06] flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <config.icon size={15} className="text-accent shrink-0" />
+            <span className="font-bold text-white text-[13px] truncate">{config.label}</span>
+          </div>
+          <button onClick={onClose} aria-label="Close panel" className="w-11 h-11 rounded-xl flex items-center justify-center text-slate-300 hover:text-white">
+            <X size={16} />
+          </button>
+        </div>
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 custom-scrollbar">
+          <PanelComponent isCompact={true} />
         </div>
       </div>
     );
@@ -192,10 +214,10 @@ export default function PanelHost({
   }
 
   const snapHeightClasses = {
-    peek: 'h-[28vh]',
-    half: 'h-[52vh]',
-    full: 'h-[88vh]',
-  }[sheetSnap] || 'h-[52vh]';
+    peek: 'h-[26dvh]',
+    half: 'h-[40dvh]',
+    full: 'h-[64dvh]',
+  }[sheetSnap] || 'h-[40dvh]';
 
   return (
     <div 
