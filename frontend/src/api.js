@@ -78,6 +78,8 @@ export const uploadWatermark = (formData) => api.post('/api/templates/watermark/
 }).then(r => r.data);
 
 export const getQueue = () => api.get('/api/queue').then(r => r.data);
+export const rescheduleQueueItem = (id, scheduledFor) => api.post(`/api/queue/${id}/reschedule`, { scheduled_for: scheduledFor }).then(r => r.data);
+export const removeQueueItem = (id, returnToReview = true) => api.post(`/api/queue/${id}/remove`, { return_to_review: returnToReview }).then(r => r.data);
 export const clipManual = (data) => api.post('/api/clip-manual', data).then(r => r.data);
 
 export const getLiveHypes = () => api.get('/api/pipeline/live-hypes').then(r => r.data);

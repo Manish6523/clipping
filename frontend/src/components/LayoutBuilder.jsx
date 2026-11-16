@@ -575,10 +575,19 @@ export default function LayoutBuilder({
     };
   }, [currentLayout, layers, videoRef, sourceMediaUrl, showSafeArea, mode, captionsConfig, words, currentTime, watermarkConfig]);
 
-  // Watermark image reference for canvas preview
+  // Watermark image reference for canvas preview (custom or dynamic streamer badge)
   const watermarkImgRef = useRef(null);
   useEffect(() => {
-    const wmUrl = watermarkConfig?.url || (watermarkConfig?.path ? `/data/watermarks/${watermarkConfig.path.split(/[/\\]/).pop()}` : null);
+    let wmUrl = watermarkConfig?.url || (watermarkConfig?.path ? `/data/watermarks/${watermarkConfig.path.split(/[/\\]/).pop()}` : null);
+    
+    // Auto Streamer Badge mode: fetch preview badge for the active streamer
+    if (watermarkConfig?.enabled && watermarkConfig?.badge_type === 'streamer') {
+      const ch = watermarkConfig.streamer_name || 'streamer';
+      const pf = watermarkConfig.platform || 'youtube';
+      const w = watermarkConfig.width || 320;
+      wmUrl = `/api/templates/badge-preview?channel=${encodeURIComponent(ch)}&platform=${encodeURIComponent(pf)}&width=${w}`;
+    }
+
     if (watermarkConfig?.enabled && wmUrl) {
       const img = new Image();
       img.crossOrigin = 'anonymous';
@@ -592,7 +601,7 @@ export default function LayoutBuilder({
     } else {
       watermarkImgRef.current = null;
     }
-  }, [watermarkConfig?.enabled, watermarkConfig?.url, watermarkConfig?.path]);
+  }, [watermarkConfig?.enabled, watermarkConfig?.badge_type, watermarkConfig?.streamer_name, watermarkConfig?.platform, watermarkConfig?.url, watermarkConfig?.path, watermarkConfig?.width]);
 
   // Image reference for static snapshot in Template Studio
   const imgRef = useRef(null);

@@ -439,12 +439,14 @@ export default function ContextualInspector({ channels = [] }) {
 
   // 4. WATERMARK INSPECTOR
   if (selection.type === 'watermark') {
+    const isStreamerBadge = watermark.badge_type === 'streamer';
+
     return (
       <div className="w-full h-full flex flex-col bg-surface overflow-y-auto p-3 text-xs gap-4 custom-scrollbar select-none">
         <div className="flex items-center justify-between pb-2 border-b border-white/[0.08]">
           <div className="flex items-center gap-2 text-emerald-400">
             <ShieldCheck size={16} />
-            <h3 className="font-extrabold text-white text-sm">Watermark & Logo</h3>
+            <h3 className="font-extrabold text-white text-sm">Watermark & Attribution</h3>
           </div>
           <button
             onClick={() => updateWatermark({ enabled: !watermark.enabled })}
@@ -458,64 +460,62 @@ export default function ContextualInspector({ channels = [] }) {
           </button>
         </div>
 
-        {/* Upload Dropzone */}
+        {/* Badge Type Toggle: Auto Streamer Badge vs Custom Image */}
         <div className="flex flex-col gap-1.5">
-          <label className="text-[11px] uppercase font-bold text-muted flex items-center justify-between">
-            <span>Logo Image (PNG)</span>
-            <label className="text-[10px] text-accent font-bold cursor-pointer hover:underline flex items-center gap-1">
-              <Upload size={11} />
-              <span>{uploadingWatermark ? 'Uploading...' : 'Upload Image'}</span>
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                disabled={uploadingWatermark}
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  setUploadingWatermark(true);
-                  try {
-                    const formData = new FormData();
-                    formData.append('watermark', file);
-                    const res = await uploadWatermark(formData);
-                    if (res?.success) {
-                      updateWatermark({
-                        enabled: true,
-                        path: res.watermark_path,
-                        url: res.url
-                      });
-                    }
-                  } catch (err) {
-                    alert('Watermark upload failed: ' + (err.response?.data?.error?.message || err.message));
-                  } finally {
-                    setUploadingWatermark(false);
-                  }
-                }}
-              />
-            </label>
-          </label>
-          <div className="border border-dashed border-white/15 rounded-xl p-3 flex flex-col items-center justify-center gap-2 bg-raised/40">
-            {watermark.url || watermark.path ? (
-              <div className="flex items-center gap-2.5 w-full">
-                <div className="w-12 h-12 rounded bg-black/60 p-1 shrink-0 flex items-center justify-center">
-                  <img src={watermark.url} alt="Logo" className="max-w-full max-h-full object-contain" />
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-mono text-emerald-400 truncate">{watermark.path || 'logo.png'}</div>
-                  <div className="text-[10px] text-slate-400">Ready for compositing</div>
-                </div>
-                <button
-                  onClick={() => updateWatermark({ enabled: false, path: '', url: '' })}
-                  className="p-1 rounded text-rose-400 hover:bg-rose-500/10"
-                >
-                  <Trash2 size={13} />
-                </button>
+          <label className="text-[11px] uppercase font-bold text-muted">Watermark Mode</label>
+          <div className="grid grid-cols-2 gap-1.5 bg-raised p-1 rounded-xl border border-white/5">
+            <button
+              type="button"
+              onClick={() => updateWatermark({ enabled: true, badge_type: 'streamer' })}
+              className={`py-1.5 rounded-lg font-bold text-xs transition ${
+                isStreamerBadge ? 'bg-accent text-black shadow' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Auto Streamer
+            </button>
+            <button
+              type="button"
+              onClick={() => updateWatermark({ badge_type: 'custom' })}
+              className={`py-1.5 rounded-lg font-bold text-xs transition ${
+                !isStreamerBadge ? 'bg-accent text-black shadow' : 'text-slate-300 hover:text-white'
+              }`}
+            >
+              Custom Logo
+            </button>
+          </div>
+        </div>
+
+        {isStreamerBadge ? (
+          /* Auto Streamer Attribution Badge Mode */
+          <div className="space-y-3 bg-canvas/60 border border-white/10 rounded-xl p-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-slate-300">Dynamic Streamer Badge</span>
+              <span className="text-[10px] font-semibold text-accent bg-accent/10 border border-accent/20 px-1.5 py-0.5 rounded">
+                Auto-generates
+              </span>
+            </div>
+            <p className="text-[11px] text-muted leading-relaxed">
+              AutoClip automatically creates a stylized attribution badge with the streamer&apos;s platform logo (YouTube/Twitch) and their handle in viral bold font.
+            </p>
+            <div className="flex items-center justify-center p-3 bg-black/70 rounded-lg border border-white/10">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/80 border border-white/20 shadow-lg">
+                <span className="w-5 h-3.5 rounded bg-red-600 flex items-center justify-center">
+                  <span className="w-0 h-0 border-t-2 border-b-2 border-l-3 border-transparent border-l-white" />
+                </span>
+                <span className="font-extrabold text-white text-xs tracking-wide uppercase font-mono drop-shadow">
+                  @{useTemplateEditorStore.getState().selectedChannel || 'STREAMER'}
+                </span>
               </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center gap-1 cursor-pointer py-2 text-center w-full">
-                <Upload size={16} className="text-emerald-400" />
-                <span className="text-xs font-bold text-slate-200">Click to upload channel logo</span>
-                <span className="text-[10px] text-muted">PNG or transparent recommended</span>
+            </div>
+          </div>
+        ) : (
+          /* Custom Upload Dropzone */
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] uppercase font-bold text-muted flex items-center justify-between">
+              <span>Logo Image (PNG)</span>
+              <label className="text-[10px] text-accent font-bold cursor-pointer hover:underline flex items-center gap-1">
+                <Upload size={11} />
+                <span>{uploadingWatermark ? 'Uploading...' : 'Upload Image'}</span>
                 <input
                   type="file"
                   accept="image/*"
@@ -532,6 +532,7 @@ export default function ContextualInspector({ channels = [] }) {
                       if (res?.success) {
                         updateWatermark({
                           enabled: true,
+                          badge_type: 'custom',
                           path: res.watermark_path,
                           url: res.url
                         });
@@ -544,9 +545,62 @@ export default function ContextualInspector({ channels = [] }) {
                   }}
                 />
               </label>
-            )}
+            </label>
+            <div className="border border-dashed border-white/15 rounded-xl p-3 flex flex-col items-center justify-center gap-2 bg-raised/40">
+              {watermark.url || watermark.path ? (
+                <div className="flex items-center gap-2.5 w-full">
+                  <div className="w-12 h-12 rounded bg-black/60 p-1 shrink-0 flex items-center justify-center">
+                    <img src={watermark.url} alt="Logo" className="max-w-full max-h-full object-contain" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-mono text-emerald-400 truncate">{watermark.path || 'logo.png'}</div>
+                    <div className="text-[10px] text-slate-400">Ready for compositing</div>
+                  </div>
+                  <button
+                    onClick={() => updateWatermark({ enabled: false, path: '', url: '' })}
+                    className="p-1 rounded text-rose-400 hover:bg-rose-500/10"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center gap-1 cursor-pointer py-2 text-center w-full">
+                  <Upload size={16} className="text-emerald-400" />
+                  <span className="text-xs font-bold text-slate-200">Click to upload channel logo</span>
+                  <span className="text-[10px] text-muted">PNG or transparent recommended</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={uploadingWatermark}
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      setUploadingWatermark(true);
+                      try {
+                        const formData = new FormData();
+                        formData.append('watermark', file);
+                        const res = await uploadWatermark(formData);
+                        if (res?.success) {
+                          updateWatermark({
+                            enabled: true,
+                            badge_type: 'custom',
+                            path: res.watermark_path,
+                            url: res.url
+                          });
+                        }
+                      } catch (err) {
+                        alert('Watermark upload failed: ' + (err.response?.data?.error?.message || err.message));
+                      } finally {
+                        setUploadingWatermark(false);
+                      }
+                    }}
+                  />
+                </label>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Opacity & Width */}
         <div className="flex flex-col gap-2">

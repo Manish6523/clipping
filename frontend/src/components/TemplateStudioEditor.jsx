@@ -509,6 +509,9 @@ export default function TemplateStudioEditor() {
                 }}
                 watermarkConfig={{
                   enabled: watermark.enabled,
+                  badge_type: watermark.badge_type || 'custom',
+                  streamer_name: selectedChannel || 'streamer',
+                  platform: channels.find((c) => c.channel_id_or_handle === selectedChannel)?.platform || 'youtube',
                   path: watermark.path,
                   url: watermark.url,
                   position: watermark.position,

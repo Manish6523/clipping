@@ -292,11 +292,34 @@ async def upload_watermark_image(request: web.Request) -> web.Response:
     })
 
 
+async def get_streamer_badge_preview(request: web.Request) -> web.Response:
+    """GET /api/templates/badge-preview?channel=ishowspeed&platform=youtube&width=320"""
+    channel = request.query.get("channel", "streamer")
+    platform = request.query.get("platform", "youtube")
+    try:
+        width = int(request.query.get("width", 320))
+    except ValueError:
+        width = 320
+
+    from src.compositor.badge_generator import generate_streamer_badge
+    try:
+        badge_path = generate_streamer_badge(channel, platform, target_width=width)
+        filename = Path(badge_path).name
+        return web.json_response({
+            "success": True,
+            "badge_path": badge_path,
+            "url": f"/data/watermarks/badges/{filename}"
+        })
+    except Exception as e:
+        return make_json_error("BADGE_GEN_FAILED", str(e), status=500)
+
+
 def register_template_routes(app: web.Application):
     app.router.add_get("/api/templates", get_templates)
     app.router.add_post("/api/templates", save_template)
     app.router.add_post("/api/templates/migrate", migrate_template)
     app.router.add_post("/api/templates/watermark/upload", upload_watermark_image)
+    app.router.add_get("/api/templates/badge-preview", get_streamer_badge_preview)
     app.router.add_delete("/api/templates/{name}", delete_template)
     app.router.add_post("/api/templates/test-sample", render_test_sample)
     app.router.add_post("/api/layout/preview-frame", render_preview_frame)

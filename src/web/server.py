@@ -153,6 +153,8 @@ class WebUIServer:
         self.app.router.add_post("/api/clips/{id}/discard", self.handle_discard_clip)
         self.app.router.add_post("/api/clips/batch-discard", self.handle_batch_discard_clips)
         self.app.router.add_get("/api/queue", self.handle_get_queue)
+        self.app.router.add_post("/api/queue/{id}/reschedule", self.handle_reschedule_queue)
+        self.app.router.add_post("/api/queue/{id}/remove", self.handle_remove_queue)
         self.app.router.add_post("/api/clip-manual", self.handle_clip_manual)
         self.app.router.add_get("/api/logs", self.handle_get_logs)
         self.app.router.add_get("/api/pipeline/status", self.handle_get_pipeline_status)
@@ -1020,6 +1022,26 @@ class WebUIServer:
         """Get upcoming drip queue items."""
         queue = await get_upcoming_queue(limit=20)
         return web.json_response(queue)
+
+    async def handle_reschedule_queue(self, request: web.Request) -> web.Response:
+        """Reschedule a queue item."""
+        queue_id = int(request.match_info["id"])
+        data = await request.json()
+        new_time = data.get("scheduled_for")
+        if not new_time:
+            return web.json_response({"error": "scheduled_for timestamp required"}, status=400)
+        from src.database import reschedule_queue_item
+        success = await reschedule_queue_item(queue_id, new_time)
+        return web.json_response({"success": success})
+
+    async def handle_remove_queue(self, request: web.Request) -> web.Response:
+        """Remove a queue item and optionally revert clip to review."""
+        queue_id = int(request.match_info["id"])
+        data = await request.json() if request.can_read_body else {}
+        revert = data.get("return_to_review", True) if isinstance(data, dict) else True
+        from src.database import remove_queue_item
+        success = await remove_queue_item(queue_id, return_to_review=revert)
+        return web.json_response({"success": success})
 
     async def handle_clip_manual(self, request: web.Request) -> web.Response:
         """Trigger manual extraction from URL."""

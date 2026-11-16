@@ -309,6 +309,8 @@ class FFmpegRenderer:
         censor_cfg: Optional[Dict[str, Any]] = None,
         words_time_offset: Optional[float] = None,
         intermediate: bool = False,
+        channel_name: Optional[str] = None,
+        platform: Optional[str] = None,
     ) -> str:
         """
         Execute full FFmpeg render pipeline for vertical clip.
@@ -327,6 +329,19 @@ class FFmpegRenderer:
         wm_cfg = template.get("watermark") or anti
         speed = anti.get("speed_multiplier", 1.02)
         wm_path = wm_cfg.get("watermark_path")
+
+        # Auto Streamer Badge Support:
+        # If enabled or mode is auto_badge, dynamically generate badge for the streamer
+        if wm_cfg.get("enabled", False) and wm_cfg.get("badge_type") == "streamer":
+            target_ch = channel_name or wm_cfg.get("streamer_name") or "streamer"
+            target_pf = platform or wm_cfg.get("platform") or "youtube"
+            target_w = int(wm_cfg.get("watermark_width") or wm_cfg.get("width") or 320)
+            try:
+                from src.compositor.badge_generator import generate_streamer_badge
+                wm_path = generate_streamer_badge(target_ch, target_pf, target_width=target_w)
+            except Exception as b_err:
+                logger.warning("Dynamic streamer badge generation failed: %s", b_err)
+
         has_wm = bool(wm_path and os.path.exists(wm_path))
 
         src_size = await probe_video_size(source_path)

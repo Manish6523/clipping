@@ -514,11 +514,13 @@ async def get_due_queue_items() -> List[Dict[str, Any]]:
 
 
 async def get_upcoming_queue(limit: int = 10) -> List[Dict[str, Any]]:
-    """Get upcoming scheduled queue entries."""
+    """Get upcoming scheduled queue entries with clip assets."""
     async with get_db_connection() as db:
         cursor = await db.execute(
             """
-            SELECT q.*, c.title, c.template_name, c.channel_id, a.channel_title AS account_title
+            SELECT q.*, c.title, c.template_name, c.channel_id, c.thumbnail_path, c.rendered_video_path,
+                   c.virality_score, c.final_score, c.description, c.hashtags,
+                   a.channel_title AS account_title
             FROM scheduled_queue q
             JOIN clips c ON q.clip_id = c.id
             LEFT JOIN youtube_accounts a ON a.account_key = q.account_key
@@ -530,6 +532,32 @@ async def get_upcoming_queue(limit: int = 10) -> List[Dict[str, Any]]:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+async def reschedule_queue_item(queue_id: int, new_scheduled_for: str) -> bool:
+    """Update scheduled timestamp for a queue item."""
+    async with get_db_connection() as db:
+        await db.execute(
+            "UPDATE scheduled_queue SET scheduled_for = ? WHERE id = ?",
+            (new_scheduled_for, queue_id)
+        )
+        await db.commit()
+        return True
+
+
+async def remove_queue_item(queue_id: int, return_to_review: bool = True) -> bool:
+    """Delete queue item and optionally revert clip status to approved for review."""
+    async with get_db_connection() as db:
+        cursor = await db.execute("SELECT clip_id FROM scheduled_queue WHERE id = ?", (queue_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return False
+        clip_id = row[0]
+        await db.execute("DELETE FROM scheduled_queue WHERE id = ?", (queue_id,))
+        if return_to_review:
+            await db.execute("UPDATE clips SET status = 'approved' WHERE id = ?", (clip_id,))
+        await db.commit()
+        return True
 
 
 async def update_queue_status(

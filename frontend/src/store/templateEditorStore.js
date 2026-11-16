@@ -40,6 +40,7 @@ export const useTemplateEditorStore = create((set, get) => ({
   // Watermark
   watermark: {
     enabled: false,
+    badge_type: 'custom', // 'custom' | 'streamer'
     path: '',
     url: '',
     position: 'top_right',

@@ -844,6 +844,8 @@ class AutoClipEngine:
                         include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)) and not story_stitch,
                         censor_words=words,
                         censor_cfg=censor_cfg,
+                        channel_name=channel_id,
+                        platform="twitch" if getattr(channel_obj, "platform", None) == "twitch" else "youtube",
                     )
                 flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
                 suggested_title = censor_text(suggested_title, censor_cfg)
