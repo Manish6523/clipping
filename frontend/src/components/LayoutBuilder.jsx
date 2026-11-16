@@ -512,45 +512,126 @@ export default function LayoutBuilder({
       });
 
       // 4. Watermark Logo Overlay onto 9:16 Canvas
-      if (watermarkConfig?.enabled && watermarkImgRef.current && watermarkImgRef.current.complete && watermarkImgRef.current.naturalWidth > 0) {
+      // 4. Optional Watermark & Attribution Badge Overlay
+      if (watermarkConfig?.enabled) {
         ctx.save();
-        const wmImg = watermarkImgRef.current;
         const opacity = typeof watermarkConfig.opacity === 'number' ? watermarkConfig.opacity : 0.85;
         ctx.globalAlpha = opacity;
-
         const targetW = watermarkConfig.width || 220;
-        const aspect = wmImg.naturalHeight / wmImg.naturalWidth;
-        const targetH = targetW * aspect;
-
         const pos = (watermarkConfig.position || 'top_right').toLowerCase();
-        let wx = cw - targetW - 40;
-        let wy = 50;
 
-        if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
-          wx = watermarkConfig.x * cw;
-          wy = watermarkConfig.y * ch;
-        } else if (pos === 'top_left') {
-          wx = 40;
-          wy = 50;
-        } else if (pos === 'top_center') {
-          wx = (cw - targetW) / 2;
-          wy = 50;
-        } else if (pos === 'bottom_left') {
-          wx = 40;
-          wy = ch - targetH - 60;
-        } else if (pos === 'bottom_right') {
-          wx = cw - targetW - 40;
-          wy = ch - targetH - 60;
-        } else if (pos === 'bottom_center') {
-          wx = (cw - targetW) / 2;
-          wy = ch - targetH - 60;
-        } else {
-          // top_right default
-          wx = cw - targetW - 40;
-          wy = 50;
+        if (watermarkConfig.badge_type === 'streamer') {
+          // Direct client-side canvas vector renderer for instant, zero-delay preview!
+          const chName = (watermarkConfig.streamer_name || 'ISHOWSPEED').toUpperCase();
+          const pf = (watermarkConfig.platform || 'youtube').toLowerCase();
+          
+          // Estimate badge height proportional to target width (approx 3.8:1 aspect)
+          const targetH = Math.round(targetW * 0.28);
+          let wx = cw - targetW - 40;
+          let wy = 50;
+
+          if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
+            wx = watermarkConfig.x * cw;
+            wy = watermarkConfig.y * ch;
+          } else if (pos === 'top_left') {
+            wx = 40; wy = 50;
+          } else if (pos === 'top_center') {
+            wx = (cw - targetW) / 2; wy = 50;
+          } else if (pos === 'bottom_left') {
+            wx = 40; wy = ch - targetH - 60;
+          } else if (pos === 'bottom_right') {
+            wx = cw - targetW - 40; wy = ch - targetH - 60;
+          } else if (pos === 'bottom_center') {
+            wx = (cw - targetW) / 2; wy = ch - targetH - 60;
+          }
+
+          // Calculate font size to fit width
+          const fontSize = Math.max(24, Math.round(targetH * 0.72));
+          ctx.font = `900 ${fontSize}px "Anton", "Bebas Neue", "Montserrat", system-ui, sans-serif`;
+          ctx.textBaseline = 'middle';
+          
+          const iconH = Math.round(fontSize * 0.85);
+          const iconW = pf === 'twitch' ? Math.round(iconH * 1.1) : Math.round(iconH * 1.4);
+          const iconX = wx;
+          const iconY = wy + (targetH - iconH) / 2;
+
+          // Draw platform icon
+          if (pf === 'twitch') {
+            ctx.fillStyle = '#9146FF';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = Math.max(3, fontSize * 0.12);
+            ctx.beginPath();
+            ctx.roundRect(iconX, iconY, iconW, iconH, Math.max(3, iconH * 0.18));
+            ctx.fill();
+            ctx.stroke();
+            // Eyes
+            ctx.fillStyle = '#FFFFFF';
+            const ew = Math.max(3, iconW * 0.14);
+            const eh = Math.max(4, iconH * 0.32);
+            const ey = iconY + iconH * 0.28;
+            ctx.fillRect(iconX + iconW * 0.28, ey, ew, eh);
+            ctx.fillRect(iconX + iconW * 0.58, ey, ew, eh);
+          } else {
+            // YouTube Red Pill with Black Outline
+            ctx.fillStyle = '#FF0000';
+            ctx.strokeStyle = '#000000';
+            ctx.lineWidth = Math.max(3, fontSize * 0.12);
+            ctx.beginPath();
+            ctx.roundRect(iconX, iconY, iconW, iconH, Math.max(4, iconH * 0.35));
+            ctx.fill();
+            ctx.stroke();
+            // White Play triangle
+            ctx.fillStyle = '#FFFFFF';
+            const pw = iconW * 0.34;
+            const ph = iconH * 0.44;
+            const px = iconX + (iconW - pw) / 2 + 1;
+            const py = iconY + (iconH - ph) / 2;
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            ctx.lineTo(px + pw, py + ph / 2);
+            ctx.lineTo(px, py + ph);
+            ctx.closePath();
+            ctx.fill();
+          }
+
+          // Text with heavy black outline and solid white fill
+          const textX = iconX + iconW + fontSize * 0.25;
+          const textY = wy + targetH / 2;
+          ctx.lineJoin = 'miter';
+          ctx.miterLimit = 2;
+          ctx.strokeStyle = '#000000';
+          ctx.lineWidth = Math.max(5, fontSize * 0.16);
+          ctx.strokeText(chName, textX, textY);
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillText(chName, textX, textY);
+
+        } else if (watermarkImgRef.current && watermarkImgRef.current.complete && watermarkImgRef.current.naturalWidth > 0) {
+          // Custom uploaded logo
+          const wmImg = watermarkImgRef.current;
+          const aspect = wmImg.naturalHeight / wmImg.naturalWidth;
+          const targetH = targetW * aspect;
+
+          let wx = cw - targetW - 40;
+          let wy = 50;
+
+          if (typeof watermarkConfig.x === 'number' && typeof watermarkConfig.y === 'number') {
+            wx = watermarkConfig.x * cw;
+            wy = watermarkConfig.y * ch;
+          } else if (pos === 'top_left') {
+            wx = 40; wy = 50;
+          } else if (pos === 'top_center') {
+            wx = (cw - targetW) / 2; wy = 50;
+          } else if (pos === 'bottom_left') {
+            wx = 40; wy = ch - targetH - 60;
+          } else if (pos === 'bottom_right') {
+            wx = cw - targetW - 40; wy = ch - targetH - 60;
+          } else if (pos === 'bottom_center') {
+            wx = (cw - targetW) / 2; wy = ch - targetH - 60;
+          }
+
+          ctx.drawImage(wmImg, wx, wy, targetW, targetH);
         }
 
-        ctx.drawImage(wmImg, wx, wy, targetW, targetH);
         ctx.restore();
       }
 
@@ -1299,7 +1380,7 @@ export default function LayoutBuilder({
               </div>
 
               {/* Draggable Watermark Overlay Hit Box */}
-              {watermarkConfig?.enabled && (watermarkConfig.url || watermarkConfig.path) && (() => {
+              {watermarkConfig?.enabled && (watermarkConfig.badge_type === 'streamer' || watermarkConfig.url || watermarkConfig.path) && (() => {
                 let leftPct = 100 - ((watermarkConfig.width || 220) + 40) / 10.8;
                 let topPct = (50 / 1920) * 100;
                 const widthPct = ((watermarkConfig.width || 220) / 1080) * 100;
