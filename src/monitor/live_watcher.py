@@ -20,6 +20,7 @@ from src.intelligence.chat_signals import chat_signal_score, emote_wall, is_emot
 from config.settings import (
     AUDIO_PEAK_DB_THRESHOLD, BUFFER_DIR, CHAT_SPIKE_MULTIPLIER,
     LIVE_KEYWORD_MIN_HITS, LIVE_KEYWORD_MIN_RATIO, LIVE_TRIGGER_COOLDOWN_S,
+    TWITCH_CLIENT_ID, TWITCH_CLIENT_SECRET,
 )
 from src.compositor.ffmpeg_renderer import escape_ffmpeg_path
 from src.web.logger_stream import update_streamer_status, update_pipeline_progress
@@ -183,6 +184,40 @@ class LiveStreamWatcher:
             "series": [p for p in self._series if p["t"] >= cutoff],
         }
 
+    _twitch_token_cache: Optional[Dict[str, Any]] = None
+
+    @classmethod
+    async def _get_twitch_app_token(cls) -> Optional[str]:
+        """Fetch and cache an OAuth App Access Token from Twitch."""
+        now = time.time()
+        if cls._twitch_token_cache and cls._twitch_token_cache.get("expires_at", 0) > now + 60:
+            return cls._twitch_token_cache["token"]
+
+        if not TWITCH_CLIENT_ID or not TWITCH_CLIENT_SECRET:
+            return None
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = "https://id.twitch.tv/oauth2/token"
+                payload = {
+                    "client_id": TWITCH_CLIENT_ID,
+                    "client_secret": TWITCH_CLIENT_SECRET,
+                    "grant_type": "client_credentials",
+                }
+                async with session.post(url, data=payload, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        token = data.get("access_token")
+                        expires_in = data.get("expires_in", 3600)
+                        cls._twitch_token_cache = {
+                            "token": token,
+                            "expires_at": now + expires_in,
+                        }
+                        return token
+        except Exception as e:
+            logger.debug("Failed to acquire Twitch app access token: %s", e)
+        return None
+
     def _get_live_url(self) -> str:
         """Resolve correct live stream URL for platform (handles YouTube handles with @)."""
         if self.platform == "twitch":
@@ -195,8 +230,45 @@ class LiveStreamWatcher:
         return f"https://www.youtube.com/{cid}/live"
 
     async def is_channel_live(self) -> bool:
-        """Probe whether the channel is currently broadcasting live using lightweight HTTP/GQL queries."""
+        """Probe whether the channel is currently broadcasting live using official Helix API, GraphQL, or streamlink."""
         if self.platform == "twitch":
+            # 1. Primary: Official Twitch Helix API (Whitelisted, 100% reliable on Cloud VPS / Datacenter IPs)
+            if TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET:
+                try:
+                    token = await self._get_twitch_app_token()
+                    if token:
+                        async with aiohttp.ClientSession() as session:
+                            headers = {
+                                "Client-Id": TWITCH_CLIENT_ID,
+                                "Authorization": f"Bearer {token}",
+                            }
+                            url = f"https://api.twitch.tv/helix/streams?user_login={self.channel_id.lower()}"
+                            async with session.get(url, headers=headers, timeout=aiohttp.ClientTimeout(total=4)) as resp:
+                                if resp.status == 200:
+                                    data = await resp.json()
+                                    streams = data.get("data", [])
+                                    is_live = len(streams) > 0 and streams[0].get("type") == "live"
+                                    if is_live:
+                                        st = streams[0]
+                                        self._stream_title = st.get("title") or ""
+                                        self._stream_category = st.get("game_name") or ""
+                                        preview_tpl = st.get("thumbnail_url", "")
+                                        preview_url = preview_tpl.replace("{width}", "640").replace("{height}", "360") if preview_tpl else None
+                                        self._stream_info = {
+                                            "display_name": st.get("user_name") or self.channel_id,
+                                            "title": st.get("title") or "",
+                                            "category": st.get("game_name") or "",
+                                            "viewers": st.get("viewer_count") or 0,
+                                            "started_at": st.get("started_at"),
+                                            "preview": preview_url,
+                                            "stream_id": st.get("id"),
+                                            "updated": time.time(),
+                                        }
+                                    return is_live
+                except Exception as e:
+                    logger.debug("Twitch Helix API check failed for %s (%s), trying GraphQL...", self.channel_id, e)
+
+            # 2. Secondary: Fast Twitch GraphQL check
             try:
                 # Fast Twitch GraphQL check (0.05s, 0% CPU, no subprocess)
                 async with aiohttp.ClientSession() as session:
