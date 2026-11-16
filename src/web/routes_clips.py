@@ -20,6 +20,8 @@ import asyncio
 import json
 import logging
 import os
+import time
+import uuid
 from pathlib import Path
 from typing import Any, Dict
 
@@ -327,25 +329,25 @@ def resolve_template_file(name: str) -> "Path | None":
     return None
 
 
-async def retemplate_clip(request: web.Request) -> web.Response:
-    """Re-render a clip with a different layout template (keeps words, bleeps and trims)."""
-    clip_id = int(request.match_info["id"])
-    try:
-        data = await request.json()
-    except Exception:
-        return make_json_error("INVALID_JSON", "Body must be JSON")
-    t_file = resolve_template_file(str(data.get("template", "")))
-    if not t_file:
-        return make_json_error("TEMPLATE_NOT_FOUND", "Template not found", status=404)
+class RetemplateError(Exception):
+    def __init__(self, code: str, message: str, status: int = 400):
+        super().__init__(message)
+        self.code, self.message, self.status = code, message, status
+
+
+async def _retemplate_one(clip_id: int, t_file: "Path") -> Dict[str, Any]:
+    """Re-render one clip with a template file (keeps words, bleeps and trims). Raises RetemplateError."""
     clip = await get_clip(clip_id)
     if not clip:
-        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+        raise RetemplateError("NOT_FOUND", f"Clip #{clip_id} not found", 404)
 
     template_name = t_file.stem
     template = json.loads(t_file.read_text(encoding="utf-8"))
 
     # Keep the editor in step: new layout + caption style, same words/bleeps/segments
     edl = await get_clip_edl(clip_id)
+    old_edl = json.loads(json.dumps(edl)) if edl else None
+    old_template_name = clip.get("template_name")
     words_override = None
     if edl:
         if template.get("layout"):
@@ -365,6 +367,17 @@ async def retemplate_clip(request: web.Request) -> web.Response:
                          (template_name, clip_id))
         await db.commit()
 
+    async def _rollback() -> None:
+        """A failed render must not leave the clip labelled/edited with a template its video doesn't use."""
+        try:
+            if old_edl is not None:
+                await save_clip_edl(clip_id, old_edl)
+            async with get_db_connection() as db:
+                await db.execute("UPDATE clips SET template_name = ? WHERE id = ?", (old_template_name, clip_id))
+                await db.commit()
+        except Exception as rb_err:
+            logger.warning("Rollback after failed re-template of clip %d failed: %s", clip_id, rb_err)
+
     from src.bot.trimmer import ClipTrimmer
     try:
         updated = await ClipTrimmer().trim_and_rerender(
@@ -373,14 +386,133 @@ async def retemplate_clip(request: web.Request) -> web.Response:
         )
     except Exception as e:
         logger.error("Re-template of clip %d failed: %s", clip_id, e, exc_info=True)
-        return make_json_error("RENDER_FAILED", f"Render failed: {str(e)[:200]}", status=500)
+        await _rollback()
+        raise RetemplateError("RENDER_FAILED", f"Render failed: {str(e)[:200]}", 500)
     if not updated:
-        return make_json_error("RENDER_FAILED", "Source video for this clip is missing", status=409)
+        await _rollback()
+        raise RetemplateError("RENDER_FAILED", "Source video for this clip is missing", 409)
     v = updated.get("render_version") or 1
-    return web.json_response({
-        "success": True, "clip_id": clip_id, "template_name": template_name,
-        "video_url": f"/api/clips/{clip_id}/video?v={v}",
-    })
+    return {"success": True, "clip_id": clip_id, "template_name": template_name,
+            "video_url": f"/api/clips/{clip_id}/video?v={v}"}
+
+
+async def retemplate_clip(request: web.Request) -> web.Response:
+    """Re-render a clip with a different layout template (keeps words, bleeps and trims)."""
+    clip_id = int(request.match_info["id"])
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Body must be JSON")
+    t_file = resolve_template_file(str(data.get("template", "")))
+    if not t_file:
+        return make_json_error("TEMPLATE_NOT_FOUND", "Template not found", status=404)
+    try:
+        return web.json_response(await _retemplate_one(clip_id, t_file))
+    except RetemplateError as e:
+        return make_json_error(e.code, e.message, status=e.status)
+
+
+# ---------------------------------------------------------------------------
+# Bulk re-template: background batch with per-clip status (one failure never stops the rest)
+# ---------------------------------------------------------------------------
+
+BULK_MAX_CLIPS = 100
+_BATCHES: Dict[str, Dict[str, Any]] = {}
+_BATCH_TASKS: Dict[str, "asyncio.Task"] = {}
+
+
+def _bulk_concurrency() -> int:
+    try:
+        return max(1, min(4, int(os.getenv("BULK_RETEMPLATE_CONCURRENCY", "1"))))
+    except ValueError:
+        return 1
+
+
+def _prune_batches(keep: int = 20) -> None:
+    done = [k for k, b in _BATCHES.items() if b["finished_at"]]
+    for k in sorted(done, key=lambda k: _BATCHES[k]["finished_at"])[:-keep] if len(done) > keep else []:
+        _BATCHES.pop(k, None)
+        _BATCH_TASKS.pop(k, None)
+
+
+def _batch_view(b: Dict[str, Any]) -> Dict[str, Any]:
+    items = b["items"]
+    counts = {s: sum(1 for i in items if i["status"] == s) for s in ("queued", "rendering", "done", "failed", "cancelled")}
+    return {
+        "batch_id": b["id"], "template": b["template"], "total": len(items), "counts": counts,
+        "finished": b["finished_at"] is not None, "cancelled": b["cancelled"], "items": items,
+    }
+
+
+async def _run_batch(batch: Dict[str, Any], t_file: "Path") -> None:
+    sem = asyncio.Semaphore(_bulk_concurrency())
+
+    async def work(item: Dict[str, Any]) -> None:
+        async with sem:
+            if batch["cancelled"]:
+                item["status"] = "cancelled"
+                return
+            item["status"] = "rendering"
+            try:
+                res = await _retemplate_one(item["clip_id"], t_file)
+                item.update(status="done", video_url=res["video_url"], error=None)
+            except RetemplateError as e:
+                item.update(status="failed", error=e.message)
+            except Exception as e:  # never let one clip kill the batch
+                logger.error("Bulk re-template clip %s crashed: %s", item["clip_id"], e, exc_info=True)
+                item.update(status="failed", error=str(e)[:200])
+
+    try:
+        await asyncio.gather(*(work(i) for i in batch["items"]))
+    finally:
+        batch["finished_at"] = time.time()
+
+
+async def bulk_retemplate(request: web.Request) -> web.Response:
+    """Start a background batch: {"clip_ids": [..], "template": "name"} -> {"batch_id": ...}."""
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Body must be JSON")
+    raw_ids = data.get("clip_ids")
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return make_json_error("INVALID_IDS", "clip_ids must be a non-empty list")
+    try:
+        ids = list(dict.fromkeys(int(i) for i in raw_ids))
+    except (TypeError, ValueError):
+        return make_json_error("INVALID_IDS", "clip_ids must be integers")
+    if len(ids) > BULK_MAX_CLIPS:
+        return make_json_error("TOO_MANY", f"At most {BULK_MAX_CLIPS} clips per batch")
+    t_file = resolve_template_file(str(data.get("template", "")))
+    if not t_file:
+        return make_json_error("TEMPLATE_NOT_FOUND", "Template not found", status=404)
+    if any(not b["finished_at"] for b in _BATCHES.values()):
+        return make_json_error("BATCH_RUNNING", "Another bulk render is still running", status=409)
+
+    batch = {
+        "id": uuid.uuid4().hex[:10], "template": t_file.stem, "cancelled": False, "finished_at": None,
+        "items": [{"clip_id": i, "status": "queued", "error": None, "video_url": None} for i in ids],
+    }
+    _prune_batches()
+    _BATCHES[batch["id"]] = batch
+    _BATCH_TASKS[batch["id"]] = asyncio.create_task(_run_batch(batch, t_file))
+    return web.json_response({"success": True, **_batch_view(batch)})
+
+
+async def get_bulk_retemplate(request: web.Request) -> web.Response:
+    b = _BATCHES.get(request.match_info["batch_id"])
+    if not b:
+        return make_json_error("NOT_FOUND", "Batch not found", status=404)
+    return web.json_response(_batch_view(b))
+
+
+async def cancel_bulk_retemplate(request: web.Request) -> web.Response:
+    """Stop starting new renders; clips already rendering finish, queued ones become cancelled."""
+    b = _BATCHES.get(request.match_info["batch_id"])
+    if not b:
+        return make_json_error("NOT_FOUND", "Batch not found", status=404)
+    b["cancelled"] = True
+    return web.json_response(_batch_view(b))
 
 
 async def list_caption_styles(request: web.Request) -> web.Response:
@@ -754,6 +886,9 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)
     app.router.add_get("/api/clips/{id}/source", serve_clip_source)
     app.router.add_post("/api/clips/{id}/retemplate", retemplate_clip)
+    app.router.add_post("/api/clips/bulk-retemplate", bulk_retemplate)
+    app.router.add_get("/api/clips/bulk-retemplate/{batch_id}", get_bulk_retemplate)
+    app.router.add_post("/api/clips/bulk-retemplate/{batch_id}/cancel", cancel_bulk_retemplate)
     app.router.add_post("/api/clips/{id}/caption-style", caption_style_clip)
     app.router.add_get("/api/caption-styles", list_caption_styles)
     app.router.add_post("/api/clips/{id}/hook-style", hook_style_clip)

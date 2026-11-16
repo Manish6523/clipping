@@ -48,7 +48,7 @@ from src.compositor.ass_generator import generate_ass_subtitles
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 from src.compositor.profanity import prepare_censor, censor_text, summarize as summarize_censor, merge_flags
 from src.compositor.caption_styles import apply_styles
-from src.compositor.auto_edit import auto_edit_clip, resolve_config as resolve_auto_edit, summary_flag, pick_hook_text
+from src.compositor.auto_edit import auto_edit_clip, effective_auto_edit, resolve_config as resolve_auto_edit, summary_flag, pick_hook_text
 from src.intelligence.transcriber import Transcriber
 from src.intelligence.viral_scorer import ViralScorer
 from src.intelligence.calibrated_judge import CalibratedJudge
@@ -137,6 +137,8 @@ class AutoClipEngine:
         """Initialize database and verify configuration."""
         logger.info("Initializing AutoClipDaemon database schema...")
         await init_db()
+        from src.intelligence.story_settings import load_story_settings_from_db
+        await load_story_settings_from_db()
         # Nothing can still be running right after startup: close out runs orphaned by a crash/restart
         try:
             from src.database import get_db_connection
@@ -244,7 +246,7 @@ class AutoClipEngine:
 
                 words, censor_cfg = await prepare_censor(transcription.get("words", []), template)
                 rendered_mp4 = str(Path(OUTPUT_DIR) / f"{fake_vod_id}_vertical.mp4")
-                auto_cfg = resolve_auto_edit((options or {}).get("auto_edit"))
+                auto_cfg = await effective_auto_edit((options or {}).get("auto_edit"))
                 clip_source, clip_len = str(slice_source), clip_dur
                 manual_title = f"Manual Highlight ({template_name})"
                 flag_list = [{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]
@@ -706,6 +708,28 @@ class AutoClipEngine:
                     step_name=f"Rendering 9:16 layout ({template_name}) & burning kinetic captions...",
                 )
 
+                # Narrative Storyline Engine: match this moment to an earlier setup BEFORE rendering,
+                # so a live-mode match can really be stitched into the video.
+                story_match = None
+                story_stitch = None
+                import config.settings as _live_cfg
+                if _live_cfg.STORY_ENGINE_ENABLED:
+                    try:
+                        from src.intelligence.storyline_matcher import StorylineMatcher
+                        from src.intelligence.session_storyline import get_or_create_active_session
+                        session_rec = await get_or_create_active_session(channel_id)
+                        if session_rec:
+                            score_dict = json.loads(score_breakdown_json) if score_breakdown_json else {}
+                            story_match = await StorylineMatcher().match_moment_to_seeds(
+                                session_id=session_rec["id"],
+                                payoff_transcript=transcription.get("text", ""),
+                                current_score_breakdown=score_dict,
+                                signal_score=float(cand_score),
+                            )
+                    except Exception as s_err:
+                        logger.warning("Storyline matching pass error: %s", s_err)
+                        story_match = None
+
                 rendered_mp4 = str(Path(OUTPUT_DIR) / f"live_{channel_id}_{timestamp_id}_final.mp4")
 
                 # Method 1: Permanently preserve 16:9 source footage in SOURCES_DIR so it can never be deleted by buffer rotation
@@ -721,6 +745,40 @@ class AutoClipEngine:
                     permanent_source_path = video_path
                     metadata["_keep_file"] = True  # the clip points at the queued file; don't delete it
 
+                # Live-mode match: build [setup | payoff] and treat it as THE clip from here on (editor, re-template and
+                # trims keep the setup because the stitched file becomes the clip's source). Any failure -> normal clip.
+                if story_match and _live_cfg.STORY_MODE == "live":
+                    try:
+                        from src.intelligence.story_stitch import build_stitched_source, stitch_words, StitchError
+                        stitched_path = str(Path(SOURCES_DIR) / f"live_{channel_id}_{timestamp_id}_story.mp4")
+                        story_stitch = await build_stitched_source(story_match, permanent_source_path, clip_start, clip_end, stitched_path)
+                        raw_words, _, total_dur = stitch_words(
+                            story_stitch["setup_words"], transcription.get("words", []),
+                            story_stitch["setup_in"], story_stitch["setup_out"], clip_start, clip_end,
+                        )
+                        words, censor_cfg = await prepare_censor(raw_words, template)
+                        ass_path = str(Path(RENDER_DIR) / f"live_{channel_id}_{timestamp_id}_story.ass")
+                        with open(Path(ass_path).with_suffix(".json"), "w", encoding="utf-8") as f:
+                            json.dump(words, f)
+                        generate_ass_subtitles(
+                            word_timestamps=words, output_path=ass_path, template_config=template,
+                            time_offset=0.0, max_duration=total_dur, censor_cfg=censor_cfg,
+                        )
+                        if permanent_source_path != video_path or not metadata.get("_keep_file"):
+                            Path(permanent_source_path).unlink(missing_ok=True)   # the stitched file replaces the highlight as the source
+                        permanent_source_path = stitched_path
+                        clip_start, clip_end, clip_dur = 0.0, total_dur, total_dur
+                        teaser_ts = None       # the setup IS the hook
+                        logger.info("Story stitch built (%.1fs setup + payoff = %.1fs) for seed #%s",
+                                    story_stitch["setup_duration"], total_dur, story_match.get("seed_id"))
+                    except Exception as st_err:
+                        logger.warning("Story stitch failed, rendering the normal clip: %s", st_err)
+                        story_stitch = None
+                        Path(SOURCES_DIR, f"live_{channel_id}_{timestamp_id}_story.mp4").unlink(missing_ok=True)
+                elif story_match:
+                    logger.info("Story shadow mode: would have stitched seed #%s (%.1fs setup)",
+                                story_match.get("seed_id"), story_match.get("setup_duration", 0.0))
+
                 # Dynamic Auto Edit Check (Settings / DB override)
                 from src.database import get_system_setting
                 auto_edit_db = await get_system_setting("auto_edit_enabled", str(AUTO_EDIT_ENABLED))
@@ -733,10 +791,24 @@ class AutoClipEngine:
                     work_dir = Path(RENDER_DIR) / f"work_{timestamp_id}"
                     hook_txt = suggested_title if auto_hook_db else None
                     try:
-                        edited = await auto_edit_clip(
-                            self.renderer, permanent_source_path, words, clip_dur, template, auto_cfg,
-                            censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt
-                        )
+                        ae_source, ae_words = permanent_source_path, words
+                        window_file = None
+                        if clip_start > 0.05 or not story_stitch:
+                            # auto_edit works on a clip that starts at 0: cut the window out of the live source first
+                            from src.compositor.auto_edit import cut_segments
+                            from src.intelligence.story_stitch import window_words
+                            work_dir.mkdir(parents=True, exist_ok=True)
+                            window_file = work_dir / f"live_{timestamp_id}_window.mp4"
+                            await cut_segments(permanent_source_path, [(clip_start, clip_end)], window_file)
+                            ae_source, ae_words = str(window_file), window_words(words, clip_start, clip_end, 0.0)
+                        try:
+                            edited = await auto_edit_clip(
+                                self.renderer, ae_source, ae_words, clip_dur, template, auto_cfg,
+                                censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt
+                            )
+                        finally:
+                            if window_file:
+                                window_file.unlink(missing_ok=True)
                         flags_json = merge_flags(flags_json, json.dumps([summary_flag(edited["summary"])]), censor_cfg)
                         logger.info("Live clip #%s auto-edited (%s): %s", timestamp_id, auto_style_db, edited["summary"])
                     except Exception as ae_err:
@@ -752,37 +824,14 @@ class AutoClipEngine:
                         template=template,
                         ass_path=ass_path,
                         teaser_timestamp=teaser_ts,
-                        include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)),
+                        include_teaser=bool(template.get("pacing", {}).get("teaser_preroll", True)) and not story_stitch,
                         censor_words=words,
                         censor_cfg=censor_cfg,
                     )
                 flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
                 suggested_title = censor_text(suggested_title, censor_cfg)
 
-                # Narrative Storyline Engine: Match & Stitch Check
-                is_stitched = 0
-                story_match = None
-                from config.settings import STORY_ENGINE_ENABLED, STORY_MODE
-                if STORY_ENGINE_ENABLED:
-                    try:
-                        from src.intelligence.storyline_matcher import StorylineMatcher
-                        from src.intelligence.session_storyline import get_or_create_active_session
-                        session_rec = await get_or_create_active_session(channel_id)
-                        if session_rec:
-                            matcher = StorylineMatcher()
-                            score_dict = json.loads(score_breakdown_json) if score_breakdown_json else {}
-                            story_match = await matcher.match_moment_to_seeds(
-                                session_id=session_rec["id"],
-                                payoff_transcript=transcription.get("text", ""),
-                                current_score_breakdown=score_dict,
-                                signal_score=float(cand_score),
-                            )
-                            if story_match and STORY_MODE == "live":
-                                is_stitched = 1
-                                logger.info("Narrative storyline stitch applied to clip! (Seed #%s)", story_match.get("seed_id"))
-                    except Exception as s_err:
-                        logger.warning("Storyline matching pass error: %s", s_err)
-
+                is_stitched = 1 if story_stitch else 0
                 clip_id = await create_clip(
                     source_type="live",
                     source_id=str(timestamp_id),
@@ -1145,7 +1194,7 @@ class AutoClipEngine:
             work_dir = Path(metadata.get("work_dir", RENDER_DIR))
             words_all, censor_cfg = await prepare_censor(transcription.get("words", []), template)
             made: List[int] = []
-            auto_cfg = resolve_auto_edit(metadata.get("auto_edit"))  # only Quick Clip sends this
+            auto_cfg = await effective_auto_edit(metadata.get("auto_edit"))  # explicit request choice, else Settings default
             for idx, cand in enumerate(picked, start=1):
                 update_pipeline_progress(
                     "processing", channel_id=channel_id, step=4,

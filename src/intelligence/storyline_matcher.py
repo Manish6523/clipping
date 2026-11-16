@@ -9,7 +9,7 @@ When a hype moment occurs:
 6. Verify face/layout check on setup segment (>= 80% face visible or layout match).
 7. Comparative re-judging: evaluate stitched clip (setup becomes the hook).
    Stitching is accepted ONLY if stands_alone improves (+1 minimum) and final_score does not drop.
-8. If STORY_MODE == 'shadow', save clip_story_links and log "would have stitched" without modifying video.
+8. If settings.STORY_MODE == 'shadow', save clip_story_links and log "would have stitched" without modifying video.
 """
 
 import asyncio
@@ -20,10 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 from pydantic import BaseModel, Field
 
-from config.settings import (
-    STORY_ENGINE_ENABLED,
-    STORY_MODE,
-)
+import config.settings as settings  # read at call time: the dashboard Settings page mutates these live
 from src.database import get_db_connection
 from src.intelligence.llm.client import GeminiClient
 from src.intelligence.session_storyline import get_active_seeds_for_session
@@ -97,11 +94,54 @@ Confidence must be strictly between 0.0 and 1.0. Reject weak or vague similariti
 """
 
 
+class StitchJudgement(BaseModel):
+    """Re-score of the clip AS IT WILL BE WATCHED: setup first, then the payoff."""
+    hook_2s: float = Field(description="1-5: does the first 2 seconds (the setup) make you want to keep watching?")
+    stands_alone: float = Field(description="1-5: could a stranger understand the whole clip without outside context?")
+    payoff: float = Field(description="1-5: how satisfying is the payoff given the setup?")
+    reasoning: str = Field(default="", description="One sentence")
+
+
+SYSTEM_REJUDGE_PROMPT = """You re-score a short vertical clip made of a SETUP (first seconds) followed by its PAYOFF.
+Score strictly as a viewer who has never seen the stream. 1 = poor, 5 = excellent. Do not inflate: a setup that does not
+clearly explain the payoff must NOT raise stands_alone."""
+
+
+def should_try_match(breakdown: Dict[str, Any]) -> bool:
+    """Only moments that can still gain from context are worth an LLM call.
+
+    Matching runs when the clip is not yet self-contained (stands_alone <= 3), or when it has a strong payoff and could
+    still gain a point (payoff >= 4 and stands_alone < 5). A clip already at stands_alone 5 cannot improve.
+    """
+    sa = float(breakdown.get("stands_alone", 4.0))
+    payoff = float(breakdown.get("payoff", 3.0))
+    if sa >= 5.0:
+        return False
+    return sa <= 3.0 or payoff >= 4.0
+
+
 class StorylineMatcher:
     """Matches hype moments to session setup seeds and evaluates stitched narrative quality."""
 
     def __init__(self):
         self.llm = GeminiClient()
+
+    async def rejudge_stitched(self, setup_text: str, payoff_text: str) -> Optional[StitchJudgement]:
+        """LLM re-score of 'setup + payoff'. None on any failure (the caller then does NOT stitch)."""
+        try:
+            judged, _, _ = await self.llm.generate_structured(
+                system_instruction=SYSTEM_REJUDGE_PROMPT,
+                user_prompt=f"SETUP (plays first):\n\"{setup_text}\"\n\nPAYOFF (plays next):\n\"{payoff_text}\"",
+                response_model=StitchJudgement,
+            )
+        except Exception as e:
+            logger.warning("Stitch re-judge failed: %s", e)
+            return None
+        if not judged:
+            return None
+        clamp = lambda v: max(1.0, min(5.0, float(v)))
+        return StitchJudgement(hook_2s=clamp(judged.hook_2s), stands_alone=clamp(judged.stands_alone),
+                               payoff=clamp(judged.payoff), reasoning=judged.reasoning)
 
     async def match_moment_to_seeds(
         self,
@@ -115,9 +155,7 @@ class StorylineMatcher:
         if not active_seeds:
             return None
 
-        stands_alone = float(current_score_breakdown.get("stands_alone", 4.0))
-        # Trigger matching when stands_alone <= 3 or when payoff is strong
-        if stands_alone > 3.0 and float(current_score_breakdown.get("payoff", 3.0)) < 4.0:
+        if not should_try_match(current_score_breakdown):
             return None
 
         # Build prompt with seeds list
@@ -169,32 +207,42 @@ class StorylineMatcher:
                 logger.warning("Payoff quote '%s' not verified in payoff text", resp.payoff_quote)
                 return None
 
-            # Snap setup boundaries to sentence boundaries (3.0s - 7.0s)
+            # Snap setup boundaries to sentence boundaries (3.0s - 7.0s), then back to a word end
             segments = seed_json.get("segments", [])
             setup_start, setup_end = find_setup_sentence_boundaries(segments, resp.setup_quote, 3.0, 7.0)
+            from src.intelligence.story_stitch import snap_setup_range
+            setup_start, setup_end = snap_setup_range(seed_json.get("words", []), setup_start, setup_end)
             setup_duration = setup_end - setup_start
+            setup_text = " ".join(
+                seg.get("text", "") for seg in segments
+                if float(seg.get("end", 0.0)) > setup_start and float(seg.get("start", 0.0)) < setup_end
+            ).strip() or resp.setup_quote
 
-            # Comparative re-judging:
-            # Setup restores standalone comprehension and elevates the hook
+            # Comparative re-judge of the STITCHED clip (a real LLM score, fail-closed)
+            old_stands_alone = float(current_score_breakdown.get("stands_alone", 2.0))
+            judged = await self.rejudge_stitched(setup_text, payoff_transcript)
+            if judged is None:
+                logger.info("Comparative re-judge unavailable: not stitching (fail-closed)")
+                return None
             new_breakdown = dict(current_score_breakdown)
-            old_stands_alone = float(new_breakdown.get("stands_alone", 2.0))
-            new_stands_alone = min(5.0, old_stands_alone + 2.0)  # Setup resolves missing context
-            new_breakdown["stands_alone"] = new_stands_alone
+            new_breakdown["stands_alone"] = judged.stands_alone
+            new_breakdown["payoff"] = max(float(current_score_breakdown.get("payoff", 3.0)), judged.payoff)
+            new_breakdown["hook_2s"] = judged.hook_2s
+            new_stands_alone = judged.stands_alone
 
-            # Recalculate scores
             old_predicted = calculate_predicted_score(current_score_breakdown)
             new_predicted = calculate_predicted_score(new_breakdown)
-
             old_final = calculate_final_score(old_predicted, signal_score)
             new_final = calculate_final_score(new_predicted, signal_score)
 
             # Stitching acceptance criteria: stands_alone must improve (+1 minimum) and final_score must not drop
             if new_stands_alone < (old_stands_alone + 1.0) or new_final < old_final:
-                logger.info("Comparative re-judge rejected stitching: standalone delta too low or score dropped")
+                logger.info("Comparative re-judge rejected stitching: standalone %.1f -> %.1f, score %.1f -> %.1f",
+                            old_stands_alone, new_stands_alone, old_final, new_final)
                 return None
 
             logger.info(
-                "✨ Narrative match accepted: seed #%d [%s] -> payoff (Score: %.1f -> %.1f, stands_alone: %.1f -> %.1f)",
+                "Narrative match accepted: seed #%d [%s] -> payoff (Score: %.1f -> %.1f, stands_alone: %.1f -> %.1f)",
                 resp.seed_id, resp.relation, old_final, new_final, old_stands_alone, new_stands_alone
             )
 
@@ -208,6 +256,7 @@ class StorylineMatcher:
                 "setup_src_in": setup_start,
                 "setup_src_out": setup_end,
                 "setup_duration": setup_duration,
+                "stitch_reasoning": judged.reasoning,
                 "old_score": old_final,
                 "new_score": new_final,
                 "old_stands_alone": old_stands_alone,

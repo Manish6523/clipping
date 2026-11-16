@@ -239,6 +239,7 @@ export default function ContextualInspector({ channels = [] }) {
                     animation: preset.anim || subtitles.animation,
                     uppercase: preset.upper !== false,
                   });
+                  useTemplateEditorStore.setState({ defaultCaptionStyle: preset.id, isDirty: true });
                 }}
                 className="shrink-0 p-2 rounded-xl bg-raised hover:bg-white/[0.08] border border-white/10 text-left w-28 flex flex-col justify-between transition-all"
               >

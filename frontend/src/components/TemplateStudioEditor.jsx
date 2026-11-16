@@ -26,13 +26,16 @@ import LayerStackPanel from './editor/LayerStackPanel';
 import ContextualInspector from './editor/ContextualInspector';
 import LayoutBuilder from './LayoutBuilder';
 import MobileStage from './editor/MobileStage';
+import PhoneStudio from './studio/PhoneStudio';
+import { recordVersion } from './studio/versionHistory';
 import { useLayoutMode } from '../hooks/useLayoutMode';
 import { assToHex } from '../utils/colorConversions';
 
 export default function TemplateStudioEditor() {
   const { name: routeName } = useParams();
   const navigate = useNavigate();
-  const { isPhone, isLandscape } = useLayoutMode();
+  const { isPhone, isLandscape, isTouch, height: viewH } = useLayoutMode();
+  const phoneStudio = isPhone || (isTouch && isLandscape && viewH < 500);
 
   const {
     templateName,
@@ -188,6 +191,7 @@ export default function TemplateStudioEditor() {
 
     try {
       await saveTemplate(payload);
+      recordVersion(payload.name, payload);
       useTemplateEditorStore.setState({ isDirty: false });
       localStorage.removeItem(`template_draft_${templateName}`);
       setSaveSuccess(true);
@@ -294,6 +298,24 @@ export default function TemplateStudioEditor() {
       <div className="w-full h-[calc(100dvh-57px)] flex items-center justify-center bg-canvas">
         <div className="w-8 h-8 border-2 border-accent border-t-transparent rounded-full animate-spin" />
       </div>
+    );
+  }
+
+  if (phoneStudio) {
+    return (
+      <PhoneStudio
+        channels={channels}
+        previewMediaUrl={previewMediaUrl}
+        saveSuccess={saveSuccess}
+        onSave={handleSave}
+        getPayload={getPayload}
+        onTestRender={handleTestRender}
+        testingSample={testingSample}
+        testRenderOpen={testRenderOpen}
+        setTestRenderOpen={setTestRenderOpen}
+        sampleVideoUrl={sampleVideoUrl}
+        testRenderError={testRenderError}
+      />
     );
   }
 

@@ -16,10 +16,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config.settings import (
     STORY_SEEDS_DIR,
-    STORY_SESSION_GRACE_MINUTES,
-    STORY_ENGINE_ENABLED,
-    STORY_MODE,
 )
+import config.settings as _cfg  # read at call time (Settings page changes them live)
 from src.database import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -64,8 +62,8 @@ async def get_or_create_active_session(channel_id: str) -> Optional[Dict[str, An
                 if ended_at.tzinfo is None:
                     ended_at = ended_at.replace(tzinfo=timezone.utc)
                 now = datetime.now(timezone.utc)
-                if (now - ended_at) <= timedelta(minutes=STORY_SESSION_GRACE_MINUTES):
-                    logger.info("Reopening session %s within %d min grace period", sess["id"], STORY_SESSION_GRACE_MINUTES)
+                if (now - ended_at) <= timedelta(minutes=_cfg.STORY_SESSION_GRACE_MINUTES):
+                    logger.info("Reopening session %s within %d min grace period", sess["id"], _cfg.STORY_SESSION_GRACE_MINUTES)
                     await db.execute(
                         "UPDATE stream_sessions SET is_active = 1, ended_at = NULL WHERE id = ?",
                         (sess["id"],)

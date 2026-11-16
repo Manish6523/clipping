@@ -1,5 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
-import { Routes, Route, Navigate, Outlet, useParams } from 'react-router-dom';
+import { Routes, Route, Navigate, Outlet, useParams, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Navbar from './components/Navbar';
 import ReviewStation from './components/ReviewStation';
@@ -20,6 +20,7 @@ const ChannelManager = lazy(() => import('./components/ChannelManager'));
 const AccountsManager = lazy(() => import('./components/AccountsManager'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
+const Overview = lazy(() => import('./components/Overview'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
@@ -33,6 +34,10 @@ function LegacyEditRedirect() {
 }
 
 function AppLayout() {
+  const location = useLocation();
+  const layoutMode = useLayoutMode();
+  // Template Studio on a phone is a full-screen focus mode: no global header or tab bar
+  const studioFocus = /^\/templates\/[^/]+/.test(location.pathname) && (layoutMode.isPhone || (layoutMode.isTouch && layoutMode.isLandscape && layoutMode.height < 500));
   const [status, setStatus] = useState({});
   const [pipelineAlert, setPipelineAlert] = useState(null);
   const [activePipelines, setActivePipelines] = useState([]);
@@ -109,11 +114,11 @@ function AppLayout() {
 
   return (
     <div className="min-h-screen bg-canvas text-ink flex flex-col font-sans">
-      <Navbar 
+      {!studioFocus && <Navbar 
         pendingCount={status.pending_clips_count || 0} 
         activePipelines={activePipelines} 
         status={status}
-      />
+      />}
 
       {/* Nested Route Views (bottom padding leaves room for the phone tab bar) */}
       <main className="flex-1 pb-[calc(64px+env(safe-area-inset-bottom))] md:pb-0">
@@ -129,33 +134,40 @@ function AppLayout() {
       {/* New-clip toasts (pipelines are already shown in the navbar / status pill) */}
       <HypeMomentToasts toasts={toasts} onDismissToast={handleDismissToast} />
 
-      <MobileTabBar pendingCount={status.pending_clips_count || 0} />
+      {!studioFocus && <MobileTabBar pendingCount={status.pending_clips_count || 0} />}
     </div>
   );
 }
 
 const REVIEW_MODE_KEY = 'autoclip_review_mode';
+const REVIEW_MODES = ['overview', 'review', 'swipe'];
 
 function ReviewStationWrapper() {
   const { isPhone } = useLayoutMode();
   const [mode, setMode] = useState(() => {
-    try { return localStorage.getItem(REVIEW_MODE_KEY) || 'swipe'; } catch { return 'swipe'; }
+    try {
+      const v = localStorage.getItem(REVIEW_MODE_KEY);
+      if (v === 'classic') return 'review';            // legacy value
+      return REVIEW_MODES.includes(v) ? v : 'overview';
+    } catch { return 'overview'; }
   });
   const switchTo = (m) => {
     setMode(m);
     try { localStorage.setItem(REVIEW_MODE_KEY, m); } catch { /* storage unavailable */ }
   };
 
-  if (isPhone && mode === 'swipe') {
-    return <SwipeReview onSwitchClassic={() => switchTo('classic')} />;
+  if (mode === 'swipe' && isPhone) {
+    return <SwipeReview onSwitchClassic={() => switchTo('review')} />;
+  }
+  if (mode === 'overview') {
+    return <Overview onOpenReview={() => switchTo(isPhone ? 'swipe' : 'review')} />;
   }
   return (
     <>
-      {isPhone && (
-        <div className="px-3 pt-2 flex justify-end">
-          <Button size="sm" variant="primary" onClick={() => switchTo('swipe')}>Swipe mode</Button>
-        </div>
-      )}
+      <div className="px-3 pt-2 flex justify-end gap-2">
+        <Button size="sm" onClick={() => switchTo('overview')}>Overview</Button>
+        {isPhone && <Button size="sm" variant="primary" onClick={() => switchTo('swipe')}>Swipe mode</Button>}
+      </div>
       <ReviewStation />
     </>
   );

@@ -366,16 +366,15 @@ class LiveStreamWatcher:
 
     async def _monitor_story_seeds(self) -> None:
         """Periodic background task detecting narrative seeds from incoming audio chunks."""
-        from config.settings import STORY_ENGINE_ENABLED
-        if not STORY_ENGINE_ENABLED:
-            return
-
+        import config.settings as settings
         from src.monitor.seed_detector import SeedDetector
         detector = SeedDetector(channel_id=self.channel_id, channel_handle=self.channel_id)
 
         while self.is_running:
             try:
                 await asyncio.sleep(12)
+                if not settings.STORY_ENGINE_ENABLED:      # re-checked every cycle: the Settings toggle works without a restart
+                    continue
                 if not getattr(self, "_is_channel_live", False):
                     continue
 

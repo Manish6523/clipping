@@ -544,8 +544,8 @@ export default function Settings() {
 
             <div className="grid md:grid-cols-2 gap-5">
               <Field
-                label="Auto Edit Live Moments"
-                hint="Automatically tighten and pace live stream clips into finished Shorts."
+                label="Auto-edit stream clips"
+                hint="Default for live moments, auto-processed VODs and manual clips. Quick Clip can override it per clip."
               >
                 <Select value={autoEditEnabled ? 'true' : 'false'} onChange={(e) => setAutoEditEnabled(e.target.value === 'true')}>
                   <option value="false">Disabled (Standard Render)</option>

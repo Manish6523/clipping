@@ -5,11 +5,12 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   Send, Calendar, Save, Sparkles, Scissors, CheckCircle2, Maximize2, CheckSquare, Square, MinusSquare, Flame, Eye, Clock, Trash2,
-  VolumeX, AlertTriangle, Info, Star, Film, Tag, SkipBack, SkipForward, Clapperboard,
+  VolumeX, AlertTriangle, Info, Star, Film, Tag, SkipBack, SkipForward, Clapperboard, LayoutTemplate,
 } from 'lucide-react';
 import {
   getClips, getClip, getClipExplain, trimClip, toggleTeaser, updateClip, postClipNow, queueClip, discardClip, batchDiscardClips, sendClipFeedback,
 } from '../api';
+import BulkTemplateSheet from './BulkTemplateSheet';
 import { Panel, Segmented, Button, IconButton, Input, Select, Field, Badge, Pill, Notice, Sheet, Confirm, EmptyState, Skeleton, Spinner } from './ui';
 
 const REJECTION_REASONS = [
@@ -53,6 +54,7 @@ export default function ReviewStation({ onStatusChange }) {
   const [retroTagClip, setRetroTagClip] = useState(null);
   const [errorMsg, setErrorMsg] = useState('');
   const [confirmBatch, setConfirmBatch] = useState(false);
+  const [bulkTemplateOpen, setBulkTemplateOpen] = useState(false);
 
   // Single video player ref
   const videoRef = useRef(null);
@@ -370,6 +372,7 @@ export default function ReviewStation({ onStatusChange }) {
         {selectedClipIds.size > 0 && (
           <div className="flex items-center gap-2 rounded-xl bg-bad/10 border border-bad/30 pl-3 pr-1.5 h-9">
             <span className="text-xs font-semibold text-bad tabular-nums">{selectedClipIds.size} selected</span>
+            <Button size="sm" variant="secondary" icon={LayoutTemplate} onClick={() => setBulkTemplateOpen(true)}>Template</Button>
             <Button size="sm" variant="danger" icon={Trash2} loading={batchLoading} onClick={() => setConfirmBatch(true)}>Discard</Button>
             <Button size="sm" variant="ghost" onClick={() => setSelectedClipIds(new Set())}>Cancel</Button>
           </div>
@@ -621,6 +624,10 @@ export default function ReviewStation({ onStatusChange }) {
         ) : <EmptyState title="No explanation recorded" text="This clip has no score breakdown stored." />}
       </Sheet>
 
+      <BulkTemplateSheet
+        open={bulkTemplateOpen} clipIds={Array.from(selectedClipIds)} onClose={() => setBulkTemplateOpen(false)}
+        onFinished={() => { queryClient.invalidateQueries({ queryKey: ['clips'] }); queryClient.invalidateQueries({ queryKey: ['clip_detail'] }); }}
+      />
       <Confirm open={confirmBatch} danger title={`Discard ${selectedClipIds.size} clip${selectedClipIds.size === 1 ? '' : 's'}?`} confirmLabel="Discard"
         text="They are permanently deleted, including their files." onCancel={() => setConfirmBatch(false)} onConfirm={handleBatchDiscard} />
     </div>

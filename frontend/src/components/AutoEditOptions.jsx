@@ -41,7 +41,7 @@ export function loadAutoEdit() {
 
 /** Request payload for the API (only explicit overrides are sent). */
 export function autoEditPayload(value) {
-  if (!value?.enabled) return undefined;
+  if (!value?.enabled) return { enabled: false };   // explicit off beats the Settings default
   return { enabled: true, style: value.style, ...value.overrides };
 }
 

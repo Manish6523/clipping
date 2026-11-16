@@ -72,6 +72,25 @@ def resolve_config(opts: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
     return cfg
 
 
+async def effective_auto_edit(explicit: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    """Auto-edit config for a clip, honouring (in order) an explicit per-request choice, then the Settings default.
+
+    ``explicit`` present (a dict, including ``{"enabled": False}``) always wins; absent/None falls back to the
+    dashboard Settings (``auto_edit_enabled`` / ``auto_edit_style`` / ``auto_edit_hook_card``). Used by every
+    stream-clip path (live, VOD, manual) so one switch controls them all.
+    """
+    if isinstance(explicit, dict):
+        return resolve_config(explicit)
+    from config.settings import AUTO_EDIT_ENABLED, AUTO_EDIT_HOOK_CARD, AUTO_EDIT_STYLE
+    from src.database import get_system_setting
+    enabled = str(await get_system_setting("auto_edit_enabled", str(AUTO_EDIT_ENABLED))).lower() in ("true", "1", "yes")
+    if not enabled:
+        return None
+    style = await get_system_setting("auto_edit_style", AUTO_EDIT_STYLE)
+    hook = str(await get_system_setting("auto_edit_hook_card", str(AUTO_EDIT_HOOK_CARD))).lower() in ("true", "1", "yes")
+    return resolve_config({"enabled": True, "style": style, "hook_card": hook})
+
+
 # ---------------------------------------------------------------------------
 # 1. Tighten: plan which source ranges to keep
 # ---------------------------------------------------------------------------
@@ -246,6 +265,20 @@ async def has_audio(path: str | Path) -> bool:
     return bool(out.strip())
 
 
+async def _video_size(path: str | Path) -> Tuple[int, int]:
+    """(width, height) of the first video stream, even-rounded; falls back to 1080x1920."""
+    proc = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0:s=x", str(path),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL,
+    )
+    out, _ = await proc.communicate()
+    try:
+        w, h = (int(x) for x in out.decode().strip().split("x")[:2])
+        return max(2, w // 2 * 2), max(2, h // 2 * 2)
+    except Exception:
+        return 1080, 1920
+
+
 async def cut_multi_source_segments(
     sources_map: Dict[str, str | Path],
     segments: Sequence[Dict[str, Any]],
@@ -269,6 +302,10 @@ async def cut_multi_source_segments(
         input_args.extend(["-i", str(src_path)])
         has_audio_map[key] = await has_audio(src_path)
 
+    # concat needs identical frame size / SAR / rate: conform every segment to the first source
+    width, height = await _video_size(sources_map[source_keys[0]])
+    conform = f"scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=30,format=yuv420p"
+
     parts, labels = [], ""
     for i, seg in enumerate(segments):
         sid = seg.get("source_id", source_keys[0])
@@ -277,20 +314,24 @@ async def cut_multi_source_segments(
         e = float(seg.get("end", s + 1.0))
         d = max(0.05, e - s)
 
-        parts.append(f"[{s_idx}:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS[v{i}]")
+        parts.append(f"[{s_idx}:v]trim=start={s:.3f}:end={e:.3f},setpts=PTS-STARTPTS,{conform}[v{i}]")
         labels += f"[v{i}]"
 
         audio = has_audio_map.get(sid, False)
+        if not audio:
+            # keep audio on every segment so concat(a=1) lines up: silence for a source with no audio track
+            parts.append(f"anullsrc=r=48000:cl=stereo,atrim=duration={d:.3f},asetpts=PTS-STARTPTS[a{i}]")
+            labels += f"[a{i}]"
         if audio:
             fade = min(0.012, d / 4)
             parts.append(
-                f"[{s_idx}:a]atrim=start={s:.3f}:end={e:.3f},asetpts=PTS-STARTPTS,"
+                f"[{s_idx}:a]atrim=start={s:.3f}:end={e:.3f},asetpts=PTS-STARTPTS,aresample=48000,aformat=channel_layouts=stereo,"
                 f"afade=t=in:d={fade:.3f},afade=t=out:st={max(0.0, d - fade):.3f}:d={fade:.3f}[a{i}]"
             )
             labels += f"[a{i}]"
 
     n = len(segments)
-    all_have_audio = any(has_audio_map.values())
+    all_have_audio = True   # silence is synthesised for audio-less segments above
     parts.append(f"{labels}concat=n={n}:v=1:a={1 if all_have_audio else 0}[vc]" + ("[ac]" if all_have_audio else ""))
     cmd = ["ffmpeg", "-y", "-v", "error", *input_args, "-filter_complex", ";".join(parts), "-map", "[vc]"]
     if all_have_audio:

@@ -53,6 +53,9 @@ export const queueClip = (id) => api.post(`/api/clips/${id}/queue`).then(r => r.
 export const discardClip = (id, reason = null) => api.post(`/api/clips/${id}/discard`, { reason }).then(r => r.data);
 export const sendClipFeedback = (id, event, payload = {}) => api.post(`/api/clips/${id}/feedback`, { event, payload }).then(r => r.data);
 export const getFeedbackAnalytics = (channel = '') => api.get(`/api/analytics/feedback${channel ? `?channel=${encodeURIComponent(channel)}` : ''}`).then(r => r.data);
+export const bulkRetemplate = (clipIds, template) => api.post('/api/clips/bulk-retemplate', { clip_ids: clipIds, template }).then(r => r.data);
+export const getBulkRetemplate = (batchId) => api.get(`/api/clips/bulk-retemplate/${batchId}`).then(r => r.data);
+export const cancelBulkRetemplate = (batchId) => api.post(`/api/clips/bulk-retemplate/${batchId}/cancel`).then(r => r.data);
 export const batchDiscardClips = (clipIds) => api.post('/api/clips/batch-discard', { clip_ids: clipIds }).then(r => r.data);
 
 export const getChannels = () => api.get('/api/channels').then(r => r.data);
@@ -67,6 +70,7 @@ export const resumeDaemon = () => api.post('/api/daemon/resume').then(r => r.dat
 
 export const getTemplates = () => api.get('/api/templates').then(r => r.data);
 export const saveTemplate = (data) => api.post('/api/templates', data).then(r => r.data);
+export const migrateTemplate = (data) => api.post('/api/templates/migrate', data).then(r => r.data);
 export const deleteTemplate = (name) => api.delete(`/api/templates/${encodeURIComponent(name)}`).then(r => r.data);
 export const testTemplateSample = (data) => api.post('/api/templates/test-sample', data).then(r => r.data);
 export const uploadWatermark = (formData) => api.post('/api/templates/watermark/upload', formData, {

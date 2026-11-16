@@ -23,12 +23,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
+import config.settings as settings
 from config.settings import (
     BUFFER_DIR,
     STORY_SEEDS_DIR,
-    STORY_ENGINE_ENABLED,
-    STORY_SEED_CPU_BUDGET,
-    STORY_MODE,
 )
 from src.intelligence.transcriber import Transcriber, _whisper_slots
 from src.intelligence.session_storyline import (
@@ -60,7 +58,8 @@ _LAST_STAGED_TIMESTAMP: Dict[str, float] = defaultdict(float)
 
 # Degradation & CPU tracking
 _RECENT_RTF_MEASUREMENTS: List[float] = []
-_SEED_DETECTION_PAUSED: Dict[str, bool] = defaultdict(bool)
+_SEED_DETECTION_PAUSED: Dict[str, float] = defaultdict(float)   # channel -> paused-until (epoch s)
+SEED_PAUSE_COOLDOWN_S = 600.0
 
 
 def normalize_transcript_text(text: str) -> str:
@@ -201,7 +200,7 @@ class SeedDetector:
 
     async def process_latest_audio(self) -> Optional[int]:
         """Transcribe latest audio chunk under CPU budget and stage on regex match."""
-        if _SEED_DETECTION_PAUSED[self.channel_id]:
+        if time.time() < _SEED_DETECTION_PAUSED[self.channel_id]:
             return None
 
         buffer_dir = Path(BUFFER_DIR) / self.channel_handle
@@ -244,12 +243,14 @@ class SeedDetector:
 
             # Degradation hierarchy: if RTF > 0.5 or CPU budget exceeded, throttle or pause
             avg_rtf = sum(_RECENT_RTF_MEASUREMENTS) / len(_RECENT_RTF_MEASUREMENTS)
-            if avg_rtf > 0.50:
+            rtf_limit = float(settings.STORY_SEED_CPU_BUDGET) + 0.15      # 0.35 budget -> 0.50 pause threshold
+            if avg_rtf > rtf_limit:
                 logger.warning(
-                    "Seed transcription RTF %.2f exceeds 0.50 budget on %s; pausing seed detection temporarily",
-                    avg_rtf, self.channel_handle
+                    "Seed transcription RTF %.2f exceeds %.2f limit on %s; pausing seed detection for %d min",
+                    avg_rtf, rtf_limit, self.channel_handle, int(SEED_PAUSE_COOLDOWN_S // 60)
                 )
-                _SEED_DETECTION_PAUSED[self.channel_id] = True
+                _SEED_DETECTION_PAUSED[self.channel_id] = time.time() + SEED_PAUSE_COOLDOWN_S
+                _RECENT_RTF_MEASUREMENTS.clear()                           # measure fresh after the cooldown
                 return None
 
             segments = res.get("segments", [])

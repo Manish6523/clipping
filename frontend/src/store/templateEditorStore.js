@@ -66,7 +66,12 @@ export const useTemplateEditorStore = create((set, get) => ({
 
   // Mobile Bottom Sheet
   sheetSnap: 'closed', // 'closed' | 'peek' | 'half' | 'full'
+  sheetView: 'layers', // 'layers' | 'inspector'
   mobileCropActive: false,
+
+  // Old-format templates are converted by the server; the original is kept so "Repair from legacy fields" can restore it
+  legacyLayout: null,
+  migratedFromLegacy: false,
 
   // Actions
   setSelection: (selection) => set({ selection }),
@@ -77,6 +82,7 @@ export const useTemplateEditorStore = create((set, get) => ({
   setSelectedChannel: (selectedChannel) => set({ selectedChannel }),
   setTestRenderOpen: (testRenderOpen) => set({ testRenderOpen }),
   setSheetSnap: (sheetSnap) => set({ sheetSnap }),
+  setSheetView: (sheetView) => set({ sheetView }),
   setMobileCropActive: (mobileCropActive) => set({ mobileCropActive }),
 
   pushHistory: () => {
@@ -192,6 +198,38 @@ export const useTemplateEditorStore = create((set, get) => ({
     }));
   },
 
+  // --- Gesture API: call beginGesture() once, then patch*() as often as needed (no history entries), => ONE undo step.
+  beginGesture: () => get().pushHistory(),
+  patchLayer: (id, updates) => set((s) => ({
+    layout: { ...s.layout, layers: (s.layout.layers || []).map((l) => (l.id === id ? { ...l, ...updates } : l)) },
+    isDirty: true,
+  })),
+  patchSubtitles: (updates) => set((s) => ({ subtitles: { ...s.subtitles, ...updates }, isDirty: true })),
+  patchWatermark: (updates) => set((s) => ({ watermark: { ...s.watermark, ...updates }, isDirty: true })),
+  patchBackground: (updates) => set((s) => ({
+    layout: { ...s.layout, background: { ...s.layout.background, ...updates } }, isDirty: true,
+  })),
+
+  /** Add several layers at once (presets) and optionally set the background - one undo step. */
+  addLayers: (layers, background) => {
+    get().pushHistory();
+    set((s) => ({
+      layout: {
+        ...s.layout,
+        background: background ? { ...s.layout.background, ...background } : s.layout.background,
+        layers: [...(s.layout.layers || []), ...layers],
+      },
+      selection: layers.length ? { type: 'layer', id: layers[layers.length - 1].id } : s.selection,
+      isDirty: true,
+    }));
+  },
+
+  /** Replace the whole layout (repair / import) - one undo step. */
+  replaceLayout: (layout) => {
+    get().pushHistory();
+    set({ layout, selection: { type: 'template', id: null }, isDirty: true });
+  },
+
   updateSubtitles: (updates) => {
     get().pushHistory();
     set((s) => ({
@@ -260,6 +298,8 @@ export const useTemplateEditorStore = create((set, get) => ({
       defaultCaptionStyle: data.caption_style || 'template',
       defaultHookStyle: data.hook_style || 'classic',
       selection: { type: 'template', id: null },
+      legacyLayout: data.legacy_layout || null,
+      migratedFromLegacy: Boolean(data._migrated_from_legacy),
       history: [],
       redoStack: [],
       isDirty: false

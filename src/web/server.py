@@ -1045,13 +1045,15 @@ class WebUIServer:
         if data.get("hook_style") in HOOK_STYLES:
             options["hook_style"] = data["hook_style"]
 
-        # Auto edit (Quick Clip only): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
+        # Auto edit (explicit choice; absent = Settings default): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
         ae = data.get("auto_edit")
         if isinstance(ae, dict) and ae.get("enabled", True):
             from src.compositor.auto_edit import FEATURE_KEYS, STYLES
             clean = {"enabled": True, "style": ae.get("style") if ae.get("style") in STYLES else "punchy"}
             clean.update({k: ae[k] for k in FEATURE_KEYS if isinstance(ae.get(k), bool)})
             options["auto_edit"] = clean
+        elif isinstance(ae, dict) and ae.get("enabled") is False:
+            options["auto_edit"] = {"enabled": False}   # explicit "off" beats the Settings default
 
         if self.on_manual_clip:
             asyncio.create_task(self.on_manual_clip(url, template, time_range, options))

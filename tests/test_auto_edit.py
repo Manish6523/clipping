@@ -137,3 +137,39 @@ def test_finish_with_face_target_renders(tmp_path):
     dur = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(out)],
                          capture_output=True, text=True).stdout
     assert abs(float(dur) - 6.0) < 0.2
+
+
+# ---- effective_auto_edit: explicit choice beats the Settings default --------------------------
+import asyncio as _asyncio
+
+
+def _with_settings(monkeypatch, values):
+    async def fake(key, default=None):
+        return values.get(key, default)
+    monkeypatch.setattr("src.database.get_system_setting", fake)
+
+
+def test_effective_auto_edit_falls_back_to_settings(monkeypatch):
+    from src.compositor.auto_edit import effective_auto_edit
+    _with_settings(monkeypatch, {"auto_edit_enabled": "true", "auto_edit_style": "clean", "auto_edit_hook_card": "false"})
+    cfg = _asyncio.run(effective_auto_edit(None))
+    assert cfg and cfg["style"] == "clean" and cfg["hook_card"] is False
+
+
+def test_effective_auto_edit_settings_off(monkeypatch):
+    from src.compositor.auto_edit import effective_auto_edit
+    _with_settings(monkeypatch, {"auto_edit_enabled": "false"})
+    assert _asyncio.run(effective_auto_edit(None)) is None
+
+
+def test_explicit_off_beats_settings_on(monkeypatch):
+    from src.compositor.auto_edit import effective_auto_edit
+    _with_settings(monkeypatch, {"auto_edit_enabled": "true"})
+    assert _asyncio.run(effective_auto_edit({"enabled": False})) is None
+
+
+def test_explicit_on_beats_settings_off(monkeypatch):
+    from src.compositor.auto_edit import effective_auto_edit
+    _with_settings(monkeypatch, {"auto_edit_enabled": "false"})
+    cfg = _asyncio.run(effective_auto_edit({"enabled": True, "style": "minimal"}))
+    assert cfg and cfg["style"] == "minimal"

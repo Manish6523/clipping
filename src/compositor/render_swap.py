@@ -268,8 +268,7 @@ class SafeRenderManager:
             # 6. WebSocket notification broadcast
             if broadcast_fn:
                 try:
-                    await broadcast_fn({
-                        "event": "render_complete",
+                    await broadcast_fn("render_complete", {
                         "clip_id": clip_id,
                         "render_version": new_version,
                         "edl_hash": edl_hash,

@@ -267,3 +267,31 @@ def migrate_all_templates(templates_dir: str) -> None:
         except Exception as e:
             logger.error("Failed to migrate template '%s': %s", json_file.name, e)
 
+
+
+CLIENT_ONLY_KEYS = ("_migrated_from_legacy", "legacy_layout")
+
+
+def is_legacy_layout(template: Dict[str, Any]) -> bool:
+    layout = template.get("layout") or {}
+    return not (isinstance(layout, dict) and layout.get("schema") == 2 and isinstance(layout.get("layers"), list))
+
+
+def normalize_template_for_client(template: Dict[str, Any]) -> Dict[str, Any]:
+    """Template as the dashboard should see it: always a schema-2 layout with real layers.
+
+    Old-format templates (``layout.type`` + ``top_crop`` / ``bottom_crop``, no ``layers``) are converted with the
+    SAME function the renderer uses, so what you edit is exactly what gets rendered. The file on disk is not touched
+    until the user saves. ``legacy_layout`` keeps the original so the editor can offer "Repair from legacy fields".
+    """
+    if not is_legacy_layout(template):
+        return template
+    out = dict(template)
+    out["legacy_layout"] = template.get("layout") or {}
+    out["layout"] = migrate_layout_to_v2(template)
+    out["_migrated_from_legacy"] = True
+    return out
+
+
+def strip_client_only_keys(template: Dict[str, Any]) -> Dict[str, Any]:
+    return {k: v for k, v in template.items() if k not in CLIENT_ONLY_KEYS}

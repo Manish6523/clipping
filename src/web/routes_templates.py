@@ -18,7 +18,9 @@ from aiohttp import web
 from config.settings import TEMPLATES_DIR, RENDER_DIR
 from src.compositor.crop_calculator import build_crop_filter
 from src.compositor.filter_graph_builder import build_filter_graph
-from src.compositor.template_migration import migrate_layout_to_v2
+from src.compositor.template_migration import (
+    migrate_layout_to_v2, normalize_template_for_client, strip_client_only_keys, is_legacy_layout,
+)
 from src.compositor.ffmpeg_renderer import FFmpegRenderer
 
 logger = logging.getLogger(__name__)
@@ -35,7 +37,7 @@ async def get_templates(request: web.Request) -> web.Response:
     for tf in t_files:
         try:
             with open(tf, "r", encoding="utf-8") as f:
-                templates.append(json.load(f))
+                templates.append(normalize_template_for_client(json.load(f)))
         except Exception:
             pass
     return web.json_response(templates)
@@ -55,6 +57,11 @@ async def save_template(request: web.Request) -> web.Response:
     clean_filename = f"{t_name}.json"
     t_path = Path(TEMPLATES_DIR) / clean_filename
 
+    data = strip_client_only_keys(data)          # never persist editor-only helper fields
+    if is_legacy_layout(data):                   # saving an old-format template upgrades it to schema 2
+        data = normalize_template_for_client(data)
+        data = strip_client_only_keys(data)
+
     # Ensure normalized crop coordinates and exact mathematical bounds
     build_crop_filter(data, 1920, 1080)
 
@@ -63,6 +70,17 @@ async def save_template(request: web.Request) -> web.Response:
 
     logger.info("Saved visual template '%s' to %s", t_name, t_path)
     return web.json_response({"success": True, "template": data})
+
+
+async def migrate_template(request: web.Request) -> web.Response:
+    """Stateless: convert an old-format layout to schema 2 (used by Import and "Repair from legacy fields")."""
+    try:
+        data = await request.json()
+    except Exception:
+        return make_json_error("INVALID_JSON", "Request body must be JSON")
+    template = data.get("template") if isinstance(data.get("template"), dict) else {"layout": data.get("layout") or {}}
+    migrated = normalize_template_for_client({**template, "layout": template.get("layout") or {}})
+    return web.json_response({"layout": migrated["layout"], "migrated": bool(migrated.get("_migrated_from_legacy"))})
 
 
 async def delete_template(request: web.Request) -> web.Response:
@@ -277,6 +295,7 @@ async def upload_watermark_image(request: web.Request) -> web.Response:
 def register_template_routes(app: web.Application):
     app.router.add_get("/api/templates", get_templates)
     app.router.add_post("/api/templates", save_template)
+    app.router.add_post("/api/templates/migrate", migrate_template)
     app.router.add_post("/api/templates/watermark/upload", upload_watermark_image)
     app.router.add_delete("/api/templates/{name}", delete_template)
     app.router.add_post("/api/templates/test-sample", render_test_sample)
