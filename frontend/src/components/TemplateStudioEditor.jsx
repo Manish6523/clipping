@@ -18,7 +18,8 @@ import {
   Sparkles,
   Layers,
   Sliders,
-  Smartphone
+  Smartphone,
+  Tv
 } from 'lucide-react';
 import { useTemplateEditorStore } from '../store/templateEditorStore';
 import { getTemplates, saveTemplate, deleteTemplate, getChannels, testTemplateSample } from '../api';
@@ -355,6 +356,35 @@ export default function TemplateStudioEditor() {
 
         {/* Center/Right Control Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Streamer Frame Picker Dropdown */}
+          <div className="flex items-center gap-1.5 bg-raised border border-white/10 rounded-xl px-2 py-1 text-xs text-slate-300">
+            <Tv size={13} className="text-accent shrink-0" />
+            <select
+              value={selectedChannel || ''}
+              onChange={(e) => {
+                const ch = e.target.value;
+                if (!ch || ch === '__placeholder__') {
+                  setSelectedChannel('');
+                  setPreviewMediaUrl('/placeholders/streamer_reference_16_9.jpg');
+                } else {
+                  setSelectedChannel(ch);
+                  setPreviewMediaUrl(`/api/channels/${encodeURIComponent(ch)}/frame?t=${Date.now()}`);
+                }
+              }}
+              className="bg-transparent text-xs text-white font-medium focus:outline-none cursor-pointer max-w-[130px] sm:max-w-[170px] truncate"
+              title="Select streamer to load their live 16:9 stream frame"
+            >
+              <option value="__placeholder__" className="bg-slate-900 text-slate-400">
+                Sample 16:9 Frame
+              </option>
+              {channels.map((c) => (
+                <option key={c.channel_id_or_handle} value={c.channel_id_or_handle} className="bg-slate-900 text-white">
+                  @{c.display_name || c.channel_id_or_handle} ({c.platform})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Undo / Redo */}
           <div className="flex items-center bg-raised border border-white/10 rounded-xl p-0.5">
             <button
