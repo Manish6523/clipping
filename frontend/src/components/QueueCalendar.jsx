@@ -163,11 +163,11 @@ export default function QueueCalendar() {
         </Panel>
       )}
 
-      <div className="space-y-5">
+      <div className="space-y-6 max-w-4xl mx-auto">
         {groups.map((g) => (
           <section key={g.label} aria-label={g.label}>
-            <h2 className="text-[11px] uppercase tracking-wider font-semibold text-muted mb-2 px-1">{g.label}</h2>
-            <div className="space-y-2.5">
+            <h2 className="text-[11px] uppercase tracking-wider font-semibold text-muted mb-2.5 px-1">{g.label}</h2>
+            <div className="space-y-3">
               {g.items.map((item) => {
                 const failed = item.yt_status === 'failed' || item.ig_status === 'failed';
                 const validTime = !Number.isNaN(item.when.getTime());
@@ -176,118 +176,114 @@ export default function QueueCalendar() {
                 const videoUrl = item.rendered_video_path ? `/renders/${item.rendered_video_path.split(/[/\\]/).pop()}` : null;
 
                 return (
-                  <Panel key={item.id} tone={failed ? 'bad' : undefined} className="!p-3 transition hover:border-line-strong">
-                    <div className="flex flex-col sm:flex-row items-start gap-3.5">
+                  <Panel key={item.id} tone={failed ? 'bad' : undefined} className="!p-4 transition hover:border-line-strong">
+                    <div className="flex items-start gap-4">
                       
-                      {/* Left: 9:16 Video Thumbnail with Click-to-Preview */}
+                      {/* Left: Prominent 9:16 Video Thumbnail */}
                       <button
                         type="button"
                         onClick={() => setPreviewClip({ ...item, videoUrl, thumbUrl })}
-                        className="group relative w-16 sm:w-20 aspect-[9/16] shrink-0 rounded-xl bg-black border border-white/10 overflow-hidden shadow-md flex items-center justify-center cursor-pointer hover:border-accent transition"
+                        className="group relative w-20 sm:w-24 aspect-[9/16] shrink-0 rounded-xl bg-black border border-white/10 overflow-hidden shadow-lg flex items-center justify-center cursor-pointer hover:border-accent transition"
                         title="Click to preview video clip"
                       >
                         {thumbUrl ? (
                           <img src={thumbUrl} alt="" className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
                         ) : (
-                          <Film size={22} className="text-muted" />
+                          <Film size={24} className="text-muted" />
                         )}
                         <div className="absolute inset-0 bg-black/40 group-hover:bg-black/20 flex items-center justify-center transition">
-                          <span className="w-7 h-7 rounded-full bg-accent/90 text-black flex items-center justify-center shadow-lg group-hover:scale-110 transition">
-                            <Play size={13} className="fill-current ml-0.5" />
+                          <span className="w-8 h-8 rounded-full bg-accent text-black flex items-center justify-center shadow-lg group-hover:scale-110 transition">
+                            <Play size={14} className="fill-current ml-0.5" />
                           </span>
                         </div>
                         {item.virality_score != null && (
-                          <span className="absolute bottom-1 right-1 px-1 py-0.5 rounded bg-black/80 font-mono text-[9px] font-bold text-good">
+                          <span className="absolute bottom-1 right-1 px-1.5 py-0.5 rounded bg-black/85 font-mono text-[10px] font-bold text-good border border-white/10">
                             {item.virality_score}
                           </span>
                         )}
                       </button>
 
-                      {/* Middle: Details & Reschedulable Time */}
-                      <div className="flex-1 min-w-0 space-y-1.5 w-full">
-                        <div className="flex items-center justify-between gap-2">
-                          {/* Reschedulable Time Button */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const d = new Date(item.scheduled_for);
-                              const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
-                              setRescheduleItem(item);
-                              setNewScheduleTime(localIso);
-                            }}
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-raised hover:bg-white/[0.08] border border-white/10 text-ink text-xs font-semibold transition cursor-pointer"
-                            title="Click to reschedule posting time"
+                      {/* Right: Content & Metadata */}
+                      <div className="flex-1 min-w-0 flex flex-col justify-between self-stretch">
+                        <div className="space-y-1.5">
+                          {/* Top Row: Time Badge + Delete button */}
+                          <div className="flex items-center justify-between gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const d = new Date(item.scheduled_for);
+                                const localIso = new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+                                setRescheduleItem(item);
+                                setNewScheduleTime(localIso);
+                              }}
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 text-ink text-xs font-semibold transition cursor-pointer"
+                              title="Click to reschedule posting time"
+                            >
+                              <Clock size={12} className="text-accent" />
+                              <span className="tabular-nums font-bold">
+                                {validTime ? item.when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                              </span>
+                              <span className={`text-[10.5px] ${overdue ? 'text-bad font-bold' : 'text-muted'}`}>
+                                ({validTime ? relTime(item.when, now) : ''})
+                              </span>
+                              <span className="text-[10.5px] text-accent ml-1 font-normal underline decoration-dotted">Change</span>
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setRemoveItem(item)}
+                              className="p-1.5 rounded-lg text-muted hover:text-bad hover:bg-bad/10 transition"
+                              title="Remove from queue"
+                            >
+                              <Trash2 size={15} />
+                            </button>
+                          </div>
+
+                          <h3
+                            onClick={() => setPreviewClip({ ...item, videoUrl, thumbUrl })}
+                            className="text-[15px] font-bold text-ink hover:text-accent cursor-pointer line-clamp-2 leading-snug transition"
                           >
-                            <Clock size={12} className="text-accent" />
-                            <span className="tabular-nums font-bold">
-                              {validTime ? item.when.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '--:--'}
-                            </span>
-                            <span className={`text-[10px] ${overdue ? 'text-bad font-bold' : 'text-muted'}`}>
-                              ({validTime ? relTime(item.when, now) : ''})
-                            </span>
-                            <span className="text-[10px] text-accent ml-1 underline decoration-dotted">Change</span>
-                          </button>
+                            {item.title || 'Untitled clip'}
+                          </h3>
 
-                          {/* Quick Remove Button */}
-                          <button
-                            type="button"
-                            onClick={() => setRemoveItem(item)}
-                            className="p-1.5 rounded-lg text-muted hover:text-bad hover:bg-bad/10 transition"
-                            title="Remove or unschedule this clip"
-                          >
-                            <Trash2 size={14} />
-                          </button>
-                        </div>
-
-                        <p className="text-[14px] font-semibold text-ink line-clamp-2 leading-snug">
-                          {item.title || 'Untitled clip'}
-                        </p>
-
-                        <p className="text-[11.5px] text-muted truncate">
-                          #{item.clip_id} · @{item.channel_id || 'unknown'} · <span className="font-mono text-slate-300">{item.template_name}</span>
-                        </p>
-
-                        <p className="text-[11px] font-medium text-accent truncate">
-                          → {item.account_title || item.account_key || 'Mapped channels'}
-                          {item.attempts > 0 && item.yt_status === 'pending' ? <span className="text-warn"> · retry {item.attempts}</span> : null}
-                        </p>
-
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                          <Target icon={MonitorPlay} label="YouTube" status={item.yt_status} />
-                          <Target icon={Camera} label="Instagram" status={item.ig_status} />
-                        </div>
-
-                        {item.last_error && (
-                          <p className="mt-2 text-[11px] text-bad flex items-start gap-1.5 break-words bg-bad/10 p-2 rounded-lg">
-                            <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {item.last_error}
+                          <p className="text-[11.5px] text-muted truncate">
+                            #{item.clip_id} · @{item.channel_id || 'unknown'} · <span className="font-mono text-slate-300">{item.template_name}</span>
                           </p>
-                        )}
-                      </div>
-                    </div>
 
-                    {/* Action Bar */}
-                    <div className="flex items-center gap-2 mt-3 pt-2.5 border-t border-line">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        icon={Play}
-                        onClick={() => setPreviewClip({ ...item, videoUrl, thumbUrl })}
-                      >
-                        Watch
-                      </Button>
-                      <Link to={`/clips/${item.clip_id}/editor`} className="flex-1">
-                        <Button block size="sm" icon={Scissors}>Edit</Button>
-                      </Link>
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        icon={Send}
-                        loading={posting === item.clip_id}
-                        disabled={posting !== null}
-                        onClick={() => setConfirm(item.clip_id)}
-                      >
-                        Post now
-                      </Button>
+                          <p className="text-[11.5px] font-medium text-accent truncate">
+                            → {item.account_title || item.account_key || 'Mapped channels'}
+                            {item.attempts > 0 && item.yt_status === 'pending' ? <span className="text-warn"> · retry {item.attempts}</span> : null}
+                          </p>
+
+                          <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                            <Target icon={MonitorPlay} label="YouTube" status={item.yt_status} />
+                            <Target icon={Camera} label="Instagram" status={item.ig_status} />
+                          </div>
+
+                          {item.last_error && (
+                            <p className="mt-2 text-[11px] text-bad flex items-start gap-1.5 break-words bg-bad/10 p-2 rounded-lg">
+                              <AlertTriangle size={13} className="shrink-0 mt-0.5" /> {item.last_error}
+                            </p>
+                          )}
+                        </div>
+
+                        {/* Bottom Action Buttons (aligned neatly) */}
+                        <div className="flex items-center gap-2 pt-3 mt-3 border-t border-line">
+                          <Link to={`/clips/${item.clip_id}/editor`}>
+                            <Button size="sm" icon={Scissors}>Edit</Button>
+                          </Link>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            icon={Send}
+                            loading={posting === item.clip_id}
+                            disabled={posting !== null}
+                            onClick={() => setConfirm(item.clip_id)}
+                          >
+                            Post now
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </Panel>
                 );
