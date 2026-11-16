@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  Radio, Plus, Trash2, CheckCircle2, ExternalLink, Pause, Play, Settings, Save, AlertTriangle, Tag, Layers, RefreshCw, Search, Activity, Eye, Zap,
+  Radio, Plus, Trash2, CheckCircle2, ExternalLink, Pause, Play, Settings, Save, AlertTriangle, Tag, Layers, RefreshCw, Search, Activity, Eye, Zap, Tv, X,
 } from 'lucide-react';
 import { getChannels, addChannel, removeChannel, getStreamers, getTemplates, pauseChannel, resumeChannel, patchChannelSettings } from '../api';
 import {
@@ -38,6 +38,7 @@ export default function ChannelManager() {
   const [isRefreshingAvatar, setIsRefreshingAvatar] = useState(false);
   const [error, setError] = useState('');
   const [confirmRemove, setConfirmRemove] = useState(null);
+  const [watchModal, setWatchModal] = useState(null); // { channel_id, platform, name }
 
   useEffect(() => {
     fetchData();
@@ -347,10 +348,22 @@ export default function ChannelManager() {
                 </dl>
 
                 <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-line mt-auto">
-                  <a href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
-                    target="_blank" rel="noreferrer" className="text-[12px] font-medium text-muted hover:text-ink flex min-h-[44px] items-center gap-1">
-                    Open stream <ExternalLink size={11} />
-                  </a>
+                  <div className="flex items-center gap-2">
+                    {isLive && (
+                      <button
+                        type="button"
+                        onClick={() => setWatchModal({ channel_id: c.channel_id_or_handle, platform, name })}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 text-[11.5px] font-semibold transition"
+                      >
+                        <Tv size={12} />
+                        <span>Watch Live</span>
+                      </button>
+                    )}
+                    <a href={platform === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`}
+                      target="_blank" rel="noreferrer" className="text-[12px] font-medium text-muted hover:text-ink flex min-h-[36px] items-center gap-1">
+                      Open stream <ExternalLink size={11} />
+                    </a>
+                  </div>
                   <div className="flex items-center gap-1">
                     <Button size="sm" variant={isEnabled ? 'warn' : 'good'} icon={isEnabled ? Pause : Play} onClick={() => handleTogglePause(c)}>{isEnabled ? 'Pause' : 'Resume'}</Button>
                     <IconButton icon={Settings} label="Settings and AI persona" size="sm" variant="secondary" onClick={() => openSettings(c)} />
@@ -458,6 +471,46 @@ export default function ChannelManager() {
       <Confirm open={!!confirmRemove} danger title={`Stop watching ${confirmRemove}?`} confirmLabel="Remove"
         text="Recording stops and the streamer disappears from this list. Clips already made are kept."
         onCancel={() => setConfirmRemove(null)} onConfirm={() => handleRemove(confirmRemove)} />
+
+      {/* Live Stream Watch Modal */}
+      {watchModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-200">
+          <div className="relative w-full max-w-4xl bg-surface border border-line-strong rounded-2xl shadow-2xl overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3.5 border-b border-line bg-canvas">
+              <div className="flex items-center gap-2.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="font-semibold text-sm text-ink">Watching Live: {watchModal.name}</span>
+                <span className="text-xs text-muted uppercase font-mono">({watchModal.platform})</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setWatchModal(null)}
+                className="p-1 rounded-lg text-muted hover:text-white hover:bg-raised transition"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="relative aspect-video w-full bg-black">
+              {watchModal.platform === 'twitch' ? (
+                <iframe
+                  src={`https://player.twitch.tv/?channel=${encodeURIComponent(watchModal.channel_id)}&parent=${window.location.hostname || 'localhost'}&autoplay=true`}
+                  className="w-full h-full border-0"
+                  allowFullScreen
+                  title={`Live Stream: ${watchModal.name}`}
+                />
+              ) : (
+                <iframe
+                  src={`https://www.youtube-nocookie.com/embed/live_stream?channel=${encodeURIComponent(watchModal.channel_id)}&autoplay=1`}
+                  className="w-full h-full border-0"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                  title={`Live Stream: ${watchModal.name}`}
+                />
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }

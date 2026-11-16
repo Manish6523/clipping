@@ -5,10 +5,10 @@ import axios from 'axios';
 import {
   Activity, Radio, Eye, Clock, Gamepad2, ExternalLink, MessageSquare, Users, Volume2, Zap, Flame,
   CheckCircle2, XCircle, AlertTriangle, Hourglass, Scissors, Mic, Brain, Film, Cpu, MemoryStick, HardDrive,
-  Wifi, WifiOff, ChevronDown, ChevronUp, Database, CircleDot, Timer, ListOrdered,
+  Wifi, WifiOff, ChevronDown, ChevronUp, Database, CircleDot, Timer, ListOrdered, Play, VideoOff, Maximize2,
 } from 'lucide-react';
 import TimeChart from './telemetry/TimeChart';
-import { Page, Panel, Pill as UiPill, Meter, EmptyState, Skeleton } from './ui';
+import { Page, Panel, Pill as UiPill, Meter, EmptyState, Skeleton, Button } from './ui';
 
 // ---- palette (dark surface; categorical slots from the validated reference palette) ----
 const C = {
@@ -141,30 +141,101 @@ function StreamCard({ s, now }) {
   const chat = s.chat || {};
   const [bust, setBust] = useState(0);
   const [imgFailed, setImgFailed] = useState(false);
+  const [isPlayingLive, setIsPlayingLive] = useState(false);
+
   useEffect(() => { const t = setInterval(() => { setBust((b) => b + 1); setImgFailed(false); }, 60000); return () => clearInterval(t); }, []);
+  
+  // When switching channels, reset live player back to preview
+  useEffect(() => {
+    setIsPlayingLive(false);
+  }, [s.channel_id]);
+
   const started = st.started_at ? Date.parse(st.started_at) / 1000 : s.live_since;
+  const isTwitch = (s.platform || '').toLowerCase() === 'twitch';
+  const isYouTube = (s.platform || '').toLowerCase() === 'youtube';
+  const hostname = window.location.hostname || 'localhost';
+
   return (
     <Panel className="overflow-hidden !p-0">
-      <div className="relative aspect-video bg-black/60">
-        {s.is_live && st.preview && !imgFailed
-          ? <img src={`${st.preview}${st.preview.includes('?') ? '&' : '?'}b=${bust}`} alt="" onError={() => setImgFailed(true)} className="w-full h-full object-cover" />
-          : (
-            <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted">
-              <Radio size={26} />
-              <span className="text-xs">{s.is_live ? 'Live - no preview for this platform' : 'Not live right now'}</span>
-              {s.last_live_check && <span className="text-[10.5px]">checked {ago(s.last_live_check, now)}</span>}
+      <div className="relative aspect-video bg-black/80">
+        {isPlayingLive && s.is_live ? (
+          <div className="w-full h-full relative bg-black">
+            {isTwitch && (
+              <iframe
+                src={`https://player.twitch.tv/?channel=${encodeURIComponent(s.channel_id)}&parent=${hostname}&autoplay=true&muted=false`}
+                className="w-full h-full border-0"
+                allowFullScreen
+                title={`Live Stream: ${s.channel_id}`}
+              />
+            )}
+            {isYouTube && (
+              <iframe
+                src={`https://www.youtube-nocookie.com/embed/live_stream?channel=${encodeURIComponent(s.channel_id)}&autoplay=1`}
+                className="w-full h-full border-0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowFullScreen
+                title={`Live Stream: ${s.channel_id}`}
+              />
+            )}
+            {!isTwitch && !isYouTube && (
+              <div className="w-full h-full flex flex-col items-center justify-center text-muted text-xs">
+                <span>Player not supported for this platform</span>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsPlayingLive(false)}
+              className="absolute top-2 right-2 z-20 flex items-center gap-1 px-2 py-1 rounded-md bg-black/80 hover:bg-black text-white text-[11px] font-semibold backdrop-blur-md border border-white/10 transition shadow-lg"
+              title="Close live player and return to telemetry snapshot"
+            >
+              <VideoOff size={13} className="text-red-400" />
+              <span>Exit player</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            {s.is_live && st.preview && !imgFailed ? (
+              <img
+                src={`${st.preview}${st.preview.includes('?') ? '&' : '?'}b=${bust}`}
+                alt=""
+                onError={() => setImgFailed(true)}
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="w-full h-full flex flex-col items-center justify-center gap-1 text-muted">
+                <Radio size={26} />
+                <span className="text-xs">{s.is_live ? 'Live - no preview for this platform' : 'Not live right now'}</span>
+                {s.last_live_check && <span className="text-[10.5px]">checked {ago(s.last_live_check, now)}</span>}
+              </div>
+            )}
+
+            {/* Play Live Overlay Button when live */}
+            {s.is_live && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/25 opacity-90 hover:opacity-100 transition">
+                <button
+                  type="button"
+                  onClick={() => setIsPlayingLive(true)}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-accent hover:bg-accent-strong text-white font-semibold text-[13px] shadow-2xl hover:scale-105 active:scale-95 transition backdrop-blur-sm cursor-pointer"
+                >
+                  <Play size={16} className="fill-current" />
+                  <span>Watch Live</span>
+                </button>
+              </div>
+            )}
+
+            <div className="absolute top-2 left-2 flex gap-1.5 pointer-events-none">
+              {s.is_live && <span className="rounded-md bg-red-600 text-white text-[10.5px] font-bold px-1.5 py-0.5 tracking-wide shadow">LIVE</span>}
+              {s.is_live && started && (
+                <span className="rounded-md bg-black/70 text-white text-[10.5px] px-1.5 py-0.5 tabular-nums">{fmtDur(now - started)}</span>
+              )}
             </div>
-          )}
-        <div className="absolute top-2 left-2 flex gap-1.5">
-          {s.is_live && <span className="rounded-md bg-red-600 text-white text-[10.5px] font-bold px-1.5 py-0.5 tracking-wide">LIVE</span>}
-          {s.is_live && started && (
-            <span className="rounded-md bg-black/70 text-white text-[10.5px] px-1.5 py-0.5 tabular-nums">{fmtDur(now - started)}</span>
-          )}
-        </div>
-        {s.is_live && st.viewers != null && (
-          <span className="absolute top-2 right-2 rounded-md bg-black/70 text-white text-[10.5px] px-1.5 py-0.5 flex items-center gap-1">
-            <Eye size={11} /> {num(st.viewers)}
-          </span>
+
+            {s.is_live && st.viewers != null && (
+              <span className="absolute top-2 right-2 rounded-md bg-black/70 text-white text-[10.5px] px-1.5 py-0.5 flex items-center gap-1 pointer-events-none">
+                <Eye size={11} /> {num(st.viewers)}
+              </span>
+            )}
+          </>
         )}
       </div>
       <div className="p-3.5 space-y-3">
