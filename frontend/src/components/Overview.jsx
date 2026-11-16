@@ -7,6 +7,7 @@ import {
 import { getClips, getStatus, getPipelineStatus, batchDiscardClips } from '../api';
 import { Page, Segmented, Select, Button, Badge, Pill, Stat, Sheet, Confirm, Notice, EmptyState, Skeleton, fmtDur, timeAgo } from './ui';
 import BulkTemplateSheet from './BulkTemplateSheet';
+import ScoreBreakdown from './ScoreBreakdown';
 
 const STATUS_META = {
   pending_approval: { label: 'To review', tone: 'warn', icon: Clock },
@@ -219,23 +220,89 @@ export default function Overview({ onOpenReview }) {
         </div>
       )}
 
-      <Sheet open={Boolean(open)} onClose={() => setOpen(null)} title={open ? (open.title || `Clip #${open.id}`) : ''}>
+      <Sheet open={Boolean(open)} onClose={() => setOpen(null)} wide title={open ? (open.title || `Clip #${open.id}`) : ''}>
         {open && (
-          <div className="space-y-3">
-            {open.video_url
-              ? <video key={open.id} src={open.video_url} controls autoPlay playsInline poster={open.thumbnail_url || undefined} className="mx-auto aspect-[9/16] max-h-[55dvh] rounded-xl bg-black" />
-              : <div className="flex aspect-video items-center justify-center rounded-xl bg-raised text-muted">No rendered video</div>}
-            <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
-              <Badge tone={meta(open.status).tone}>{meta(open.status).label}</Badge>
-              <span>#{open.id}</span><span>·</span><span>{open.channel_id}</span><span>·</span><span>{open.template_name}</span><span>·</span><span>{fmtDur(clipDur(open))}</span>
-              {open.created_at && <><span>·</span><span>{timeAgo(open.created_at)}</span></>}
+          <div className="space-y-3.5">
+            {/* Top row: Video Player + Key Meta */}
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-3.5 items-start">
+              <div className="sm:col-span-5 flex justify-center">
+                {open.video_url
+                  ? <video key={open.id} src={open.video_url} controls autoPlay playsInline poster={open.thumbnail_url || undefined} className="w-full aspect-[9/16] max-h-[50dvh] rounded-xl bg-black shadow-lg object-contain" />
+                  : <div className="w-full flex aspect-[9/16] items-center justify-center rounded-xl bg-raised text-muted text-xs">No rendered video</div>}
+              </div>
+
+              <div className="sm:col-span-7 space-y-3">
+                {/* Status, ID, Streamer, Duration badges */}
+                <div className="flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
+                  <Badge tone={meta(open.status).tone}>{meta(open.status).label}</Badge>
+                  <span className="font-mono text-ink font-semibold">#{open.id}</span>
+                  <span>·</span>
+                  <span className="text-accent font-semibold">@{open.channel_id}</span>
+                  <span>·</span>
+                  <span className="text-ink">{open.template_name || 'default'}</span>
+                  <span>·</span>
+                  <span className="font-mono text-ink">{fmtDur(clipDur(open))}</span>
+                  {open.created_at && <><span>·</span><span>{timeAgo(open.created_at)}</span></>}
+                </div>
+
+                {/* Virality Score Banner */}
+                <div className="grid grid-cols-3 gap-2">
+                  <div className="rounded-xl bg-canvas border border-line p-2 text-center">
+                    <div className="text-[10px] text-muted uppercase font-semibold">Virality Score</div>
+                    <div className="text-base font-extrabold text-good tabular-nums">
+                      {Math.round(open.final_score ?? open.virality_score ?? 0)}/100
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-canvas border border-line p-2 text-center">
+                    <div className="text-[10px] text-muted uppercase font-semibold">Start - End</div>
+                    <div className="text-xs font-mono font-bold text-ink mt-0.5 tabular-nums">
+                      {Math.round(open.adjusted_start ?? open.raw_start ?? 0)}s - {Math.round(open.adjusted_end ?? open.raw_end ?? 0)}s
+                    </div>
+                  </div>
+                  <div className="rounded-xl bg-canvas border border-line p-2 text-center">
+                    <div className="text-[10px] text-muted uppercase font-semibold">Teaser Hook</div>
+                    <div className="text-xs font-mono font-bold text-ink mt-0.5">
+                      {open.has_teaser ? `${open.teaser_hook_timestamp || 0}s` : 'None'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Score Breakdown (Hook, Flow, Value, Trend) */}
+                {open.score_breakdown && (
+                  <div className="rounded-xl bg-surface border border-line p-2.5">
+                    <ScoreBreakdown raw={open.score_breakdown} compact={false} />
+                  </div>
+                )}
+
+                {/* AI Generated Description */}
+                {open.description && (
+                  <div className="rounded-xl bg-canvas/60 border border-line/60 p-2.5 space-y-1">
+                    <div className="text-[10.5px] uppercase font-bold text-muted tracking-wider">AI Description</div>
+                    <p className="text-xs text-ink/90 leading-relaxed max-h-24 overflow-y-auto">{open.description}</p>
+                  </div>
+                )}
+
+                {/* Hashtags */}
+                {open.hashtags && (
+                  <div className="flex flex-wrap gap-1">
+                    {String(open.hashtags).split(/\s+/).filter(Boolean).map((tag, idx) => (
+                      <span key={idx} className="text-[10.5px] font-mono text-cyan-400 bg-cyan-500/10 border border-cyan-500/20 px-1.5 py-0.5 rounded">
+                        {tag.startsWith('#') ? tag : `#${tag}`}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {open.story_link && (
+                  <Notice tone="accent">Story clip ({open.story_link.relation}) - setup: "{open.story_link.setup_quote}"</Notice>
+                )}
+              </div>
             </div>
-            {open.story_link && (
-              <Notice tone="accent">Story clip ({open.story_link.relation}) - setup: "{open.story_link.setup_quote}"</Notice>
-            )}
-            <div className="grid grid-cols-2 gap-2">
+
+            {/* Bottom Actions */}
+            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-line">
               <Button icon={LayoutTemplate} onClick={() => { const id = open.id; setOpen(null); bulkTemplate([id]); }}>Change template</Button>
-              <Button icon={Pencil} onClick={() => navigate(`/clips/${open.id}/editor`)}>Open editor</Button>
+              <Button icon={Pencil} variant="primary" onClick={() => navigate(`/clips/${open.id}/editor`)}>Open in Editor</Button>
             </div>
           </div>
         )}
