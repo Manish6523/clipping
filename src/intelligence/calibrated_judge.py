@@ -36,6 +36,7 @@ class CalibratedJudge:
         chat_features: Optional[Dict[str, Any]] = None,
         stream_metadata: Optional[Dict[str, Any]] = None,
         min_score: int = 70,
+        include_rejected: bool = False,
     ) -> List[Dict[str, Any]]:
         """Run full Phase D evaluation on a moment."""
         context_pack = await ContextPackBuilder.build_context_pack(
@@ -173,7 +174,7 @@ class CalibratedJudge:
                 "model": self.model_name,
             }
 
-            if final >= min_score and cand.would_post:
+            if include_rejected or (final >= min_score and cand.would_post):
                 candidates.append(cand_dict)
 
         candidates.sort(key=lambda c: c["final_score"], reverse=True)

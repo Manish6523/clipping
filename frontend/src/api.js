@@ -102,6 +102,20 @@ export const getTikTokAuthUrl = (mode = 'inbox') => api.get(`/api/tiktok/auth-ur
 export const getTikTokAccounts = () => api.get('/api/tiktok/accounts').then(r => r.data);
 export const patchTikTokAccount = (key, data) => api.patch(`/api/tiktok/accounts/${encodeURIComponent(key)}`, data).then(r => r.data);
 export const deleteTikTokAccount = (key) => api.delete(`/api/tiktok/accounts/${encodeURIComponent(key)}`).then(r => r.data);
+// Clip Lab (sandbox: never creates clips)
+export const labStartUpload = (name, size) => api.post('/api/lab/upload', { name, size }).then(r => r.data);
+export const labUploadChunk = (id, offset, blob) => api.put(`/api/lab/${id}/chunk?offset=${offset}`, blob, { headers: { 'Content-Type': 'application/octet-stream' }, timeout: 0 }).then(r => r.data);
+export const labFinishUpload = (id) => api.post(`/api/lab/${id}/finish`, null, { timeout: 120000 }).then(r => r.data);
+export const labSessions = () => api.get('/api/lab/sessions').then(r => r.data);
+export const labSession = (id) => api.get(`/api/lab/${id}`).then(r => r.data);
+export const labDelete = (id) => api.delete(`/api/lab/${id}`).then(r => r.data);
+export const labRun = (id, step, params) => api.post(`/api/lab/${id}/run/${step}`, params || {}).then(r => r.data);
+export const labJob = (jobId) => api.get(`/api/lab/jobs/${jobId}`).then(r => r.data);
+export const labTemplates = () => api.get('/api/lab/templates').then(r => r.data);
+export const withToken = (url) => {
+  const t = localStorage.getItem('autoclip_session_token');
+  return t && url ? `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(t)}` : url;
+};
 export const getYouTubeAppConfig = () => api.get('/api/youtube/app-config').then(r => r.data);
 export const saveYouTubeAppConfig = (data) => api.post('/api/youtube/app-config', data).then(r => r.data);
 export const getYouTubeAuthUrl = (accountKey) => api.get(`/api/youtube/auth-url?account_key=${encodeURIComponent(accountKey)}`).then(r => r.data);

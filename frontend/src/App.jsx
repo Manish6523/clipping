@@ -24,6 +24,7 @@ const Overview = lazy(() => import('./components/Overview'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
+const ClipLab = lazy(() => import('./pages/ClipLab'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 const StreamerTelemetryHub = lazy(() => import('./components/StreamerTelemetryHub'));
 
@@ -229,6 +230,7 @@ export default function App() {
         <Route path="settings" element={<Settings />} />
         <Route path="logs" element={<LogStreamer />} />
         <Route path="quickclip" element={<QuickClip />} />
+        <Route path="lab" element={<ClipLab />} />
       </Route>
 
       {/* Dedicated Full-Screen Clip Editor Route */}
