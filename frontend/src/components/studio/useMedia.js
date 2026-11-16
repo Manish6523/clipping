@@ -57,7 +57,7 @@ export function useMedia(url) {
     return () => cancelAnimationFrame(id);
   }, [playing]);
 
-  return { mediaRef, version, isVideo: isVideoUrl(url) };
+  return { mediaRef, version, isVideo: isVideoUrl(url), loaded: Boolean(mediaRef.current) };
 }
 
 /** A plain image (watermark logo) as { img, version }. */

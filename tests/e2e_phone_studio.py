@@ -32,11 +32,11 @@ with sync_playwright() as p:
     tpts(cdp,"touchStart",[(c[0]-30,c[1]),(c[0]+30,c[1])])
     for i in range(1,9): tpts(cdp,"touchMove",[(c[0]-30-i*8,c[1]),(c[0]+30+i*8,c[1])])
     tpts(cdp,"touchEnd",[]); pg.wait_for_timeout(300)
-    print("zoom scale",pg.get_attribute('[data-testid=stage-output]','data-view-scale'),"reset btn",pg.locator('[aria-label="Reset zoom"]').count())
-    pg.click('[aria-label="Reset zoom"]'); pg.wait_for_timeout(200)
+    print("zoom scale",pg.get_attribute('[data-testid=stage-output]','data-view-scale'),"reset btn",pg.locator('[data-testid=zoom-reset]').count())
+    pg.click('[data-testid=zoom-reset]'); pg.wait_for_timeout(200)
     print("zoom after reset",pg.get_attribute('[data-testid=stage-output]','data-view-scale'))
     # nudge
-    pg.click('[aria-label="Nudge right"]'); pg.click('[aria-label="Nudge right"]'); pg.wait_for_timeout(200)
+    pg.click('[aria-label="Move precisely"]'); pg.click('[aria-label="Nudge right"]'); pg.click('[aria-label="Nudge right"]'); pg.click('[aria-label="Done moving"]'); pg.wait_for_timeout(200)
     # sheet drag handle up to full
     h=rect(pg,'[data-testid=sheet-handle]'); 
     drag(cdp,(h['x']+h['w']/2,h['y']+20),(h['x']+h['w']/2,h['y']-400),10); pg.wait_for_timeout(500)

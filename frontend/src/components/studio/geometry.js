@@ -6,7 +6,8 @@
 export const TOP_BAR_PX = 48;
 export const DOCK_PX = 56;                 // + env(safe-area-inset-bottom)
 export const PEEK_PX = 148;                // 44dp handle + two 44dp rows + padding
-export const HANDLE_PX = 32;               // collapsed "Source" bar
+export const HANDLE_PX = 0;                // a collapsed source takes no room (its toggle lives in the stage bar)
+export const STAGE_BAR_PX = 44;            // stage bar above the stages: reference, source toggle, zoom
 export const GAP_PX = 8;
 export const COLLAPSE_MARGIN_PX = 300;     // free height must exceed source height + this to keep both stages
 export const MIN_STAGE_PX = 96;            // the stage never shrinks below this, even with the sheet fully open
@@ -49,8 +50,8 @@ export function shouldCollapseSource({ sheetPx, freeHeight, sourceHeight, pref =
 /** Portrait: 16:9 source on top at full width, 9:16 output below using the remaining height ("contain" fit). */
 export function computePortraitLayout({ width, height, collapsed }) {
   const srcH = (width * 9) / 16;
-  const top = collapsed ? HANDLE_PX : srcH;
-  let outH = Math.max(0, height - top - GAP_PX);
+  const top = collapsed ? HANDLE_PX : srcH + GAP_PX;
+  let outH = Math.max(0, height - top);
   let outW = (outH * 9) / 16;
   if (outW > width) { outW = width; outH = (outW * 16) / 9; }
   return {
@@ -76,17 +77,25 @@ export function computeLandscapeLayout({ width, height }) {
 }
 
 /** One call for the shell: everything derived from the free area and the sheet. */
-export function computeStudioLayout({ viewportW, viewportH, sheetPx, sourcePref = null, landscape = false, safeBottom = 0 }) {
+export const STAGE_PAD_PX = 12;            // room around a stage so edge handles are fully visible and touchable
+export const TOOLBAR_PX = 56;              // strip under the stages for the selected-layer toolbar
+
+/**
+ * `padPx` insets both stages on every side (handles on a box that touches the stage edge stay grabbable);
+ * `reservedPx` keeps a strip at the bottom free (the object toolbar) so nothing is ever drawn under it.
+ */
+export function computeStudioLayout({ viewportW, viewportH, sheetPx, sourcePref = null, landscape = false, safeBottom = 0, padPx = 0, reservedPx = 0, barPx = 0 }) {
   if (landscape) {
-    const width = viewportW - DOCK_PX;                       // vertical rail takes the width
-    const height = viewportH - TOP_BAR_PX;
-    return { ...computeLandscapeLayout({ width, height }), freeW: width, freeH: height, avail: height };
+    const width = viewportW - DOCK_PX - 2 * padPx;           // vertical rail takes the width
+    const height = viewportH - TOP_BAR_PX - reservedPx - barPx - 2 * padPx;
+    return { ...computeLandscapeLayout({ width, height }), freeW: width, freeH: height, avail: height, pad: padPx, reserved: reservedPx, bar: barPx };
   }
   const avail = viewportH - TOP_BAR_PX - DOCK_PX - safeBottom;
-  const freeH = Math.max(0, avail - sheetPx);
-  const srcH = (viewportW * 9) / 16;
+  const width = viewportW - 2 * padPx;
+  const freeH = Math.max(0, avail - sheetPx - reservedPx - barPx - 2 * padPx);
+  const srcH = (width * 9) / 16;
   const collapsed = shouldCollapseSource({ sheetPx, freeHeight: freeH, sourceHeight: srcH, pref: sourcePref });
-  return { ...computePortraitLayout({ width: viewportW, height: freeH, collapsed }), freeW: viewportW, freeH, avail };
+  return { ...computePortraitLayout({ width, height: freeH, collapsed }), freeW: width, freeH, avail, pad: padPx, reserved: reservedPx, bar: barPx };
 }
 
 /* ---------------------------------------------------------------- zoom / pan */
@@ -207,4 +216,67 @@ export function handleAt(px, py, r, slop = 22) {
     if (d <= bestD) { best = name; bestD = d; }
   }
   return best;
+}
+
+/* ---------------------------------------------------------------- tabbed (one interactive stage) layout */
+
+export const BAR_ROWS_PX = 88;             // stage bar: tabs/reference/zoom row + layer-chip row
+export const MIN_PREVIEW_H = 120;          // below this the passive preview is not worth showing
+
+const fit = (aspect, maxW, maxH) => {
+  let w = maxW;
+  let h = w / aspect;
+  if (h > maxH) { h = maxH; w = h * aspect; }
+  return { w: Math.max(0, w), h: Math.max(0, h) };
+};
+
+/**
+ * Crop tab: the 16:9 frame is the ONE interactive stage, the 9:16 result is a passive preview (no boxes) in the space
+ * left over (below in portrait, beside in landscape). Layout tab: the 9:16 output alone, as large as possible.
+ * Returns { main: {kind, x, y, w, h}, preview: {x, y, w, h} | null } in the free area's coordinates.
+ */
+export function computeTabLayout({ tab, width, height, landscape = false }) {
+  if (tab === 'layout') {
+    const m = fit(9 / 16, width, height);
+    return { main: { kind: 'output', x: (width - m.w) / 2, y: (height - m.h) / 2, ...m }, preview: null };
+  }
+  if (landscape) {
+    const pv = fit(9 / 16, width * 0.28, height);
+    const showPv = pv.h >= MIN_PREVIEW_H;
+    const room = showPv ? width - pv.w - GAP_PX : width;
+    const m = fit(16 / 9, room, height);
+    const main = { kind: 'source', x: (room - m.w) / 2, y: (height - m.h) / 2, ...m };
+    return { main, preview: showPv ? { x: width - pv.w, y: (height - pv.h) / 2, ...pv } : null };
+  }
+  const m = fit(16 / 9, width, height);
+  const main = { kind: 'source', x: (width - m.w) / 2, y: 0, ...m };
+  const rest = height - m.h - GAP_PX;
+  if (rest < MIN_PREVIEW_H) return { main: { ...main, y: (height - m.h) / 2 }, preview: null };
+  const pv = fit(9 / 16, width, rest);
+  return { main, preview: { x: (width - pv.w) / 2, y: m.h + GAP_PX + (rest - pv.h) / 2, ...pv } };
+}
+
+/** One-tap placements for a layer on the 9:16 output. */
+export const PLACE_SLOTS = [
+  { id: 'top', label: 'Top', rect: { x: 0, y: 0, w: 1, h: 0.38 } },
+  { id: 'bottom', label: 'Bottom', rect: { x: 0, y: 0.38, w: 1, h: 0.62 } },
+  { id: 'full', label: 'Full', rect: { x: 0, y: 0, w: 1, h: 1 } },
+  { id: 'corner', label: 'Corner', rect: { x: 0.6, y: 0.04, w: 0.36, h: 0.2 } },
+];
+
+/**
+ * Reshape a source crop to the shape of its output box (keeps the centre, stays inside the frame), so "cover" no
+ * longer cuts parts of the crop away. Aspects are compared in real pixels (1920x1080 source, 1080x1920 output).
+ */
+export function matchCropToOutput(src, dst) {
+  const target = (dst.w * 1080) / (dst.h * 1920);           // output box w/h in px
+  const cx = src.x + src.w / 2;
+  const cy = src.y + src.h / 2;
+  let w = src.w;
+  let h = (w * 1920) / (target * 1080);                     // keep width, derive height (normalised units)
+  if (h > 1) { h = 1; w = (h * target * 1080) / 1920; }
+  if (w > 1) { w = 1; h = (w * 1920) / (target * 1080); }
+  const x = clamp(cx - w / 2, 0, 1 - w);
+  const y = clamp(cy - h / 2, 0, 1 - h);
+  return { x: round3(x), y: round3(y), w: round3(w), h: round3(h) };
 }

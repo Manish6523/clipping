@@ -52,8 +52,52 @@ def thumbnail_for(clip: dict) -> "str | None":
             return url
     if clip.get("rendered_video_path"):
         p = Path(clip["rendered_video_path"])
-        return media_url(p.parent / f"{p.stem}_thumb.jpg")
+        url = media_url(p.parent / f"{p.stem}_thumb.jpg")
+        if url:
+            return url
+        if p.exists() and clip.get("id") is not None:
+            # No thumbnail on disk yet (live renders don't write one): generated on first request
+            return f"/api/clips/{clip['id']}/thumbnail?v={clip.get('render_version') or 1}"
     return None
+
+
+_THUMB_SEM = asyncio.Semaphore(2)
+
+
+async def serve_clip_thumbnail(request: web.Request) -> web.Response:
+    """Serve (and lazily create, next to the video) a small JPEG poster frame for a rendered clip."""
+    try:
+        clip_id = int(request.match_info["id"])
+    except ValueError:
+        return make_json_error("INVALID_ID", "Clip id must be an integer")
+    clip = await get_clip(clip_id)
+    video = Path(clip["rendered_video_path"]) if clip and clip.get("rendered_video_path") else None
+    if not video or not video.exists():
+        return make_json_error("NOT_FOUND", "No rendered video for this clip", status=404)
+    thumb = video.parent / f"{video.stem}_thumb.jpg"
+    if not thumb.exists():
+        async with _THUMB_SEM:
+            if not thumb.exists():
+                tmp = thumb.with_suffix(".tmp.jpg")
+                proc = await asyncio.create_subprocess_exec(
+                    "ffmpeg", "-y", "-v", "error", "-ss", "1", "-i", str(video), "-frames:v", "1",
+                    "-vf", "scale=360:-2", "-q:v", "4", str(tmp),
+                    stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                )
+                await proc.communicate()
+                if proc.returncode == 0 and tmp.exists():
+                    os.replace(tmp, thumb)
+                else:                                    # clip shorter than 1 s: take the first frame
+                    proc = await asyncio.create_subprocess_exec(
+                        "ffmpeg", "-y", "-v", "error", "-i", str(video), "-frames:v", "1", "-vf", "scale=360:-2", "-q:v", "4", str(tmp),
+                        stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL,
+                    )
+                    await proc.communicate()
+                    if proc.returncode == 0 and tmp.exists():
+                        os.replace(tmp, thumb)
+    if not thumb.exists():
+        return make_json_error("THUMB_FAILED", "Could not extract a thumbnail", status=500)
+    return web.FileResponse(thumb, headers={"Cache-Control": "public, max-age=86400"})
 from src.database import (
     get_db_connection,
     get_clip,
@@ -240,7 +284,7 @@ async def get_clip_by_id(request: web.Request) -> web.Response:
     if clip.get("rendered_video_path"):
         v = clip.get("render_version") or 1
         thumb = thumbnail_for(clip)
-        clip["thumbnail_url"] = f"{thumb}?v={v}" if thumb else None
+        clip["thumbnail_url"] = (thumb if "?" in thumb else f"{thumb}?v={v}") if thumb else None
         clip["video_url"] = f"/api/clips/{clip_id}/video?v={v}"
     else:
         clip["thumbnail_url"] = None
@@ -884,6 +928,7 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips/{id}", get_clip_by_id)
     app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)
+    app.router.add_get("/api/clips/{id}/thumbnail", serve_clip_thumbnail)
     app.router.add_get("/api/clips/{id}/source", serve_clip_source)
     app.router.add_post("/api/clips/{id}/retemplate", retemplate_clip)
     app.router.add_post("/api/clips/bulk-retemplate", bulk_retemplate)

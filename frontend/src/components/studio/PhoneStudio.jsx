@@ -1,25 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Play, Download, Upload, Copy, History, Trash2, Keyboard, X, AlertTriangle, Wand2,
+  Play, Download, Upload, Copy, History, Trash2, Keyboard, X, AlertTriangle, Wand2, ImageIcon, Check, Radio,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { migrateTemplate, saveTemplate, deleteTemplate, uploadWatermark } from '../../api';
 import ContextualInspector from '../editor/ContextualInspector';
-import { Sheet, Confirm, Button, Input, EmptyState } from '../ui';
+import { Sheet, Confirm, Button, Input, EmptyState, Notice } from '../ui';
 import StageStack from './PhoneStage';
 import SnapSheet from './SnapSheet';
-import PeekControls, { NudgePad } from './PeekControls';
+import PeekControls from './PeekControls';
 import PhoneLayersSheet from './PhoneLayersSheet';
 import { PhoneTopBar, PhoneDock } from './PhoneChrome';
 import { useViewportBox } from './useViewportBox';
 import { useMedia, useImage } from './useMedia';
-import { DOCK_PX, TOP_BAR_PX, computeStudioLayout, sheetHeightPx, shouldCollapseSource } from './geometry';
+import { DOCK_PX, TOP_BAR_PX, STAGE_PAD_PX, TOOLBAR_PX, BAR_ROWS_PX, computeStudioLayout, sheetHeightPx } from './geometry';
 import { buildPreset } from './layoutPresets';
 import { listVersions } from './versionHistory';
 
-const PREF_KEY = 'studio_source_pref';
-const readPref = () => { try { return localStorage.getItem(PREF_KEY) === 'collapsed' ? 'collapsed' : null; } catch { return null; } };
+const TAB_KEY = 'studio_tab';
+const readTab = () => { try { return localStorage.getItem(TAB_KEY) === 'crop' ? 'crop' : 'layout'; } catch { return 'layout'; } };
 
 /**
  * Phone Template Studio shell ("focus mode"): one 48dp top bar, a stage region that always sits ABOVE the sheet, a
@@ -31,7 +31,7 @@ export default function PhoneStudio({
 }) {
   const navigate = useNavigate();
   const store = useTemplateEditorStore();
-  const { layout, subtitles, watermark, selection, sheetSnap: snap, sheetView, templateName, isDirty, history, redoStack, legacyLayout } = store;
+  const { layout, subtitles, watermark, selection, sheetSnap: snap, sheetView, templateName, isDirty, history, redoStack, legacyLayout, selectedChannel } = store;
   const layers = layout.layers || [];
 
   const box = useViewportBox();
@@ -41,7 +41,8 @@ export default function PhoneStudio({
   const wm = useImage(wmUrl);
   const wmAspect = wm.img && wm.img.naturalWidth ? wm.img.naturalHeight / wm.img.naturalWidth : 1;
 
-  const [sourcePref, setSourcePrefState] = useState(readPref);                  // 'collapsed' persists, 'expanded' is one-shot
+  const [tab, setTabState] = useState(readTab);                                  // 'crop' (16:9 source) | 'layout' (9:16 output)
+  const setTab = useCallback((t) => { setTabState(t); try { localStorage.setItem(TAB_KEY, t); } catch { /* storage unavailable */ } }, []);
   const [dragPx, setDragPx] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [notice, setNotice] = useState('');
@@ -53,23 +54,63 @@ export default function PhoneStudio({
   useEffect(() => () => clearTimeout(noticeTimer.current), []);
   const flash = useCallback((msg) => { setNotice(msg); clearTimeout(noticeTimer.current); noticeTimer.current = setTimeout(() => setNotice(''), 3500); }, []);
 
-  const setSourcePref = (p) => {
-    setSourcePrefState(p);
-    try { if (p === 'collapsed') localStorage.setItem(PREF_KEY, 'collapsed'); else localStorage.removeItem(PREF_KEY); } catch { /* storage unavailable */ }
+  // ---- reference image (the frame the boxes are aligned against): a streamer's live frame, the built-in 16:9 sample, or an upload
+  const REF_KEY = `studio_ref_${templateName}`;
+  const PLACEHOLDER = '/placeholders/streamer_reference_16_9.jpg';
+  const [refLabel, setRefLabel] = useState('');
+  const refFileRef = useRef(null);
+  const blobUrl = useRef('');
+  const applyReference = useCallback((ref, { persist = true } = {}) => {
+    const st = useTemplateEditorStore.getState();
+    if (ref.type === 'channel') {
+      st.setSelectedChannel(ref.id);
+      st.setPreviewMediaUrl(`/api/channels/${encodeURIComponent(ref.id)}/frame?t=${Date.now()}`);
+      setRefLabel(ref.id);
+    } else if (ref.type === 'upload') {
+      st.setPreviewMediaUrl(ref.url);
+      setRefLabel('My image');
+    } else {
+      st.setPreviewMediaUrl(PLACEHOLDER);
+      setRefLabel('Sample 16:9');
+    }
+    if (persist && ref.type !== 'upload') { try { localStorage.setItem(REF_KEY, JSON.stringify(ref)); } catch { /* storage unavailable */ } }
+  }, [REF_KEY]);
+  // restore the reference chosen earlier for this template (otherwise keep the automatic one and just label it)
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(REF_KEY) || 'null');
+      if (saved?.type === 'channel' && channels.some((c) => c.channel_id_or_handle === saved.id)) { applyReference(saved, { persist: false }); return; }
+      if (saved?.type === 'placeholder') { applyReference(saved, { persist: false }); return; }
+    } catch { /* ignore a corrupt value */ }
+    setRefLabel(useTemplateEditorStore.getState().selectedChannel || 'Sample 16:9');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [REF_KEY, channels.length]);
+  useEffect(() => () => { if (blobUrl.current) URL.revokeObjectURL(blobUrl.current); }, []);
+  const pickUpload = (file) => {
+    if (!file) return;
+    if (blobUrl.current) URL.revokeObjectURL(blobUrl.current);
+    blobUrl.current = URL.createObjectURL(file);
+    applyReference({ type: 'upload', url: blobUrl.current });
+    setPanel(null);
   };
+
+
 
   // ---- sheet geometry
   const dockPx = landscape ? 0 : DOCK_PX + safeBottom;
   const avail = landscape ? vh - TOP_BAR_PX : vh - TOP_BAR_PX - dockPx;
   const sheetPx = landscape ? 0 : (dragPx ?? sheetHeightPx(snap, avail));
+  const toolbarShown = selection.type === 'layer' && layers.length > 0;
   const info = useMemo(
-    () => computeStudioLayout({ viewportW: vw, viewportH: vh, sheetPx, sourcePref, landscape, safeBottom }),
-    [vw, vh, sheetPx, sourcePref, landscape, safeBottom],
+    () => computeStudioLayout({
+      viewportW: vw, viewportH: vh, sheetPx, landscape, safeBottom,
+      padPx: STAGE_PAD_PX, reservedPx: toolbarShown ? TOOLBAR_PX : 0, barPx: BAR_ROWS_PX,
+    }),
+    [vw, vh, sheetPx, landscape, safeBottom, toolbarShown],
   );
 
   const setSnap = useCallback((s) => {
     store.setSheetSnap(s);
-    if (s === 'half' || s === 'full') setSourcePrefState((p) => (p === 'collapsed' ? p : null));     // "expanded" ends once the sheet grows
   }, [store]);
 
   // ---- focus mode: no page scroll / overscroll while the Studio is open
@@ -141,20 +182,6 @@ export default function PhoneStudio({
     else if (s.sheetSnap === 'peek') s.setSheetView('inspector');
   }, [setSnap]);
 
-  const onCrop = useCallback(() => {
-    setSourcePrefState('expanded');
-    const s = useTemplateEditorStore.getState();
-    if (s.sheetSnap === 'half' || s.sheetSnap === 'full') setSnap('peek');          // make room for the source
-  }, [setSnap]);
-
-  const onToggleSource = useCallback(() => {
-    if (info.source.collapsed) onCrop();
-    else setSourcePref('collapsed');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [info.source.collapsed, onCrop]);
-  // a persisted "collapsed" choice is dropped when the user expands again
-  useEffect(() => { if (sourcePref === 'expanded' && shouldCollapseSource({ sheetPx: 0, freeHeight: 9999, sourceHeight: 0, pref: null })) setSourcePref(null); }, [sourcePref]);
-
   // ---- dock
   const open = snap !== 'closed';
   const activeDock = !open ? null : sheetView === 'layers' ? 'layers' : (selection.type === 'layer' ? 'layers' : selection.type);
@@ -166,6 +193,7 @@ export default function PhoneStudio({
       return;
     }
     if (open && sheetView === 'inspector' && selection.type === id) { setSnap('closed'); return; }
+    if (id === 'captions' || id === 'watermark') setTab('layout');          // they only exist on the 9:16 output
     store.setSelection({ type: id, id: null });
     store.setSheetView('inspector');
     setSnap(open ? (snap === 'peek' ? 'half' : snap) : 'half');
@@ -193,6 +221,7 @@ export default function PhoneStudio({
     } catch (e) { flash(`Import failed: ${e.message}`); }
   };
   const menu = [
+    { label: 'Reference image', icon: ImageIcon, run: () => setPanel('reference') },
     { label: 'Test render', icon: Play, run: onTestRender, loading: testingSample, disabled: testingSample },
     { label: 'Export (.autoclip.json)', icon: Download, run: downloadJson },
     { label: 'Import', icon: Upload, run: () => fileRef.current?.click() },
@@ -248,7 +277,6 @@ export default function PhoneStudio({
   } else {
     sheetBody = (
       <div className="flex h-full flex-col">
-        {selLayer && <div className="shrink-0 border-b border-white/10 px-3 py-2"><NudgePad layer={selLayer} /></div>}
         <div className="min-h-0 flex-1"><ContextualInspector channels={channels} /></div>
       </div>
     );
@@ -259,7 +287,7 @@ export default function PhoneStudio({
   ) : null;
 
   const emptyBanner = layers.length === 0 && (
-    <div data-testid="empty-banner" className="absolute inset-x-2 top-2 z-20 flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-[#1a1608]/95 px-3 py-2 text-[12.5px] text-warn">
+    <div data-testid="empty-banner" className="absolute inset-x-2 top-[50px] z-20 flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-[#1a1608]/95 px-3 py-2 text-[12.5px] text-warn">
       <AlertTriangle size={15} className="shrink-0" />
       <span className="min-w-0 flex-1 font-semibold">This template has no layers</span>
       <button type="button" onClick={() => { store.setSheetView('layers'); setAddOpen(true); setSnap('half'); }} className="flex h-[44px] items-center rounded-lg px-2 font-semibold text-accent">Add layers</button>
@@ -270,7 +298,8 @@ export default function PhoneStudio({
   const stage = (
     <StageStack
       info={info} store={storeView} media={media.mediaRef} mediaVersion={media.version} wmImg={wm.img} wmAspect={wmAspect} tick={wm.version}
-      sourcePref={sourcePref} onToggleSource={onToggleSource} onCrop={onCrop} onSelected={onSelected}
+      tab={tab} onTab={setTab} onSelected={onSelected}
+      referenceLabel={refLabel} referenceLoaded={media.loaded} onPickReference={() => setPanel('reference')}
       onAddLayerMenu={() => { store.setSheetView('layers'); setAddOpen(true); setSnap('half'); }}
     />
   );
@@ -317,12 +346,44 @@ export default function PhoneStudio({
       )}
 
       <input ref={fileRef} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { importFile(e.target.files?.[0]); e.target.value = ''; }} />
+      <input ref={refFileRef} type="file" accept="image/png,image/jpeg,image/webp" className="hidden" data-testid="ref-file" onChange={(e) => { pickUpload(e.target.files?.[0]); e.target.value = ''; }} />
       <input ref={logoRef} type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" className="hidden" onChange={(e) => { onLogoFile(e.target.files?.[0]); e.target.value = ''; }} />
 
       <Confirm open={panel === 'leave'} title="Leave without saving?" text="You have unsaved changes. A draft is kept on this device for 24 hours." confirmLabel="Leave" danger
         onCancel={() => setPanel(null)} onConfirm={() => { setPanel(null); navigate('/templates'); }} />
       <Confirm open={panel === 'delete'} title={`Delete "${templateName}"?`} text="This removes the template file. Streamers using it fall back to a default layout." confirmLabel="Delete" danger
         onCancel={() => setPanel(null)} onConfirm={doDelete} />
+
+      <Sheet open={panel === 'reference'} onClose={() => setPanel(null)} title="Reference image">
+        <p className="mb-3 text-xs text-muted">The picture the boxes are aligned against. It is only a guide - it is never saved into the template.</p>
+        {!media.loaded && <Notice tone="warn" className="mb-3">The current reference could not be loaded (the streamer may be offline). Pick another one or upload a screenshot.</Notice>}
+        <div className="space-y-1.5" role="radiogroup" aria-label="Reference image">
+          {(() => {
+            const isCh = (id) => refLabel === id;
+            const Row = ({ active, icon: Icon, title, sub, onClick, testid }) => (
+              <button type="button" role="radio" aria-checked={active} data-testid={testid} onClick={onClick}
+                className={`flex min-h-[48px] w-full items-center gap-3 rounded-xl border px-3 py-2 text-left ${active ? 'border-accent bg-accent/10' : 'border-line bg-raised'}`}>
+                <Icon size={16} className={active ? 'text-accent' : 'text-muted'} />
+                <span className="min-w-0 flex-1"><span className="block truncate text-[13.5px] font-medium text-ink">{title}</span>{sub && <span className="block truncate text-[11px] text-muted">{sub}</span>}</span>
+                {active && <Check size={16} className="text-accent" />}
+              </button>
+            );
+            return (
+              <>
+                {channels.map((c) => (
+                  <Row key={c.channel_id_or_handle} testid="ref-channel" active={isCh(c.channel_id_or_handle)} icon={Radio} title={c.channel_id_or_handle}
+                    sub={c.template_name ? `Template: ${c.template_name}` : 'No template assigned'}
+                    onClick={() => { applyReference({ type: 'channel', id: c.channel_id_or_handle }); setPanel(null); }} />
+                ))}
+                <Row testid="ref-placeholder" active={refLabel === 'Sample 16:9'} icon={ImageIcon} title="Built-in 16:9 sample" sub="Works offline - a clean frame to align against"
+                  onClick={() => { applyReference({ type: 'placeholder' }); setPanel(null); }} />
+                <Row testid="ref-upload" active={refLabel === 'My image'} icon={Upload} title="Upload an image" sub="A screenshot from the streamer's real layout"
+                  onClick={() => refFileRef.current?.click()} />
+              </>
+            );
+          })()}
+        </div>
+      </Sheet>
 
       <Sheet open={panel === 'duplicate'} onClose={() => setPanel(null)} title="Duplicate template">
         <p className="mb-3 text-xs text-muted">Saves the current state (including unsaved edits) under a new name and opens it.</p>

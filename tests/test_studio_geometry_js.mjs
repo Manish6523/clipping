@@ -19,7 +19,7 @@ for (const [vw, vh] of [[360, 640], [390, 844], [412, 915]]) {
     const sheetPx = g.sheetHeightPx(snap, avail);
     const L = g.computeStudioLayout({ viewportW: vw, viewportH: vh, sheetPx });
     assert.ok(L.output.w > 20 && L.output.h > 30, `${vw}x${vh} ${snap}: output not visible (${L.output.w}x${L.output.h})`);
-    const used = L.source.h + (L.source.collapsed ? 0 : 0) + g.GAP_PX + L.output.h;
+    const used = L.source.h + (L.source.collapsed ? 0 : g.GAP_PX) + L.output.h;   // a collapsed source takes no room
     assert.ok(used <= L.freeH + 0.01, `${vw}x${vh} ${snap}: stages (${used}) overflow free area (${L.freeH})`);
     assert.ok(sheetPx + L.freeH <= avail + 0.01, 'sheet + stage exceed the viewport');
     assert.ok(L.freeH >= g.MIN_STAGE_PX - 0.01 || snap === 'closed', 'stage below minimum');
@@ -120,3 +120,32 @@ for (const [vw, vh] of [[360, 640], [390, 844], [412, 915]]) {
   assert.equal(g.handleAt(140, 140, tiny), 'se');
 }
 console.log('OK: studio geometry');
+
+// --- tabbed layout: one interactive stage, passive preview only when it is worth it
+{
+  const near2 = (a, b, eps = 0.01) => assert.ok(Math.abs(a - b) <= eps, `${a} != ${b}`);
+  for (const [w, h] of [[334, 600], [366, 520], [334, 300]]) {
+    const L = g.computeTabLayout({ tab: 'layout', width: w, height: h });
+    near2(L.main.w / L.main.h, 9 / 16, 0.001);
+    assert.ok(L.main.w <= w + 0.01 && L.main.h <= h + 0.01 && L.preview === null);
+    const C = g.computeTabLayout({ tab: 'crop', width: w, height: h });
+    assert.equal(C.main.kind, 'source');
+    near2(C.main.w / C.main.h, 16 / 9, 0.001);
+    if (C.preview) {
+      assert.ok(C.preview.h >= g.MIN_PREVIEW_H, 'tiny preview should be dropped');
+      assert.ok(C.preview.y >= C.main.y + C.main.h + g.GAP_PX - 0.01, 'preview overlaps the crop stage');
+      assert.ok(C.preview.y + C.preview.h <= h + 0.01);
+    }
+  }
+  assert.equal(g.computeTabLayout({ tab: 'crop', width: 334, height: 300 }).preview, null);
+  const LS = g.computeTabLayout({ tab: 'crop', width: 700, height: 300, landscape: true });
+  assert.ok(LS.preview && LS.main.x + LS.main.w <= LS.preview.x + 0.01, 'landscape preview overlaps');
+
+  // match crop shape to the output box
+  const m = g.matchCropToOutput({ x: 0.2, y: 0, w: 0.6, h: 1 }, { x: 0, y: 0.38, w: 1, h: 0.62 });
+  near2((m.w * 1920) / (m.h * 1080), (1 * 1080) / (0.62 * 1920), 0.02);
+  assert.ok(m.x >= 0 && m.y >= 0 && m.x + m.w <= 1.0001 && m.y + m.h <= 1.0001);
+  const tall = g.matchCropToOutput({ x: 0, y: 0.58, w: 0.32, h: 0.42 }, { x: 0, y: 0, w: 1, h: 0.38 });
+  assert.ok(tall.y + tall.h <= 1.0001 && tall.x >= 0);
+  console.log('OK: tabbed layout + match crop');
+}

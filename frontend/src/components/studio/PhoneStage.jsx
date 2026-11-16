@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import {
-  ChevronDown, ChevronUp, Lock, Unlock, Eye, EyeOff, Copy, Trash2, BringToFront, SendToBack, Crop, ZoomOut, Plus, Wand2,
+  ChevronDown, ChevronUp, Lock, Unlock, Eye, EyeOff, Copy, Trash2, BringToFront, SendToBack, Crop, ZoomOut, ZoomIn, Plus, Wand2, ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ImageIcon, Move, Check, LayoutGrid,
 } from 'lucide-react';
 import {
-  GAP_PX, RESET_VIEW, clampPan, handleAt, moveRect, normRectToPx, nextInStack, pointInRect, resizeRect, zoomAbout,
+  GAP_PX, RESET_VIEW, PLACE_SLOTS, clampPan, computeTabLayout, handleAt, matchCropToOutput, moveRect, normRectToPx, nextInStack, pointInRect, resizeRect, zoomAbout,
 } from './geometry';
 import { OUT_W, OUT_H, SRC_CW, SRC_CH, drawOutput, drawSource, watermarkRectNorm } from './stageDraw';
 import { buildCaptionsConfig } from './captionsConfig';
@@ -58,7 +58,7 @@ const sameObj = (a, b) => a.type === b.type && a.id === b.id;
 
 function Stage({
   kind, w, h, layers, layout, subtitles, watermark, wmImg, wmAspect, selection, draft, bumpDraft, media, mediaVersion,
-  view, setView, onSelect, onCommit, onDraft, tick, captionStyle, children,
+  view, setView, onSelect, onCommit, onDraft, tick, captionStyle, pad = 0, active = false, onActivate, passive = false,
 }) {
   const containerRef = useRef(null);
   const canvasRef = useRef(null);
@@ -102,7 +102,7 @@ function Stage({
   // ---- gestures
   const local = (e) => {
     const r = containerRef.current.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: e.clientX - r.left - pad, y: e.clientY - r.top - pad };      // relative to the stage proper (pad can be negative)
   };
 
   const startPinch = () => {
@@ -182,6 +182,7 @@ function Stage({
 
   const onPointerDown = (e) => {
     if (e.target.closest?.('[data-stage-ui]')) return;
+    onActivate?.(kind);
     const el = containerRef.current;
     try { el.setPointerCapture(e.pointerId); } catch { /* synthetic / already released */ }
     const pt = local(e);
@@ -278,25 +279,32 @@ function Stage({
   return (
     <div
       ref={containerRef}
-      data-testid={`stage-${kind}`}
+      data-testid={passive ? `preview-${kind}` : `stage-${kind}`}
       data-view-scale={view.scale.toFixed(3)}
-      onPointerDown={onPointerDown}
-      onPointerMove={onPointerMove}
-      onPointerUp={(e) => finish(e, false)}
-      onPointerCancel={(e) => finish(e, true)}
-      className="relative overflow-hidden bg-black rounded-xl border border-white/10 select-none"
-      style={{ width: w, height: h, touchAction: 'none', isolation: 'isolate', zIndex: 0 }}
+      onPointerDown={passive ? undefined : onPointerDown}
+      onPointerMove={passive ? undefined : onPointerMove}
+      onPointerUp={passive ? undefined : (e) => finish(e, false)}
+      onPointerCancel={passive ? undefined : (e) => finish(e, true)}
+      className={`relative select-none ${passive ? 'pointer-events-none' : ''}`}
+      style={{ width: w + 2 * pad, height: h + 2 * pad, touchAction: passive ? 'auto' : 'none', zIndex: 0 }}
     >
-      <div className="absolute inset-0" style={{ transformOrigin: '0 0', transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})` }}>
-        <canvas
-          ref={canvasRef}
-          width={kind === 'output' ? OUT_W : SRC_CW}
-          height={kind === 'output' ? OUT_H : SRC_CH}
-          className="w-full h-full pointer-events-none block"
-        />
+      {/* the picture (clipped) */}
+      <div
+        className={`absolute overflow-hidden rounded-xl border bg-black ${active ? 'border-accent/70' : 'border-white/10'}`}
+        style={{ left: pad, top: pad, width: w, height: h, isolation: 'isolate' }}
+      >
+        <div className="absolute inset-0" style={{ transformOrigin: '0 0', transform: `translate(${view.tx}px, ${view.ty}px) scale(${view.scale})` }}>
+          <canvas
+            ref={canvasRef}
+            width={kind === 'output' ? OUT_W : SRC_CW}
+            height={kind === 'output' ? OUT_H : SRC_CH}
+            className="w-full h-full pointer-events-none block"
+          />
+        </div>
       </div>
 
-      <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+      {/* boxes + handles (NOT clipped: edge handles stay fully visible inside the padding) */}
+      {!passive && <div className="absolute pointer-events-none" style={{ left: pad, top: pad, width: w, height: h }} aria-hidden="true">
         {objects.map((o) => {
           const px = normRectToPx(o.rect, view, w, h);
           const selected = isSel(o, sel);
@@ -308,86 +316,164 @@ function Stage({
               className="absolute"
               style={{
                 left: px.x, top: px.y, width: px.w, height: px.h,
-                border: selected ? '2px solid #fff' : `1px ${o.type === 'layer' ? 'solid' : 'dashed'} ${color}99`,
-                boxShadow: selected ? `0 0 0 1px ${color}, 0 0 12px rgba(0,0,0,.5)` : 'none',
+                border: selected ? '2px solid #fff' : `2px ${o.type === 'layer' ? 'solid' : 'dashed'} ${color}`,
+                boxShadow: selected ? `0 0 0 1px ${color}, 0 0 12px rgba(0,0,0,.5)` : '0 0 0 1px rgba(0,0,0,.7), inset 0 0 0 1px rgba(0,0,0,.45)',
                 background: selected ? 'rgba(255,255,255,0.05)' : 'transparent',
-                opacity: selected || !sel || sel.type === 'template' ? 1 : 0.75,
               }}
             >
-              {selected && (
-                <>
-                  <span className="absolute left-1 top-1 max-w-[calc(100%-8px)] truncate rounded px-1.5 py-0.5 text-[10.5px] leading-none font-semibold text-white" style={{ background: `${color}cc` }}>
-                    {labelOf(o)}
-                  </span>
-                  {!o.locked && ['nw', 'ne', 'sw', 'se', ...(px.w > 70 && px.h > 70 && o.type === 'layer' ? ['n', 's', 'e', 'w'] : []), ...(o.type === 'captions' ? ['e', 'w'] : [])].filter((hn, i, a) => a.indexOf(hn) === i).map((hn) => (
-                    <span
-                      key={hn}
-                      className="absolute rounded-full bg-white border-2 border-black/70"
-                      style={{
-                        width: 14, height: 14, marginLeft: -7, marginTop: -7,
-                        left: hn.includes('w') ? 0 : hn.includes('e') ? '100%' : '50%',
-                        top: hn.includes('n') ? 0 : hn.includes('s') ? '100%' : '50%',
-                      }}
-                    />
-                  ))}
-                </>
-              )}
+              <span
+                className={`absolute left-3 top-1.5 max-w-[calc(100%-24px)] truncate rounded px-1.5 py-0.5 font-semibold leading-none text-white ${selected ? 'text-[10.5px]' : 'text-[9.5px]'} ${px.w < 56 || px.h < 26 ? 'hidden' : ''}`}
+                style={{ background: selected ? `${color}ee` : `${color}d9`, color: selected ? '#fff' : '#0b0d12' }}
+              >
+                {labelOf(o)}
+              </span>
+              {selected && !o.locked && ['nw', 'ne', 'sw', 'se', ...(px.w > 70 && px.h > 70 && o.type === 'layer' ? ['n', 's', 'e', 'w'] : []), ...(o.type === 'captions' ? ['e', 'w'] : [])].filter((hn, i, a) => a.indexOf(hn) === i).map((hn) => (
+                <span
+                  key={hn}
+                  className="absolute rounded-full bg-white border-2 border-black/70"
+                  style={{
+                    width: 14, height: 14, marginLeft: -7, marginTop: -7,
+                    left: hn.includes('w') ? 0 : hn.includes('e') ? '100%' : '50%',
+                    top: hn.includes('n') ? 0 : hn.includes('s') ? '100%' : '50%',
+                  }}
+                />
+              ))}
             </div>
           );
         })}
         {readout && (
           <div className="absolute left-1/2 top-2 -translate-x-1/2 rounded-md bg-black/80 px-2 py-1 text-[10.5px] font-mono text-white tabular-nums whitespace-nowrap">{readout}</div>
         )}
-      </div>
-
-      {zoomed && (
-        <button
-          type="button" data-stage-ui aria-label="Reset zoom"
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={() => setView(RESET_VIEW)}
-          className="absolute left-1.5 bottom-1.5 flex h-[44px] items-center gap-1 rounded-full bg-black/75 px-3 text-[11px] font-semibold text-white"
-        >
-          <ZoomOut size={14} /> {view.scale.toFixed(1)}× · Reset
-        </button>
-      )}
-      {children}
+      </div>}
     </div>
   );
 }
 
 /* ------------------------------------------------------------------ toolbar + empty card */
 
-function ObjectToolbar({ layer, index, count, left, top, maxW, actions }) {
-  const Btn = ({ label, icon: Icon, onClick, active, danger, disabled }) => (
+function ObjectToolbar({ tab, layer, index, count, actions }) {
+  const [mode, setMode] = useState('main');            // 'main' | 'move' | 'place'
+  const [step, setStep] = useState(10);
+  useEffect(() => { setMode('main'); }, [layer.id, tab]);
+  const Btn = ({ label, icon: Icon, onClick, active, danger, disabled, text, testid }) => (
     <button
-      type="button" aria-label={label} title={label} disabled={disabled} data-stage-ui
+      type="button" aria-label={label} title={label} disabled={disabled} data-stage-ui data-testid={testid}
       onClick={onClick}
-      className={`flex h-[44px] w-[44px] shrink-0 items-center justify-center rounded-xl ${danger ? 'text-bad' : active ? 'text-accent' : 'text-white'} ${disabled ? 'opacity-35' : 'active:bg-white/15'}`}
+      className={`flex h-[44px] min-w-[40px] flex-1 items-center justify-center gap-1 rounded-xl ${danger ? 'text-bad' : active ? 'bg-accent-strong/30 text-accent' : 'text-white'} ${disabled ? 'opacity-35' : 'active:bg-white/15'}`}
     >
-      <Icon size={18} />
+      {Icon && <Icon size={18} />}{text && <span className="text-[12px] font-semibold">{text}</span>}
     </button>
   );
+  let row;
+  if (mode === 'move') {
+    row = (
+      <>
+        <Btn label="Nudge left" icon={ArrowLeft} onClick={() => actions.nudge(layer.id, -step, 0)} disabled={layer.locked} />
+        <Btn label="Nudge right" icon={ArrowRight} onClick={() => actions.nudge(layer.id, step, 0)} disabled={layer.locked} />
+        <Btn label="Nudge up" icon={ArrowUp} onClick={() => actions.nudge(layer.id, 0, -step)} disabled={layer.locked} />
+        <Btn label="Nudge down" icon={ArrowDown} onClick={() => actions.nudge(layer.id, 0, step)} disabled={layer.locked} />
+        <Btn label={`Step ${step} px - tap to change`} text={`${step}px`} onClick={() => setStep(step === 10 ? 1 : 10)} />
+        <Btn label="Done moving" icon={Check} active onClick={() => setMode('main')} />
+      </>
+    );
+  } else if (mode === 'place') {
+    row = (
+      <>
+        {PLACE_SLOTS.map((p) => (
+          <Btn key={p.id} label={`Place ${p.label.toLowerCase()}`} testid={`slot-${p.id}`} text={p.label} onClick={() => actions.place(layer.id, p.rect)} disabled={layer.locked} />
+        ))}
+        <Btn label="Done placing" icon={Check} active onClick={() => setMode('main')} />
+      </>
+    );
+  } else {
+    row = (
+      <>
+        <Btn label="Move precisely" icon={Move} onClick={() => setMode('move')} disabled={layer.locked} />
+        {tab === 'layout'
+          ? <Btn label="Place in a slot" icon={LayoutGrid} onClick={() => setMode('place')} disabled={layer.locked} />
+          : <Btn label="Match output shape" icon={Crop} onClick={() => actions.matchShape(layer.id)} disabled={layer.locked} />}
+        <Btn label={layer.locked ? 'Unlock' : 'Lock'} icon={layer.locked ? Lock : Unlock} active={layer.locked} onClick={() => actions.toggleLock(layer.id)} />
+        <Btn label={layer.visible === false ? 'Show' : 'Hide'} icon={layer.visible === false ? EyeOff : Eye} onClick={() => actions.toggleVisible(layer.id)} />
+        <Btn label="Bring forward" icon={BringToFront} onClick={() => actions.reorder(layer.id, 1)} disabled={index >= count - 1} />
+        <Btn label="Send backward" icon={SendToBack} onClick={() => actions.reorder(layer.id, -1)} disabled={index <= 0} />
+        <Btn label="Delete layer" icon={Trash2} danger onClick={() => actions.remove(layer.id)} disabled={count <= 1} />
+      </>
+    );
+  }
   return (
     <div
-      data-testid="object-toolbar" data-stage-ui
+      data-testid="object-toolbar" data-mode={mode} data-stage-ui
       onPointerDown={(e) => e.stopPropagation()}
-      className="absolute z-10 flex gap-1 overflow-x-auto rounded-2xl border border-white/15 bg-[#0b0d12]/95 p-1 shadow-2xl no-scrollbar"
-      style={{ left, top, maxWidth: maxW }}
+      className="absolute inset-x-2 bottom-1 z-10 flex items-center gap-0.5 rounded-2xl border border-white/15 bg-[#0b0d12]/95 p-1 shadow-2xl"
+      style={{ height: 52 }}
     >
-      <Btn label={layer.locked ? 'Unlock' : 'Lock'} icon={layer.locked ? Lock : Unlock} active={layer.locked} onClick={() => actions.toggleLock(layer.id)} />
-      <Btn label={layer.visible === false ? 'Show' : 'Hide'} icon={layer.visible === false ? EyeOff : Eye} onClick={() => actions.toggleVisible(layer.id)} />
-      <Btn label="Duplicate" icon={Copy} onClick={() => actions.duplicate(layer.id)} disabled={count >= 8} />
-      <Btn label="Bring to front" icon={BringToFront} onClick={() => actions.reorder(layer.id, 1)} disabled={index >= count - 1} />
-      <Btn label="Send to back" icon={SendToBack} onClick={() => actions.reorder(layer.id, -1)} disabled={index <= 0} />
-      <Btn label="Crop (show source)" icon={Crop} onClick={actions.crop} />
-      <Btn label="Delete layer" icon={Trash2} danger onClick={() => actions.remove(layer.id)} disabled={count <= 1} />
+      {row}
+    </div>
+  );
+}
+
+/**
+ * Two rows above the stage (nothing ever sits on the picture):
+ *  1. Crop | Layout tabs, the reference image, zoom
+ *  2. layer chips - select a layer without hunting for its box
+ */
+function StageBar({ tab, onTab, referenceLabel, referenceLoaded, onPickReference, view, onZoom, onResetZoom, chips, selection, onChip, onAdd }) {
+  const zoomed = view.scale > 1.001;
+  const pill = 'flex h-[36px] shrink-0 items-center gap-1 rounded-full border px-2.5 text-[12px] font-semibold';
+  return (
+    <div data-testid="stage-bar" className="absolute inset-x-2 top-0 flex flex-col">
+      <div className="flex h-[44px] items-center gap-1.5">
+        <div role="tablist" aria-label="Edit mode" className="flex h-[36px] shrink-0 rounded-full border border-white/12 bg-white/[0.04] p-0.5">
+          {[['crop', 'Crop'], ['layout', 'Layout']].map(([id, label]) => (
+            <button key={id} type="button" role="tab" aria-selected={tab === id} data-testid={`tab-${id}`} onClick={() => onTab(id)}
+              className={`h-full rounded-full px-3 text-[12.5px] font-semibold ${tab === id ? 'bg-accent-strong text-white' : 'text-slate-300'}`}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <button
+          type="button" data-testid="reference-chip" onClick={onPickReference} aria-label={`Reference image: ${referenceLabel || 'none'} - change`}
+          className={`${pill} min-w-0 flex-1 ${referenceLoaded ? 'border-white/12 bg-white/[0.06] text-slate-100' : 'border-warn/50 bg-warn/15 text-warn'}`}
+        >
+          <ImageIcon size={14} className="shrink-0" />
+          <span className="truncate">{referenceLoaded ? (referenceLabel || 'Reference') : 'No frame'}</span>
+          <ChevronDown size={14} className="ml-auto shrink-0 opacity-70" />
+        </button>
+        <button type="button" data-testid="zoom-button" onClick={onZoom} aria-label={`Zoom (now ${view.scale.toFixed(1)}×)`}
+          className={`${pill} border-white/12 bg-white/[0.06] tabular-nums text-slate-100`}>
+          <ZoomIn size={14} />{view.scale.toFixed(view.scale % 1 ? 1 : 0)}×
+        </button>
+        {zoomed && (
+          <button type="button" data-testid="zoom-reset" onClick={onResetZoom} aria-label="Reset zoom"
+            className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full border border-white/12 bg-white/[0.06] text-slate-100">
+            <ZoomOut size={15} />
+          </button>
+        )}
+      </div>
+      <div className="flex h-[44px] items-center gap-1.5 overflow-x-auto no-scrollbar" data-testid="layer-chips" role="listbox" aria-label="Select a layer">
+        {chips.map((c) => {
+          const on = selection.type === c.type && (c.type !== 'layer' || selection.id === c.id);
+          return (
+            <button key={`${c.type}:${c.id || ''}`} type="button" role="option" aria-selected={on} data-testid="layer-chip" onClick={() => onChip(c)}
+              className={`flex h-[36px] shrink-0 items-center gap-1.5 rounded-full border px-3 text-[12px] font-semibold ${on ? 'border-transparent text-[#0b0d12]' : 'border-white/12 bg-white/[0.04] text-slate-200'} ${c.hidden ? 'opacity-50' : ''}`}
+              style={on ? { background: c.color } : undefined}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: on ? '#0b0d12' : c.color }} aria-hidden="true" />
+              {c.label}{c.locked && <Lock size={11} />}
+            </button>
+          );
+        })}
+        <button type="button" onClick={onAdd} aria-label="Add layer" className="flex h-[36px] w-[36px] shrink-0 items-center justify-center rounded-full border border-dashed border-white/25 text-slate-300">
+          <Plus size={15} />
+        </button>
+      </div>
     </div>
   );
 }
 
 function EmptyCard({ onPreset, onAddLayer, onRepair, canRepair }) {
   return (
-    <div data-testid="empty-layout-card" data-stage-ui onPointerDown={(e) => e.stopPropagation()} className="absolute inset-x-3 bottom-2 top-[72px] z-10 overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#0b0d12]/95 p-3 shadow-2xl">
+    <div data-testid="empty-layout-card" data-stage-ui onPointerDown={(e) => e.stopPropagation()} className="absolute inset-x-3 bottom-2 top-[118px] z-10 overflow-y-auto overscroll-contain rounded-2xl border border-white/15 bg-[#0b0d12]/95 p-3 shadow-2xl">
       <div className="mb-2.5 flex items-center gap-2">
         <Wand2 size={16} className="text-accent" />
         <h3 className="text-[14px] font-semibold text-ink">Start with a layout</h3>
@@ -412,10 +498,11 @@ function EmptyCard({ onPreset, onAddLayer, onRepair, canRepair }) {
   );
 }
 
-/* ------------------------------------------------------------------ the stack */
+/* ------------------------------------------------------------------ the stage area */
 
 export default function StageStack({
-  info, store, media, mediaVersion, wmImg, wmAspect, tick, sourcePref, onToggleSource, onCrop, onSelected, onAddLayerMenu,
+  info, tab, onTab, store, media, mediaVersion, wmImg, wmAspect, tick, onSelected, onAddLayerMenu,
+  referenceLabel, referenceLoaded = true, onPickReference,
 }) {
   const { layout, subtitles, watermark, selection } = store;
   const layers = layout.layers || [];
@@ -446,7 +533,6 @@ export default function StageStack({
   }, [store, bump]);
 
   const select = useCallback((sel) => { store.actions.setSelection(sel); onSelected?.(sel); }, [store, onSelected]);
-
   const setView = useCallback((kind) => (v) => setViews((p) => ({ ...p, [kind]: typeof v === 'function' ? v(p[kind]) : v })), []);
   const setSrcView = useMemo(() => setView('source'), [setView]);
   const setOutView = useMemo(() => setView('output'), [setView]);
@@ -460,91 +546,90 @@ export default function StageStack({
   }, [selection.type]);
 
   const landscape = info.orientation === 'landscape';
-  const W = info.freeW;
-  const srcBlockH = info.source.collapsed ? info.source.h : info.source.h;
-  const outLeft = landscape ? 0 : Math.max(0, (W - info.output.w) / 2);
-  const outTop = landscape ? 0 : srcBlockH + GAP_PX + Math.max(0, (info.freeH - srcBlockH - GAP_PX - info.output.h) / 2);
-  const srcLeft = landscape ? info.output.w + GAP_PX : Math.max(0, (W - info.source.w) / 2);
+  const P = info.pad || 0;
+  const B = info.bar || 0;
+  const T = computeTabLayout({ tab, width: info.freeW, height: info.freeH, landscape });
+  const mainKind = T.main.kind;
+  const mainView = views[mainKind];
+  const mainSetView = mainKind === 'output' ? setOutView : setSrcView;
+  const ox = P;                // free-area origin inside the region
+  const oy = B + P;
 
-  const common = { layers, layout, subtitles, watermark, wmImg, wmAspect, selection, draft, bumpDraft: bump, media, mediaVersion, onSelect: select, onCommit: commit, onDraft: setDraft, tick: tick + capTick, captionStyle: store.captionStyle };
+  const cycleZoom = () => {
+    const next = mainView.scale < 1.5 ? 2 : mainView.scale < 3 ? 4 : 1;
+    mainSetView(next === 1 ? RESET_VIEW : zoomAbout(mainView, next, T.main.w / 2, T.main.h / 2, T.main.w, T.main.h));
+  };
 
-  // ---- floating toolbar anchor (region coordinates)
-  const selLayer = selection.type === 'layer' ? layers.find((l) => l.id === selection.id) : null;
-  let toolbar = null;
-  if (selLayer && !draft && layers.length > 0) {
-    const rect = selLayer.dst || { x: 0, y: 0, w: 1, h: 1 };
-    const px = normRectToPx(rect, views.output, info.output.w, info.output.h);
-    const maxW = Math.max(120, W - 16);
-    const tbW = Math.min(maxW, 7 * 44 + 6 * 4 + 8);
-    const objTop = outTop + px.y;
-    const objBottom = outTop + px.y + px.h;
-    let top = objTop - 52;
-    if (top < 4) top = Math.min(info.freeH - 52, objBottom + 8);
-    if (objBottom + 8 > info.freeH - 52 && top < 4) top = 4;
-    const left = clamp(outLeft + px.x + px.w / 2 - tbW / 2, 8, Math.max(8, W - tbW - 8));
-    toolbar = (
-      <ObjectToolbar
-        layer={selLayer} index={layers.indexOf(selLayer)} count={layers.length} left={left} top={clamp(top, 4, Math.max(4, info.freeH - 52))} maxW={maxW}
-        actions={{
-          toggleLock: (id) => store.actions.updateLayer(id, { locked: !layers.find((l) => l.id === id).locked }),
-          toggleVisible: (id) => store.actions.updateLayer(id, { visible: layers.find((l) => l.id === id).visible === false }),
-          duplicate: (id) => {
-            const l = layers.find((x) => x.id === id);
-            const copy = { ...l, id: `l_${Date.now().toString(36)}`, name: `${l.name} copy`, locked: false, dst: { ...l.dst, x: Math.min(0.8, (l.dst?.x || 0) + 0.05), y: Math.min(0.8, (l.dst?.y || 0) + 0.05) } };
-            store.actions.addLayer(copy);
-          },
-          reorder: (id, dir) => {
-            const i = layers.findIndex((l) => l.id === id);
-            const j = i + dir;
-            if (j < 0 || j >= layers.length) return;
-            const next = [...layers];
-            const [m] = next.splice(i, 1);
-            next.splice(j, 0, m);
-            store.actions.reorderLayers(next);
-          },
-          crop: onCrop,
-          remove: (id) => store.actions.deleteLayer(id),
-        }}
-      />
-    );
+  const common = { layers, layout, subtitles, watermark, wmImg, wmAspect, selection, draft, bumpDraft: bump, media, mediaVersion, onSelect: select, onCommit: commit, onDraft: setDraft, tick: tick + capTick, captionStyle: store.captionStyle, pad: P };
+
+  // ---- chips: every layer (top of the canvas first); captions/watermark only exist on the output
+  const chips = layers.slice().reverse().map((l) => ({ type: 'layer', id: l.id, label: l.name, color: l.color || '#94a3b8', hidden: l.visible === false, locked: l.locked }));
+  if (tab === 'layout') {
+    chips.push({ type: 'captions', id: null, label: 'Captions', color: '#7fb6f5' });
+    if (watermark?.enabled && watermark?.url) chips.push({ type: 'watermark', id: null, label: 'Logo', color: '#e2e8f0' });
   }
 
+  // ---- toolbar (a strip the layout reserves, so it never covers a box)
+  const selLayer = selection.type === 'layer' ? layers.find((l) => l.id === selection.id) : null;
+  const key = tab === 'crop' ? 'src' : 'dst';
+  const toolbar = selLayer && layers.length > 0 ? (
+    <ObjectToolbar
+      tab={tab} layer={selLayer} index={layers.indexOf(selLayer)} count={layers.length}
+      actions={{
+        nudge: (id, dxPx, dyPx) => {
+          const l = layers.find((x) => x.id === id);
+          if (!l || l.locked) return;
+          const r = l[key] || { x: 0, y: 0, w: 1, h: 1 };
+          const [cw, ch] = key === 'src' ? [1920, 1080] : [1080, 1920];
+          store.actions.beginGesture();
+          store.actions.patchLayer(id, { [key]: { ...r, x: Math.round(clamp(r.x + dxPx / cw, 0, 1 - r.w) * 10000) / 10000, y: Math.round(clamp(r.y + dyPx / ch, 0, 1 - r.h) * 10000) / 10000 } });
+        },
+        place: (id, rect) => { store.actions.beginGesture(); store.actions.patchLayer(id, { dst: { ...rect } }); },
+        matchShape: (id) => {
+          const l = layers.find((x) => x.id === id);
+          if (!l?.src || !l?.dst) return;
+          store.actions.beginGesture();
+          store.actions.patchLayer(id, { src: matchCropToOutput(l.src, l.dst) });
+        },
+        toggleLock: (id) => store.actions.updateLayer(id, { locked: !layers.find((l) => l.id === id).locked }),
+        toggleVisible: (id) => store.actions.updateLayer(id, { visible: layers.find((l) => l.id === id).visible === false }),
+        reorder: (id, dir) => {
+          const i = layers.findIndex((l) => l.id === id);
+          const j = i + dir;
+          if (j < 0 || j >= layers.length) return;
+          const next = [...layers];
+          const [m] = next.splice(i, 1);
+          next.splice(j, 0, m);
+          store.actions.reorderLayers(next);
+        },
+        remove: (id) => store.actions.deleteLayer(id),
+      }}
+    />
+  ) : null;
+
   return (
-    <div
-      data-testid="stage-region"
-      className="absolute inset-0 overflow-hidden"
-      style={{ isolation: 'isolate', zIndex: 0, touchAction: 'none' }}
-    >
-      {/* SOURCE */}
-      {info.source.collapsed ? (
-        <button
-          type="button" data-testid="source-handle" onClick={onToggleSource} aria-label="Show source stage"
-          className="absolute flex items-center justify-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.05] text-[12px] font-semibold text-slate-200 active:bg-white/10"
-          style={{ left: srcLeft, top: 0, width: info.source.w, height: info.source.h }}
-        >
-          Source <ChevronDown size={14} />
-        </button>
-      ) : (
-        <div className="absolute" style={{ left: srcLeft, top: 0, width: info.source.w, height: info.source.h }}>
-          <Stage kind="source" w={info.source.w} h={info.source.h} view={views.source} setView={setSrcView} {...common}>
-            {!landscape && (
-              <button
-                type="button" data-stage-ui aria-label="Hide source stage" data-testid="source-hide"
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={onToggleSource}
-                className="absolute right-1 top-1 flex h-[44px] w-[44px] items-center justify-center rounded-full bg-black/60 text-white"
-              >
-                <ChevronUp size={16} />
-              </button>
-            )}
-          </Stage>
-        </div>
+    <div data-testid="stage-region" data-tab={tab} className="absolute inset-0 overflow-hidden" style={{ isolation: 'isolate', zIndex: 0, touchAction: 'none' }}>
+      {B > 0 && (
+        <StageBar
+          tab={tab} onTab={onTab} referenceLabel={referenceLabel} referenceLoaded={referenceLoaded} onPickReference={onPickReference}
+          view={mainView} onZoom={cycleZoom} onResetZoom={() => mainSetView(RESET_VIEW)}
+          chips={chips} selection={selection} onAdd={onAddLayerMenu}
+          onChip={(c) => select({ type: c.type, id: c.id })}
+        />
       )}
 
-      {/* OUTPUT */}
-      <div className="absolute" style={{ left: outLeft, top: outTop, width: info.output.w, height: info.output.h }}>
-        <Stage kind="output" w={info.output.w} h={info.output.h} view={views.output} setView={setOutView} {...common} />
+      {/* the ONE interactive stage */}
+      <div className="absolute" style={{ left: ox + T.main.x - P, top: oy + T.main.y - P, width: T.main.w + 2 * P, height: T.main.h + 2 * P }}>
+        <Stage key={mainKind} kind={mainKind} w={T.main.w} h={T.main.h} view={mainView} setView={mainSetView} {...common} />
       </div>
+
+      {/* passive live preview of the result (Crop tab) - picture only, no boxes */}
+      {T.preview && (
+        <div className="absolute" style={{ left: ox + T.preview.x - P, top: oy + T.preview.y - P, width: T.preview.w + 2 * P, height: T.preview.h + 2 * P }}>
+          <Stage kind="output" passive w={T.preview.w} h={T.preview.h} view={RESET_VIEW} setView={() => {}} {...common} />
+          <span className="pointer-events-none absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#0b0d12] px-2 text-[10px] font-semibold uppercase tracking-wider text-muted" style={{ top: P }}>Result</span>
+        </div>
+      )}
 
       {toolbar}
 

@@ -87,13 +87,17 @@ export default function PeekControls({ channels = [], onMore, onPickLogo }) {
     if (!layer) return <div className={wrap}><p className="py-3 text-[12px] text-muted">Select a layer on the stage.</p></div>;
     return (
       <div className={wrap} data-testid="peek-layer">
-        <div className={row}><NudgePad layer={layer} compact /></div>
         <div className={row}>
           <div className="flex flex-1 gap-1.5" role="group" aria-label="Fit">
             {['cover', 'contain'].map((f) => (
               <Btn key={f} label={`Fit: ${f}`} active={(layer.fit || 'cover') === f} onClick={() => s.updateLayer(layer.id, { fit: f })} className="flex-1 capitalize">{f}</Btn>
             ))}
           </div>
+        </div>
+        <div className={row}>
+          <Btn label="Keep proportions when resizing" active={layer.aspect_lock !== false} onClick={() => s.updateLayer(layer.id, { aspect_lock: layer.aspect_lock === false })} className="flex-1">
+            {layer.aspect_lock !== false ? 'Proportions locked' : 'Free resize'}
+          </Btn>
           <MoreBtn onMore={onMore} />
         </div>
       </div>
