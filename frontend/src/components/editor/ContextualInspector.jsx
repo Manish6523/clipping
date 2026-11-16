@@ -497,13 +497,18 @@ export default function ContextualInspector({ channels = [] }) {
             <p className="text-[11px] text-muted leading-relaxed">
               AutoClip automatically creates a stylized attribution badge with the streamer&apos;s platform logo (YouTube/Twitch) and their handle in viral bold font.
             </p>
-            <div className="flex items-center justify-center p-3 bg-black/70 rounded-lg border border-white/10">
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-black/80 border border-white/20 shadow-lg">
-                <span className="w-5 h-3.5 rounded bg-red-600 flex items-center justify-center">
-                  <span className="w-0 h-0 border-t-2 border-b-2 border-l-3 border-transparent border-l-white" />
+            <div className="flex items-center justify-center p-3 bg-black/40 rounded-lg border border-white/5">
+              <div className="flex items-center gap-1.5 py-1">
+                <span className="w-5 h-3.5 rounded bg-red-600 border border-black flex items-center justify-center shadow-sm">
+                  <span className="w-0 h-0 border-t-2 border-b-2 border-l-3 border-transparent border-l-white ml-0.5" />
                 </span>
-                <span className="font-extrabold text-white text-xs tracking-wide uppercase font-mono drop-shadow">
-                  @{useTemplateEditorStore.getState().selectedChannel || 'STREAMER'}
+                <span
+                  className="font-extrabold text-white text-sm tracking-wider uppercase font-mono"
+                  style={{
+                    textShadow: '-1.5px -1.5px 0 #000, 1.5px -1.5px 0 #000, -1.5px 1.5px 0 #000, 1.5px 1.5px 0 #000, 2px 2px 3px rgba(0,0,0,0.8)'
+                  }}
+                >
+                  {useTemplateEditorStore.getState().selectedChannel?.toUpperCase() || 'ISHOWSPEED'}
                 </span>
               </div>
             </div>
