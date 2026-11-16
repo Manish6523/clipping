@@ -352,9 +352,14 @@ class WebUIServer:
             row4 = await c4.fetchone()
             published_count = row4[0] if row4 else 0
 
+        # Calculate currently live channels count from cached watcher presence
+        streamer_statuses = get_all_streamer_statuses()
+        live_streamers_count = sum(1 for s in streamer_statuses.values() if s.get("is_live"))
+
         return web.json_response({
             "status": "online",
             "channels_count": channels_count,
+            "live_channels_count": live_streamers_count,
             "pending_clips_count": pending_count,
             "queued_count": queued_count,
             "published_count": published_count,

@@ -97,6 +97,14 @@ export default function Navbar({ pendingCount = 0, activePipelines = [], status 
                   <>
                     <Icon size={15} className={isActive ? 'text-accent' : ''} />
                     <span className={isActive ? 'inline' : 'hidden xl:inline'}>{item.label}</span>
+                    {item.to === '/channels' && (status.live_channels_count > 0 || status.channels_count > 0) && (
+                      <span className={`inline-flex items-center gap-1 min-w-[18px] h-[18px] px-1.5 rounded-full text-[10px] font-bold leading-none tabular-nums shadow-sm ${
+                        status.live_channels_count > 0 ? 'bg-red-500 text-white animate-pulse' : 'bg-white/10 text-slate-300'
+                      }`}>
+                        {status.live_channels_count > 0 && <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />}
+                        {status.live_channels_count > 0 ? `${status.live_channels_count} live` : (status.channels_count || 0)}
+                      </span>
+                    )}
                     {item.badge && pendingCount > 0 && (
                       <span className="min-w-[18px] h-[18px] px-1 rounded-full bg-accent-strong text-white text-[10px] font-bold leading-[18px] text-center tabular-nums">{pendingCount > 99 ? '99+' : pendingCount}</span>
                     )}
