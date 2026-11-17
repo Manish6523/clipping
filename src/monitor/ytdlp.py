@@ -98,7 +98,11 @@ def base_args() -> List[str]:
     # BGUtil PO-token Provider integration: if local POT server (or configured endpoint) is active, pass extractor-arg
     pot_url = os.getenv("YTDLP_POT_SERVER", "http://127.0.0.1:4416").strip()
     if pot_url:
-        args += ["--extractor-args", f"youtubepot-bgutilhttp:base_url={pot_url}"]
+        server_home = str(PROJECT_ROOT.parent / "bgutil-ytdlp-pot-provider" / "server")
+        args += [
+            "--extractor-args", f"youtubepot-bgutilscript:server_home={server_home}",
+            "--extractor-args", f"youtubepot-bgutilhttp:base_url={pot_url}",
+        ]
 
     # Allow user-configured proxy if datacenter VPS IP is strictly blocked
     proxy = os.getenv("YTDLP_PROXY", "").strip()
