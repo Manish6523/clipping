@@ -171,15 +171,21 @@ def status() -> dict:
     except Exception:
         ejs = False
 
-    # Check local BGUtil POT provider server health
+    # Check local BGUtil POT provider server health via its /ping endpoint
     pot_alive = False
     try:
         import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:4416/", headers={"User-Agent": "AutoClipHealthCheck"})
+        req = urllib.request.Request("http://127.0.0.1:4416/ping", headers={"User-Agent": "AutoClipHealthCheck"})
         with urllib.request.urlopen(req, timeout=1.5) as r:
-            pot_alive = (r.status in (200, 404))
+            pot_alive = (r.status == 200)
     except Exception:
-        pot_alive = False
+        # Fallback to root check
+        try:
+            req = urllib.request.Request("http://127.0.0.1:4416/", headers={"User-Agent": "AutoClipHealthCheck"})
+            with urllib.request.urlopen(req, timeout=1.5) as r:
+                pot_alive = True
+        except Exception:
+            pot_alive = False
 
     return {
         "yt_dlp_version": version,
