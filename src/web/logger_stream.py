@@ -106,7 +106,7 @@ def update_pipeline_progress(
     # Also update per-channel pipeline tracking
     if channel_id:
         c_key = channel_id.lower()
-        if status in ("idle", "completed") and step == 0:
+        if (status in ("idle", "completed") and step == 0) or status == "error":
             _active_pipelines.pop(c_key, None)
         else:
             _active_pipelines[c_key] = {
@@ -123,10 +123,10 @@ def update_pipeline_progress(
 def get_pipeline_state() -> Dict[str, Any]:
     """Get active pipeline status for dashboard banner along with all active pipelines."""
     now = time.time()
-    # Prune stale pipelines older than 5 minutes
+    # Prune stale pipelines older than 5 minutes or in error/idle state
     active_list = [
         p for p in _active_pipelines.values()
-        if (now - p.get("updated_at", now)) < 300
+        if (now - p.get("updated_at", now)) < 300 and p.get("status") in ("triggered", "processing")
     ]
     state = dict(_active_pipeline)
     state["active_pipelines"] = active_list

@@ -101,8 +101,11 @@ function AppLayout() {
       ]);
       setStatus(sData);
       setPipelineAlert(pData);
-      if (pData?.active_pipelines) {
-        setActivePipelines(pData.active_pipelines);
+      const activeRunning = (pData?.active_pipelines || []).filter(
+        (p) => p.status === 'triggered' || p.status === 'processing'
+      );
+      if (activeRunning.length > 0) {
+        setActivePipelines(activeRunning);
       } else if (pData && (pData.status === 'triggered' || pData.status === 'processing')) {
         setActivePipelines([pData]);
       } else {
