@@ -252,6 +252,7 @@ class ViralScorer:
         await self._sync_settings_from_db()
         self._init_client()
 
+        self.last_best_score = 0
         if not self._client or not self.api_key:
             logger.warning("No Gemini client or API key available. Skipping clip creation (heuristics disabled).")
             return []
@@ -282,6 +283,7 @@ class ViralScorer:
             else:
                 candidates.extend(r)
 
+        self.last_best_score = max((c.virality_score for c in candidates), default=0)
         selected = select_clips(candidates, min_score=min_score, min_len=min_len, max_len=max_len, max_clips=max_clips)
         logger.info("Gemini proposed %d candidates; selected %d: %s", len(candidates), len(selected),
                     [(c.suggested_title, c.virality_score) for c in selected])

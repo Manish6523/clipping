@@ -7,6 +7,7 @@ All imports placed at the top of the file according to standards.
 """
 
 import asyncio
+import os
 import json
 import logging
 import signal
@@ -464,10 +465,19 @@ class AutoClipEngine:
             self._live_busy = True
             self._live_current = {"channel_id": channel_id, "moment_id": metadata.get("moment_id"),
                                   "started_at": time.time()}
+            limit = float(os.getenv("LIVE_MOMENT_TIMEOUT_S", "1200"))
             try:
-                await self._process_live_moment(path, metadata)
+                # Watchdog: one stuck moment (hung Whisper, Gemini or ffmpeg) must never block the queue.
+                await asyncio.wait_for(self._process_live_moment(path, metadata), timeout=limit)
+            except asyncio.TimeoutError:
+                logger.error("Live moment for %s took longer than %.0f s - abandoned so the queue keeps moving.", channel_id, limit)
+                telemetry.moment_event(metadata.get("moment_id"), "failed", channel_id,
+                                       note=f"timed out after {limit / 60:.0f} min")
+                update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Idle - Awaiting Stream Moments")
             except Exception as e:
                 logger.error("Live worker error for %s: %s", channel_id, e, exc_info=True)
+                telemetry.moment_event(metadata.get("moment_id"), "failed", channel_id, note=str(e)[:200])
+                update_pipeline_progress("idle", channel_id=channel_id, step=0, step_name="Idle - Awaiting Stream Moments")
             finally:
                 self._live_busy = False
                 self._live_current = None
@@ -611,6 +621,9 @@ class AutoClipEngine:
                             reasons = [f.get("note", f.get("type")) for f in c_cand.get("flags", [])]
                     elif candidates:
                         score_val = getattr(candidates[0], "virality_score", 0)
+                    else:
+                        # The legacy scorer drops everything under the threshold; report what Gemini really gave.
+                        score_val = int(getattr(self.scorer, "last_best_score", 0) or 0)
 
                     if reasons:
                         rej_reason = f"Rejected: {'; '.join(reasons)} (Score: {score_val} < {min_score})"

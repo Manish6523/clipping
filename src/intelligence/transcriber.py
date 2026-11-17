@@ -4,6 +4,8 @@ All imports placed at the top of the file according to standards.
 """
 
 import asyncio
+import time
+import sys
 import json
 import logging
 import os
@@ -40,6 +42,118 @@ def _whisper_slots() -> asyncio.Semaphore:
         import config.settings as s
         _WHISPER_SLOTS = asyncio.Semaphore(max(1, int(getattr(s, "WHISPER_CONCURRENCY", 1) or 1)))
     return _WHISPER_SLOTS
+
+
+class TranscriptionTimeout(RuntimeError):
+    pass
+
+
+# One worker process per (model, device, compute) shared by every Transcriber instance.
+WORKER_CMD = [sys.executable, "-m", "src.intelligence.whisper_worker"]
+MODEL_LOAD_TIMEOUT_S = 900          # first use may download the model
+IDLE_SHUTDOWN_S = 900               # free the RAM of models nobody used for 15 min
+_SPEED = {"tiny": 0.8, "base": 1.0, "small": 2.0, "medium": 4.0, "large": 8.0, "distil": 2.0, "turbo": 3.0}
+
+
+def transcribe_timeout(audio_path: str, model_size: str) -> float:
+    """Generous ceiling for one job: 2 min + (audio seconds x a per-model factor). A real run is far
+    below this; only a hang reaches it. WHISPER_TIMEOUT_FACTOR scales it (slow machines)."""
+    try:
+        seconds = max(1.0, (os.path.getsize(audio_path) - 44) / 32000.0)     # 16 kHz mono s16 wav
+    except OSError:
+        seconds = 600.0
+    key = next((k for k in _SPEED if k in (model_size or "")), "small")
+    factor = float(os.getenv("WHISPER_TIMEOUT_FACTOR", "1") or 1)
+    return 120.0 + seconds * _SPEED[key] * 1.5 * factor
+
+
+class _WhisperProcess:
+    def __init__(self, model_size: str, device: str, compute: str):
+        self.key = (model_size, device, compute)
+        self.proc: Optional[asyncio.subprocess.Process] = None
+        self.lock = asyncio.Lock()
+        self.next_id = 0
+        self.last_used = time.time()
+
+    async def _start(self) -> None:
+        model_size, device, compute = self.key
+        logger.info("Starting Whisper worker process for '%s' (%s/%s)...", model_size, device, compute)
+        self.proc = await asyncio.create_subprocess_exec(
+            *WORKER_CMD, model_size, device, compute,
+            stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE, stderr=None,
+            cwd=str(Path(__file__).resolve().parents[2]), limit=256 * 1024 * 1024,
+        )
+        try:
+            line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=MODEL_LOAD_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            await self.kill("model load timed out")
+            raise RuntimeError(f"Whisper model '{model_size}' did not load within {MODEL_LOAD_TIMEOUT_S}s")
+        msg = json.loads(line or b"{}") if line else {}
+        if not msg.get("ready"):
+            await self.kill("model load failed")
+            raise RuntimeError(f"Whisper model '{model_size}' could not be loaded: {msg.get('load_error') or 'worker exited'}")
+
+    async def kill(self, why: str) -> None:
+        p, self.proc = self.proc, None
+        if p and p.returncode is None:
+            logger.warning("Killing Whisper worker '%s': %s", self.key[0], why)
+            try:
+                p.kill()
+                await asyncio.wait_for(p.wait(), timeout=10)
+            except Exception:
+                pass
+
+    async def run(self, audio_path: str, beam: int, timeout: float) -> Dict[str, Any]:
+        async with self.lock:
+            if self.proc is None or self.proc.returncode is not None:
+                await self._start()
+            self.next_id += 1
+            job_id = self.next_id
+            self.last_used = time.time()
+            try:
+                self.proc.stdin.write((json.dumps({"id": job_id, "audio": audio_path, "beam": beam}) + "\n").encode())
+                await self.proc.stdin.drain()
+                while True:
+                    line = await asyncio.wait_for(self.proc.stdout.readline(), timeout=timeout)
+                    if not line:
+                        raise RuntimeError("Whisper worker exited during transcription (out of memory?)")
+                    msg = json.loads(line)
+                    if msg.get("id") == job_id:
+                        break
+            except asyncio.TimeoutError:
+                await self.kill(f"no result after {timeout:.0f}s")
+                raise TranscriptionTimeout(f"Whisper '{self.key[0]}' gave no result within {timeout:.0f}s (worker restarted)")
+            except asyncio.CancelledError:
+                await self.kill("caller cancelled")       # a half-finished job must not answer the next one
+                raise
+            except Exception:
+                await self.kill("protocol error")
+                raise
+            finally:
+                self.last_used = time.time()
+            if "error" in msg:
+                raise RuntimeError(f"Whisper failed: {msg['error']}")
+            return msg["ok"]
+
+
+_WORKERS: Dict[tuple, _WhisperProcess] = {}
+
+
+def _worker_for(model_size: str, device: str, compute: str) -> _WhisperProcess:
+    now = time.time()
+    for k, w in list(_WORKERS.items()):          # retire idle models
+        if k != (model_size, device, compute) and not w.lock.locked() and w.proc and now - w.last_used > IDLE_SHUTDOWN_S:
+            asyncio.ensure_future(w.kill("idle"))
+            _WORKERS.pop(k, None)
+    key = (model_size, device, compute)
+    if key not in _WORKERS:
+        _WORKERS[key] = _WhisperProcess(*key)
+    return _WORKERS[key]
+
+
+def whisper_status() -> List[Dict[str, Any]]:
+    return [{"model": k[0], "running": bool(w.proc and w.proc.returncode is None), "busy": w.lock.locked(),
+             "idle_s": round(time.time() - w.last_used)} for k, w in _WORKERS.items()]
 
 
 class Transcriber:
@@ -126,58 +240,17 @@ class Transcriber:
         else:
             audio_path = path
 
-        model = self._get_model()
-
-        if model == "fallback":
-            # Never invent a transcript: fake words produced clips with nonsense captions/scores.
-            self._model = None  # retry loading next time (e.g. after the model download succeeds)
-            raise RuntimeError(
-                f"Whisper model '{self.model_size}' could not be loaded (not installed, download blocked, "
-                f"or not enough memory). Check the server log; try a smaller model in Settings."
-            )
-
-        loop = asyncio.get_running_loop()
-
-        def _run_transcription():
-            segments_generator, info = model.transcribe(
-                audio_path,
-                word_timestamps=True,
-                beam_size=self.beam_size,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=400),
-            )
-
-            full_text = []
-            all_words: List[Dict[str, Any]] = []
-            segment_list: List[Dict[str, Any]] = []
-
-            for seg in segments_generator:
-                segment_list.append({
-                    "start": seg.start,
-                    "end": seg.end,
-                    "text": seg.text.strip(),
-                })
-                full_text.append(seg.text.strip())
-
-                if seg.words:
-                    for w in seg.words:
-                        all_words.append({
-                            "word": w.word.strip(),
-                            "start": w.start,
-                            "end": w.end,
-                            "probability": getattr(w, "probability", 1.0),
-                        })
-
-            return {
-                "text": " ".join(full_text),
-                "words": all_words,
-                "segments": segment_list,
-                "language": info.language,
-                "duration": info.duration,
-            }
-
+        if not HAS_FASTER_WHISPER:
+            raise RuntimeError("faster-whisper is not installed on this server")
+        dev, comp = self.device, self.compute_type
+        if dev == "auto":
+            dev, comp = "cpu", "int8"
+        size = self.model_size
+        timeout = transcribe_timeout(audio_path, size)
+        worker = _worker_for(size, dev, comp)
         async with _whisper_slots():
-            result = await loop.run_in_executor(None, _run_transcription)
+            result = await worker.run(audio_path, self.beam_size, timeout)
+        self._loaded_size = size
 
         # Persist full transcript words to data/transcripts/{source_id}.json
         try:
