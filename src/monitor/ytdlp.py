@@ -94,6 +94,12 @@ def base_args() -> List[str]:
         "--force-ipv4",
         "--remote-components", "ejs:github",
     ]
+
+    # BGUtil PO-token Provider integration: if local POT server (or configured endpoint) is active, pass extractor-arg
+    pot_url = os.getenv("YTDLP_POT_SERVER", "http://127.0.0.1:4416").strip()
+    if pot_url:
+        args += ["--extractor-args", f"youtubepot-bgutilhttp:base_url={pot_url}"]
+
     # Allow user-configured proxy if datacenter VPS IP is strictly blocked
     proxy = os.getenv("YTDLP_PROXY", "").strip()
     if proxy:
@@ -164,10 +170,22 @@ def status() -> dict:
         ejs = True
     except Exception:
         ejs = False
+
+    # Check local BGUtil POT provider server health
+    pot_alive = False
+    try:
+        import urllib.request
+        req = urllib.request.Request("http://127.0.0.1:4416/", headers={"User-Agent": "AutoClipHealthCheck"})
+        with urllib.request.urlopen(req, timeout=1.5) as r:
+            pot_alive = (r.status in (200, 404))
+    except Exception:
+        pot_alive = False
+
     return {
         "yt_dlp_version": version,
         "js_runtime": runtime,
         "challenge_solver_installed": ejs,
+        "pot_provider_active": pot_alive,
         "cookies": {"present": bool(c), "path": str(c) if c else None,
                     "updated": c.stat().st_mtime if c else None,
                     "expires": cookies_expiry(c) if c else None},
