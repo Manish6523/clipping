@@ -858,7 +858,7 @@ class AutoClipEngine:
                         censor_words=words,
                         censor_cfg=censor_cfg,
                         channel_name=channel_id,
-                        platform="twitch" if getattr(channel_obj, "platform", None) == "twitch" else "youtube",
+                        platform=(channel_record.get("platform") if channel_record else "twitch") or "twitch",
                     )
                 flags_json = merge_flags(flags_json, summarize_censor(words, clip_start, clip_dur), censor_cfg)
                 suggested_title = censor_text(suggested_title, censor_cfg)
