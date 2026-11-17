@@ -1139,6 +1139,8 @@ class WebUIServer:
         auto_edit_style = db_settings.get("auto_edit_style", {}).get("value") or getattr(s, "AUTO_EDIT_STYLE", "punchy")
         auto_edit_hook = (db_settings.get("auto_edit_hook_card", {}).get("value") or str(getattr(s, "AUTO_EDIT_HOOK_CARD", True))).lower() in ("true", "1", "yes")
 
+        enable_background_vod = (db_settings.get("enable_background_vod", {}).get("value") or str(getattr(s, "ENABLE_BACKGROUND_VOD", False))).lower() in ("true", "1", "yes")
+
         vj_raw = (db_settings.get("video_judge_enabled", {}).get("value") or "true").lower()
         try:
             vj_top_k = int(db_settings.get("video_judge_top_k", {}).get("value") or 3)
@@ -1148,6 +1150,7 @@ class WebUIServer:
         return web.json_response({
             "video_judge_enabled": vj_raw in ("true", "1", "yes", "on"),
             "video_judge_top_k": vj_top_k,
+            "enable_background_vod": enable_background_vod,
             "gemini_api_keys": keys_list,
             "gemini_model": model_val,
             "min_virality_score": int(min_score),
@@ -1266,6 +1269,12 @@ class WebUIServer:
                                          description="How many candidates the video judge watches")
             except (TypeError, ValueError):
                 pass
+
+        if data.get("enable_background_vod") is not None:
+            vod_val = bool(data["enable_background_vod"])
+            await set_system_setting("enable_background_vod", "true" if vod_val else "false",
+                                     category="ingestion", description="Auto-download and transcribe offline stream VOD archives")
+            s.ENABLE_BACKGROUND_VOD = vod_val
 
         auto_edit_en = data.get("auto_edit_enabled")
         if auto_edit_en is not None:

@@ -1440,15 +1440,21 @@ class AutoClipEngine:
             await asyncio.sleep(5)  # initial brief delay
             while self.running:
                 try:
-                    channels = await get_active_channels()
-                    for c in channels:
-                        if not self.running:
-                            break
-                        await self.vod_watcher.poll_channel_vods(
-                            platform=c["platform"],
-                            channel_id=c["channel_id_or_handle"],
-                            template_name=c["template_name"],
-                        )
+                    import config.settings as s
+                    from src.database import get_system_setting
+                    vod_setting = await get_system_setting("enable_background_vod")
+                    vod_enabled = (vod_setting if vod_setting is not None else str(getattr(s, "ENABLE_BACKGROUND_VOD", False))).lower() in ("true", "1", "yes")
+
+                    if vod_enabled:
+                        channels = await get_active_channels()
+                        for c in channels:
+                            if not self.running:
+                                break
+                            await self.vod_watcher.poll_channel_vods(
+                                platform=c["platform"],
+                                channel_id=c["channel_id_or_handle"],
+                                template_name=c["template_name"],
+                            )
                 except Exception as e:
                     logger.error("VOD poll loop error: %s", e)
                 await asyncio.sleep(300)

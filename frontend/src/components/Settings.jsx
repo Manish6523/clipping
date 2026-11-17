@@ -87,6 +87,7 @@ export default function Settings() {
   const [videoJudgeTopK, setVideoJudgeTopK] = useState(3);
   const [autoEditStyle, setAutoEditStyle] = useState('punchy');
   const [autoEditHookCard, setAutoEditHookCard] = useState(true);
+  const [enableBackgroundVod, setEnableBackgroundVod] = useState(false);
   const [banner, setBanner] = useState(null);
 
   useEffect(() => {
@@ -111,6 +112,7 @@ export default function Settings() {
       setVideoJudgeTopK(res.data.video_judge_top_k || 3);
       setAutoEditStyle(res.data.auto_edit_style || 'punchy');
       setAutoEditHookCard(res.data.auto_edit_hook_card ?? true);
+      setEnableBackgroundVod(Boolean(res.data.enable_background_vod));
     } catch (err) {
       console.error('Failed to load settings:', err);
     }
@@ -196,6 +198,7 @@ export default function Settings() {
         auto_edit_enabled: autoEditEnabled,
         auto_edit_style: autoEditStyle,
         auto_edit_hook_card: autoEditHookCard,
+        enable_background_vod: enableBackgroundVod,
         video_judge_enabled: videoJudge,
         video_judge_top_k: videoJudgeTopK,
         ...(censor ? { censor } : {}),
@@ -629,6 +632,21 @@ export default function Settings() {
                   {WHISPER_MODELS.map((m) => (
                     <option key={m.id} value={m.id}>{m.label}</option>
                   ))}
+                </Select>
+              </Field>
+            </div>
+
+            <div className="pt-4 border-t border-line">
+              <Field
+                label="Background Offline VOD Ingestion"
+                hint="When disabled (recommended), AutoClip skips downloading & transcribing multi-hour past stream archives, reserving full CPU power for real-time live hype moments and Quick Clips."
+              >
+                <Select
+                  value={enableBackgroundVod ? 'true' : 'false'}
+                  onChange={(e) => setEnableBackgroundVod(e.target.value === 'true')}
+                >
+                  <option value="false">Disabled (Recommended — Focus on Live Streams & Quick Clips)</option>
+                  <option value="true">Enabled (Auto-download full offline VOD archives)</option>
                 </Select>
               </Field>
             </div>

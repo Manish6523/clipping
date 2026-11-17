@@ -106,6 +106,9 @@ AUDIO_PEAK_DB_THRESHOLD = float(os.getenv("AUDIO_PEAK_DB_THRESHOLD", "-6.0"))
 # Pipeline Concurrency (1 on low-spec 2-vCPU VPS to prevent lockups, 3-8 on multi-core local machines)
 MAX_CONCURRENT_JOBS = int(os.getenv("MAX_CONCURRENT_JOBS", "1"))
 
+# Background VOD Ingestion (Auto-downloading and transcribing past full-stream VODs)
+ENABLE_BACKGROUND_VOD = os.getenv("ENABLE_BACKGROUND_VOD", "false").lower() in ("true", "1", "yes")
+
 # Scheduler
 DRIP_INTERVAL_HOURS = int(os.getenv("DRIP_INTERVAL_HOURS", "4"))
 
