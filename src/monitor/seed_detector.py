@@ -28,7 +28,7 @@ from config.settings import (
     BUFFER_DIR,
     STORY_SEEDS_DIR,
 )
-from src.intelligence.transcriber import Transcriber, _whisper_slots
+from src.intelligence.transcriber import Transcriber, WhisperBusy
 from src.intelligence.session_storyline import (
     get_or_create_active_session,
     stage_seed_snippet,
@@ -218,19 +218,15 @@ class SeedDetector:
 
         self._last_processed_chunk_mtime = cmtime
 
-        # Acquire whisper concurrency slot
-        slots = _whisper_slots()
-        try:
-            await asyncio.wait_for(slots.acquire(), timeout=1.0)
-        except asyncio.TimeoutError:
-            # Hype detection or another transcription is using the slot; skip to protect hype processing
-            logger.debug("Whisper busy; skipping seed check for %s", self.channel_handle)
-            return None
-
         t0 = time.time()
         try:
-            # Transcribe with tiny.en
-            res = await self.transcriber.transcribe(str(latest_chunk))
+            # Low priority: skip this chunk if hype processing (or anything else) holds every Whisper slot.
+            # transcribe() takes the slot itself - holding one here as well deadlocked all transcription.
+            try:
+                res = await self.transcriber.transcribe(str(latest_chunk), slot_wait=1.0)
+            except WhisperBusy:
+                logger.debug("Whisper busy; skipping seed check for %s", self.channel_handle)
+                return None
             t1 = time.time()
             elapsed = t1 - t0
 
@@ -280,8 +276,6 @@ class SeedDetector:
 
         except Exception as e:
             logger.warning("Error during seed detection for %s: %s", self.channel_handle, e)
-        finally:
-            slots.release()
 
         return None
 

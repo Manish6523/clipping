@@ -48,6 +48,10 @@ class TranscriptionTimeout(RuntimeError):
     pass
 
 
+class WhisperBusy(RuntimeError):
+    """Raised when slot_wait is given and no Whisper slot frees up in time (low-priority callers skip)."""
+
+
 # One worker process per (model, device, compute) shared by every Transcriber instance.
 WORKER_CMD = [sys.executable, "-m", "src.intelligence.whisper_worker"]
 MODEL_LOAD_TIMEOUT_S = 900          # first use may download the model
@@ -230,9 +234,12 @@ class Transcriber:
             raise RuntimeError(f"Audio extraction failed for {v_path.name}: {tail[0][:200]}")
         return output_wav
 
-    async def transcribe(self, audio_or_video_path: str) -> Dict[str, Any]:
+    async def transcribe(self, audio_or_video_path: str, slot_wait: Optional[float] = None) -> Dict[str, Any]:
         """
         Transcribe media and return structured word-level timestamps.
+
+        The Whisper slot is taken here and nowhere else (callers must not hold one: nesting deadlocks).
+        slot_wait: give up with WhisperBusy if no slot frees within this many seconds (None = wait).
         """
         path = str(audio_or_video_path)
         if not path.endswith(".wav"):
@@ -248,8 +255,18 @@ class Transcriber:
         size = self.model_size
         timeout = transcribe_timeout(audio_path, size)
         worker = _worker_for(size, dev, comp)
-        async with _whisper_slots():
+        slots = _whisper_slots()
+        if slot_wait is None:
+            await slots.acquire()
+        else:
+            try:
+                await asyncio.wait_for(slots.acquire(), timeout=slot_wait)
+            except asyncio.TimeoutError:
+                raise WhisperBusy("all Whisper slots are busy")
+        try:
             result = await worker.run(audio_path, self.beam_size, timeout)
+        finally:
+            slots.release()
         self._loaded_size = size
 
         # Persist full transcript words to data/transcripts/{source_id}.json

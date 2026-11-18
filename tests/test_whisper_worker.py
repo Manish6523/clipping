@@ -113,3 +113,39 @@ def test_real_worker_transcribes(tmp_path, monkeypatch):
         return res
     res = asyncio.run(go())
     assert len(res["words"]) > 5 and res["language"] == "en"
+
+
+def test_seed_checks_do_not_deadlock_live_transcription(fake_worker, tmp_path, monkeypatch):
+    """Regression: seed detection held a Whisper slot and then transcribe() took another. Two overlapping
+    seed checks on 2 slots each held one and waited forever for the other - nothing transcribed again."""
+    from src.monitor import seed_detector as sd
+    mode, wav = fake_worker
+    monkeypatch.setattr(tr, "_WHISPER_SLOTS", asyncio.Semaphore(2))
+    monkeypatch.setattr(sd, "BUFFER_DIR", str(tmp_path / "buf"))
+    dets = []
+    for ch in ("a", "b"):
+        d = tmp_path / "buf" / ch
+        d.mkdir(parents=True)
+        (d / "chunk_1.ts").write_bytes(b"x")
+        det = sd.SeedDetector(ch, ch)
+        dets.append(det)
+
+    async def fake_extract(self, path, output_wav=None):
+        return str(wav)
+    monkeypatch.setattr(tr.Transcriber, "extract_audio_wav", fake_extract)
+
+    async def go():
+        live = tr.Transcriber(model_size="small", beam_size=1)
+        seeds = [asyncio.ensure_future(d.process_latest_audio()) for d in dets]
+        res = await asyncio.wait_for(live.transcribe(str(wav)), timeout=20)
+        await asyncio.wait_for(asyncio.gather(*seeds), timeout=20)
+        assert res["text"] == "hi"
+        assert tr._WHISPER_SLOTS._value == 2                      # every slot given back
+        # while every slot is taken a seed check skips quickly instead of queueing
+        await tr._WHISPER_SLOTS.acquire(); await tr._WHISPER_SLOTS.acquire()
+        with pytest.raises(tr.WhisperBusy):
+            await tr.Transcriber(model_size="tiny", beam_size=1).transcribe(str(wav), slot_wait=0.2)
+        tr._WHISPER_SLOTS.release(); tr._WHISPER_SLOTS.release()
+        for w in list(tr._WORKERS.values()):
+            await w.kill("test done")
+    asyncio.run(go())
