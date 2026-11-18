@@ -71,7 +71,14 @@ export default function YouTubeDownloads() {
         <div className="flex flex-wrap gap-1.5">
           <Pill tone={status.js_runtime ? 'good' : 'warn'}>JS runtime: {status.js_runtime || 'none'}</Pill>
           <Pill tone={status.challenge_solver_installed ? 'good' : 'warn'}>Challenge solver {status.challenge_solver_installed ? 'installed' : 'missing'}</Pill>
-          <Pill tone={status.pot_provider_active ? 'good' : 'neutral'}>PO Token Provider: {status.pot_provider_active ? 'active (:4416)' : 'offline'}</Pill>
+          {status.proxy && (
+            <Pill tone={!status.proxy.enabled ? 'idle' : status.proxy.direct_blocked ? (status.proxy.ready ? 'warn' : 'bad') : 'good'}
+              title="When YouTube blocks this server's IP, downloads retry through free public proxies">
+              {!status.proxy.enabled ? 'Proxy fallback off'
+                : status.proxy.pinned ? 'Proxy: fixed (YTDLP_PROXY)'
+                : `${status.proxy.direct_blocked ? 'IP blocked · using proxies' : 'Direct'} · ${status.proxy.ready} prox${status.proxy.ready === 1 ? 'y' : 'ies'} ready`}
+            </Pill>
+          )}
           <Pill tone="good">yt-dlp {status.yt_dlp_version || '?'}</Pill>
           <Pill tone={status.cookies?.present ? (soon ? 'warn' : 'good') : 'warn'}>
             Cookies: {status.cookies?.present ? 'uploaded' : 'none'}

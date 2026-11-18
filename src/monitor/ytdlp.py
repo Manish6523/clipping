@@ -4,8 +4,11 @@ Why this exists: on a VPS, YouTube downloads fail in ways that don't happen at h
   * YouTube's player challenges need a JavaScript runtime. yt-dlp only enables Deno by
     default; servers often have Node.js (or Bun) instead -> we enable whichever exists.
   * Datacenter IPs get "Sign in to confirm you're not a bot" -> a cookies.txt exported from
-    a logged-in browser fixes it. Put it at config/tokens/youtube_cookies.txt (or set
+    a logged-in browser can fix it. Put it at config/tokens/youtube_cookies.txt (or set
     YTDLP_COOKIES) - the Settings page can upload it.
+  * When YouTube still blocks the server's IP, the call is retried through free public proxies
+    (src/monitor/proxy_pool.py). After a block, calls go through a proxy first for a while.
+    YTDLP_PROXY pins one proxy instead; YTDLP_PROXY_FALLBACK=0 turns the pool off.
 Every call returns yt-dlp's stderr so failures can be explained instead of swallowed.
 """
 
@@ -16,6 +19,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
@@ -74,7 +78,8 @@ def is_blocked(stderr: str) -> bool:
     """Server-side problems (IP block, rate limit, missing runtime) - not a bad link."""
     low = (stderr or "").lower()
     return is_bot_check(stderr) or "http error 429" in low or "too many requests" in low \
-        or "challenge solving failed" in low or "javascript runtime" in low or "requested format is not available" in low
+        or "challenge solving failed" in low or "javascript runtime" in low or "requested format is not available" in low \
+        or "no working proxy found" in low
 
 
 def js_runtime_args() -> List[str]:
@@ -88,38 +93,39 @@ def js_runtime_args() -> List[str]:
     return []
 
 
-def base_args() -> List[str]:
+def base_args(use_cookies: bool = True) -> List[str]:
     args = [
         sys.executable, "-m", "yt_dlp", "--no-warnings",
         "--force-ipv4",
         "--remote-components", "ejs:github",
     ]
-
-    # BGUtil PO-token Provider integration: if local POT server (or configured endpoint) is active, pass extractor-arg
-    pot_url = os.getenv("YTDLP_POT_SERVER", "http://127.0.0.1:4416").strip()
-    if pot_url:
-        server_home = str(PROJECT_ROOT.parent / "bgutil-ytdlp-pot-provider" / "server")
-        args += [
-            "--extractor-args", f"youtubepot-bgutilscript:server_home={server_home}",
-            "--extractor-args", f"youtubepot-bgutilhttp:base_url={pot_url}",
-        ]
-
-    # Allow user-configured proxy if datacenter VPS IP is strictly blocked
-    proxy = os.getenv("YTDLP_PROXY", "").strip()
-    if proxy:
-        args += ["--proxy", proxy]
-
-    cookies = cookies_path()
+    cookies = cookies_path() if use_cookies else None
     if cookies:
         args += ["--cookies", str(cookies)]
-
     args += js_runtime_args()
     return args
 
 
-async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int, bytes, str]:
-    """Run yt-dlp with the shared arguments. Returns (returncode, stdout, stderr-text)."""
-    cmd = base_args() + list(args)
+# ---------------------------------------------------------------- proxy fallback
+DIRECT_BLOCK_COOLDOWN_S = 30 * 60      # after a block, go through a proxy first for this long
+PROXY_ATTEMPTS = 4
+_direct_blocked_until = 0.0
+
+
+def proxy_fallback_enabled() -> bool:
+    return os.getenv("YTDLP_PROXY_FALLBACK", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def is_proxy_failure(stderr: str) -> bool:
+    """The proxy itself is useless (dead, slow, blocked by YouTube too) - drop it and try another."""
+    low = (stderr or "").lower()
+    return is_blocked(stderr) or any(s in low for s in (
+        "unable to connect to proxy", "proxyerror", "tunnel connection failed", "timed out", "connection reset",
+        "remote end closed", "connection refused", "certificate verify failed", "unable to download api page",
+        "unable to download webpage", "http error 403"))
+
+
+async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, bytes, str]:
     proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -130,13 +136,67 @@ async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int
     return proc.returncode or 0, out or b"", (err or b"").decode(errors="ignore")
 
 
+async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int, bytes, str]:
+    """Run yt-dlp with the shared arguments. Returns (returncode, stdout, stderr-text).
+
+    Direct first; if YouTube blocks this server, retry through proxies from the pool. Login cookies
+    are never sent through a free proxy (anyone running one could log them)."""
+    global _direct_blocked_until
+    pinned = os.getenv("YTDLP_PROXY", "").strip()
+    if pinned:
+        return await _exec(base_args() + ["--proxy", pinned] + list(args), timeout)
+
+    use_pool = proxy_fallback_enabled()
+    direct_err = ""
+    if not use_pool or time.time() >= _direct_blocked_until:
+        rc, out, err = await _exec(base_args() + list(args), timeout)
+        if rc == 0 or not use_pool or not is_blocked(err):
+            return rc, out, err
+        direct_err = err
+        _direct_blocked_until = time.time() + DIRECT_BLOCK_COOLDOWN_S
+        logger.warning("YouTube blocked this server's IP (%s); retrying through a proxy.", explain(err)[:120])
+
+    from src.monitor.proxy_pool import POOL
+    try:
+        await POOL.ensure()
+    except Exception as e:                       # sources unreachable etc.
+        logger.warning("Proxy pool refresh failed: %s", e)
+    budget_end = time.time() + (timeout or 900) * 1.5
+    last_err = direct_err
+    tried = 0
+    for proxy in POOL.candidates(PROXY_ATTEMPTS):
+        remaining = budget_end - time.time()
+        if remaining < 20:
+            break
+        tried += 1
+        rc, out, err = await _exec(base_args(use_cookies=False) + ["--proxy", proxy, "--socket-timeout", "20"] + list(args),
+                                   min(timeout, remaining) if timeout else remaining)
+        if rc == 0:
+            POOL.mark_good(proxy)
+            logger.info("yt-dlp succeeded through proxy %s.", proxy)
+            return rc, out, err
+        last_err = err
+        if is_proxy_failure(err):
+            POOL.mark_bad(proxy)
+            continue
+        return rc, out, err                      # a real answer (private video, bad link...) - no point retrying
+    if not tried:
+        last_err = (last_err + "\n" if last_err else "") + "ERROR: no working proxy found in the free proxy pool"
+    elif direct_err and not is_blocked(last_err):
+        last_err = direct_err + "\n" + last_err
+    return 1, b"", last_err
+
+
 def explain(stderr: str) -> str:
     """Turn yt-dlp's stderr into an actionable one-liner for the dashboard / logs."""
     text = stderr or ""
     low = text.lower()
+    if "no working proxy found" in low:
+        return ("YouTube is blocking this server's IP and none of the free proxies got through right now. "
+                "Try again in a few minutes (the proxy list refreshes), or upload fresh cookies in Settings.")
     if is_bot_check(text):
-        return ("YouTube is blocking this server's IP ('confirm you're not a bot'). Upload a cookies.txt "
-                "from a logged-in browser in Settings → YouTube downloads.")
+        return ("YouTube is blocking this server's IP ('confirm you're not a bot') and the proxies tried were "
+                "blocked too. Try again shortly, or upload a cookies.txt in Settings → YouTube downloads.")
     if "javascript runtime" in low or "js runtime" in low or "challenge solving failed" in low \
             or "n challenge" in low or "only images are available" in low:
         return ("yt-dlp couldn't solve YouTube's player challenge: install Deno (or Node.js) on the server "
@@ -175,27 +235,16 @@ def status() -> dict:
     except Exception:
         ejs = False
 
-    # Check local BGUtil POT provider server health via its /ping endpoint
-    pot_alive = False
-    try:
-        import urllib.request
-        req = urllib.request.Request("http://127.0.0.1:4416/ping", headers={"User-Agent": "AutoClipHealthCheck"})
-        with urllib.request.urlopen(req, timeout=1.5) as r:
-            pot_alive = (r.status == 200)
-    except Exception:
-        # Fallback to root check
-        try:
-            req = urllib.request.Request("http://127.0.0.1:4416/", headers={"User-Agent": "AutoClipHealthCheck"})
-            with urllib.request.urlopen(req, timeout=1.5) as r:
-                pot_alive = True
-        except Exception:
-            pot_alive = False
+    from src.monitor.proxy_pool import POOL
+    proxies = {"enabled": bool(os.getenv("YTDLP_PROXY", "").strip()) or proxy_fallback_enabled(),
+               "pinned": bool(os.getenv("YTDLP_PROXY", "").strip()),
+               "direct_blocked": time.time() < _direct_blocked_until, **POOL.status()}
 
     return {
         "yt_dlp_version": version,
         "js_runtime": runtime,
         "challenge_solver_installed": ejs,
-        "pot_provider_active": pot_alive,
+        "proxy": proxies,
         "cookies": {"present": bool(c), "path": str(c) if c else None,
                     "updated": c.stat().st_mtime if c else None,
                     "expires": cookies_expiry(c) if c else None},
