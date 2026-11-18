@@ -108,7 +108,6 @@ def base_args(use_cookies: bool = True) -> List[str]:
 
 # ---------------------------------------------------------------- proxy fallback
 DIRECT_BLOCK_COOLDOWN_S = 30 * 60      # after a block, go through a proxy first for this long
-PROXY_ATTEMPTS = 4
 _direct_blocked_until = 0.0
 
 
@@ -133,14 +132,66 @@ async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, byte
         proc.kill()
         await proc.communicate()
         return 124, b"", f"yt-dlp timed out after {timeout:.0f}s"
+    except asyncio.CancelledError:          # lost a proxy race / caller gave up: don't leave yt-dlp running
+        if proc.returncode is None:
+            proc.kill()
+        raise
     return proc.returncode or 0, out or b"", (err or b"").decode(errors="ignore")
+
+
+INFO_FLAGS = ("--simulate", "-s", "--skip-download", "--dump-json", "-j", "--dump-single-json", "-J")
+RACE_WIDTH = 6                 # proxies tried at once (most free proxies are dead, slow or blocked by YouTube)
+RACE_ROUNDS = 2
+
+
+def _is_info_only(args: Sequence[str]) -> bool:
+    return any(a in INFO_FLAGS for a in args) and "--download-sections" not in args
+
+
+def _url_of(args: Sequence[str]) -> Optional[str]:
+    return next((a for a in reversed(list(args)) if str(a).startswith(("http://", "https://"))), None)
+
+
+def _proxy_cmd(proxy: str, args: Sequence[str]) -> List[str]:
+    return base_args(use_cookies=False) + ["--proxy", proxy, "--socket-timeout", "20"] + list(args)
+
+
+async def _race(pool, args: Sequence[str], timeout: float) -> Tuple[Optional[str], Tuple[int, bytes, str]]:
+    """Run `args` through several proxies at once; first success wins, the rest are killed.
+    Returns (winning proxy, result) or (None, last failure). A non-proxy error (private video,
+    bad link) is returned straight away - every proxy would say the same."""
+    proxies = pool.candidates(RACE_WIDTH)
+    if not proxies:
+        return None, (1, b"", "")
+    tasks = {asyncio.ensure_future(_exec(_proxy_cmd(p, args), timeout)): p for p in proxies}
+    last: Tuple[int, bytes, str] = (1, b"", "")
+    try:
+        while tasks:
+            done, _ = await asyncio.wait(list(tasks), return_when=asyncio.FIRST_COMPLETED)
+            for t in done:
+                proxy = tasks.pop(t)
+                res = t.result()
+                if res[0] == 0:
+                    return proxy, res
+                last = res
+                if is_proxy_failure(res[2]):
+                    pool.mark_bad(proxy)
+                else:
+                    return proxy, res
+    finally:
+        for t in tasks:
+            t.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+    return None, last
 
 
 async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int, bytes, str]:
     """Run yt-dlp with the shared arguments. Returns (returncode, stdout, stderr-text).
 
-    Direct first; if YouTube blocks this server, retry through proxies from the pool. Login cookies
-    are never sent through a free proxy (anyone running one could log them)."""
+    Direct first; if YouTube blocks this server, go through proxies from the pool: lookups race
+    several proxies at once, downloads use the last proxy that worked (or the winner of a quick
+    lookup race). Login cookies are never sent through a free proxy (anyone running one could log them)."""
     global _direct_blocked_until
     pinned = os.getenv("YTDLP_PROXY", "").strip()
     if pinned:
@@ -157,33 +208,44 @@ async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int
         logger.warning("YouTube blocked this server's IP (%s); retrying through a proxy.", explain(err)[:120])
 
     from src.monitor.proxy_pool import POOL
-    try:
-        await POOL.ensure()
-    except Exception as e:                       # sources unreachable etc.
-        logger.warning("Proxy pool refresh failed: %s", e)
-    budget_end = time.time() + (timeout or 900) * 1.5
+    budget_end = time.time() + max(120.0, (timeout or 900) * 1.5)
     last_err = direct_err
-    tried = 0
-    for proxy in POOL.candidates(PROXY_ATTEMPTS):
+    info_only = _is_info_only(args)
+    url = _url_of(args)
+    for _round in range(RACE_ROUNDS + 1):
         remaining = budget_end - time.time()
         if remaining < 20:
             break
-        tried += 1
-        rc, out, err = await _exec(base_args(use_cookies=False) + ["--proxy", proxy, "--socket-timeout", "20"] + list(args),
-                                   min(timeout, remaining) if timeout else remaining)
-        if rc == 0:
+        try:
+            await POOL.ensure()
+        except Exception as e:                   # proxy list sources unreachable etc.
+            logger.warning("Proxy pool refresh failed: %s", e)
+        if info_only or not url:
+            proxy, (rc, out, err) = await _race(POOL, args, min(timeout or remaining, remaining))
+        else:
+            proxy = POOL.preferred
+            if not proxy:                        # find a proxy that gets through, then download with it
+                proxy, (rc, out, err) = await _race(POOL, ["--simulate", "--print", "id", url], min(150.0, remaining))
+                if not proxy or rc != 0:
+                    last_err = err or last_err
+                    if proxy and rc != 0 and not is_proxy_failure(err):
+                        return rc, out, err
+                    continue
+            rc, out, err = await _exec(_proxy_cmd(proxy, args), min(timeout or remaining, budget_end - time.time()))
+        if proxy and rc == 0:
             POOL.mark_good(proxy)
             logger.info("yt-dlp succeeded through proxy %s.", proxy)
             return rc, out, err
-        last_err = err
-        if is_proxy_failure(err):
+        if not proxy and not err:
+            break                                # pool empty
+        last_err = err or last_err
+        if proxy and is_proxy_failure(err):
             POOL.mark_bad(proxy)
             continue
-        return rc, out, err                      # a real answer (private video, bad link...) - no point retrying
-    if not tried:
-        last_err = (last_err + "\n" if last_err else "") + "ERROR: no working proxy found in the free proxy pool"
-    elif direct_err and not is_blocked(last_err):
-        last_err = direct_err + "\n" + last_err
+        if proxy:
+            return rc, out, err                  # a real answer (private video, bad link...)
+    if not last_err or last_err == direct_err:
+        last_err = (direct_err + "\n" if direct_err else "") + "ERROR: no working proxy found in the free proxy pool"
     return 1, b"", last_err
 
 

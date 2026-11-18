@@ -14,6 +14,7 @@ class FakePool:
     def __init__(self, proxies):
         self.proxies = list(proxies)
         self.bad, self.good, self.ensured = [], [], 0
+        self.preferred = None
 
     async def ensure(self):
         self.ensured += 1
@@ -26,6 +27,7 @@ class FakePool:
 
     def mark_good(self, p):
         self.good.append(p)
+        self.preferred = p
 
 
 @pytest.fixture
@@ -41,8 +43,14 @@ def env(monkeypatch, tmp_path):
 
     async def fake_exec(cmd, timeout):
         proxy = cmd[cmd.index("--proxy") + 1] if "--proxy" in cmd else None
-        calls.append({"proxy": proxy, "cookies": "--cookies" in cmd})
-        return answers.get(proxy, (0, b"ok", ""))
+        calls.append({"proxy": proxy, "cookies": "--cookies" in cmd, "probe": "--print" in cmd and "id" in cmd})
+        ans = answers.get(proxy, (0, b"ok", ""))
+        if isinstance(ans, float):                 # a slow proxy: sleeps, then succeeds
+            await asyncio.sleep(ans)
+            killed_or_done.append(proxy)
+            return 0, b"slow", ""
+        return ans
+    killed_or_done = []
     monkeypatch.setattr(ytdlp, "_exec", fake_exec)
     return calls, answers, monkeypatch
 
@@ -61,22 +69,35 @@ def test_direct_success_never_touches_proxies(env):
     assert pool.ensured == 0
 
 
-def test_blocked_direct_retries_through_proxy_without_cookies_and_drops_dead_ones(env):
+def test_lookup_races_proxies_without_cookies_and_drops_dead_ones(env):
     calls, answers, mp = env
-    pool = use_pool(mp, ["http://dead:80", "http://botted:80", "http://good:80"])
+    pool = use_pool(mp, ["http://dead:80", "http://botted:80", "http://slow:80", "http://good:80"])
     answers[None] = (1, b"", BOT)
     answers["http://dead:80"] = (1, b"", "ERROR: Unable to download API page: ('Unable to connect to proxy', ...)")
     answers["http://botted:80"] = (1, b"", BOT)
-    rc, out, _ = asyncio.run(ytdlp.run(["u"], timeout=60))
+    answers["http://slow:80"] = 5.0
+    rc, out, _ = asyncio.run(asyncio.wait_for(ytdlp.run(["--simulate", "u"], timeout=60), 3))   # slow one is killed, not awaited
     assert rc == 0 and out == b"ok"
-    assert [c["proxy"] for c in calls] == [None, "http://dead:80", "http://botted:80", "http://good:80"]
+    assert calls[0]["proxy"] is None and {c["proxy"] for c in calls[1:]} == {"http://dead:80", "http://botted:80", "http://slow:80", "http://good:80"}
     assert all(not c["cookies"] for c in calls[1:])            # login cookies never go through a free proxy
-    assert pool.bad == ["http://dead:80", "http://botted:80"] and pool.good == ["http://good:80"]
+    assert sorted(pool.bad) == ["http://botted:80", "http://dead:80"] and pool.good == ["http://good:80"]
 
-    # while the IP is known to be blocked, the next call goes straight to a proxy
+
+def test_download_uses_race_winner_then_sticks_to_it(env):
+    calls, answers, mp = env
+    pool = use_pool(mp, ["http://dead:80", "http://good:80"])
+    answers[None] = (1, b"", BOT)
+    answers["http://dead:80"] = (1, b"", "ERROR: timed out")
+    rc, _, _ = asyncio.run(ytdlp.run(["--download-sections", "*1-2", "-o", "x.mp4", "https://youtu.be/x"], timeout=60))
+    assert rc == 0
+    probes = [c for c in calls if c["probe"]]
+    downloads = [c for c in calls[1:] if not c["probe"]]
+    assert {c["proxy"] for c in probes} == {"http://dead:80", "http://good:80"}
+    assert [c["proxy"] for c in downloads] == ["http://good:80"]
+    # IP known blocked -> next download goes straight to the remembered proxy, no direct try, no probe
     calls.clear()
-    assert asyncio.run(ytdlp.run(["u2"], timeout=60))[0] == 0
-    assert calls[0]["proxy"] == "http://good:80"
+    assert asyncio.run(ytdlp.run(["-o", "y.mp4", "https://youtu.be/y"], timeout=60))[0] == 0
+    assert [c["proxy"] for c in calls] == ["http://good:80"]
 
 
 def test_real_errors_are_not_retried(env):
@@ -84,8 +105,9 @@ def test_real_errors_are_not_retried(env):
     use_pool(mp, ["http://p1:80", "http://p2:80"])
     answers[None] = (1, b"", BOT)
     answers["http://p1:80"] = (1, b"", "ERROR: [youtube] x: Private video. Sign in if you've been granted access")
-    rc, _, err = asyncio.run(ytdlp.run(["u"], timeout=60))
-    assert rc == 1 and "Private video" in err and len(calls) == 2
+    answers["http://p2:80"] = 2.0                            # slower than the real answer from p1
+    rc, _, err = asyncio.run(ytdlp.run(["--simulate", "u"], timeout=60))
+    assert rc == 1 and "Private video" in err
 
 
 def test_no_proxy_gives_clear_error_and_alertable(env):
@@ -105,7 +127,7 @@ def test_fallback_off_and_pinned_proxy(env):
     assert asyncio.run(ytdlp.run(["u"]))[0] == 1 and len(calls) == 1 and pool.ensured == 0
     calls.clear()
     mp.setenv("YTDLP_PROXY", "http://mine:3128")
-    assert asyncio.run(ytdlp.run(["u"]))[0] == 0 and calls == [{"proxy": "http://mine:3128", "cookies": True}]
+    assert asyncio.run(ytdlp.run(["u"]))[0] == 0 and calls == [{"proxy": "http://mine:3128", "cookies": True, "probe": False}]
 
 
 def test_pool_parsing_and_bookkeeping():
