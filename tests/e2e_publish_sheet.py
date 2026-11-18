@@ -85,10 +85,10 @@ with sync_playwright() as p:
     print("desktop ok; errs", errs)
     assert not errs
 
-    # ---------------- accounts: TikTok tab renders (no app configured yet)
+    # ---------------- distribution: TikTok app setup opens (no app configured yet)
     pg.goto(BASE + "/accounts", wait_until="load"); pg.wait_for_timeout(1500)
-    pg.click("button:has-text('TikTok')"); pg.wait_for_selector("[data-testid=tiktok-accounts]")
-    assert pg.get_by_text("TikTok developer app", exact=True).count() == 1, pg.locator("[data-testid=tiktok-accounts]").inner_text()[:300]
+    pg.click("[data-testid=app-tiktok]")
+    assert pg.get_by_role("dialog", name="TikTok app").count() == 1
     pg.screenshot(path=SHOT + "accounts_tiktok.png")
     print("accounts ok; errs", errs)
     assert not errs

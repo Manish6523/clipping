@@ -17,7 +17,7 @@ import { notifyClipReady } from './services/pwa';
 const TemplateGallery = lazy(() => import('./components/TemplateGallery'));
 const TemplateStudioEditor = lazy(() => import('./components/TemplateStudioEditor'));
 const ChannelManager = lazy(() => import('./components/ChannelManager'));
-const AccountsManager = lazy(() => import('./components/AccountsManager'));
+const DistributionPage = lazy(() => import('./components/distribution/DistributionPage'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const Overview = lazy(() => import('./components/Overview'));
@@ -227,7 +227,7 @@ export default function App() {
         <Route path="presets" element={<Navigate to="/templates" replace />} />
         <Route path="channels" element={<ChannelManager />} />
         <Route path="telemetry" element={<StreamerTelemetryHub />} />
-        <Route path="accounts" element={<AccountsManager />} />
+        <Route path="accounts" element={<DistributionPage />} />
         <Route path="queue" element={<QueueCalendar />} />
         <Route path="pipelines" element={<PipelineMonitor />} />
         <Route path="settings" element={<Settings />} />
