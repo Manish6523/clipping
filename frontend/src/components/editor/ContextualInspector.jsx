@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { useTemplateEditorStore } from '../../store/templateEditorStore';
 import { hexToAss, assToHex } from '../../utils/colorConversions';
-import { CAPTION_STYLES } from '../../lib/captionStyles';
+import { CAPTION_STYLES, presetFontName } from '../../lib/captionStyles';
 import { useHookStyles } from '../../lib/hookStyles';
 import { uploadWatermark } from '../../api';
 
@@ -267,7 +267,7 @@ export default function ContextualInspector({ channels = [] }) {
                 key={preset.id}
                 onClick={() => {
                   updateSubtitles({
-                    font_name: preset.font || preset.family?.replace(/['"]/g, '') || subtitles.font_name,
+                    font_name: presetFontName(preset, subtitles.font_name),
                     font_size: preset.size || subtitles.font_size,
                     primary_color: hexToAss(preset.color || '#FFFFFF'),
                     highlight_color: hexToAss(preset.highlight || '#FACC15'),

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import CaptionStylePicker from './CaptionStylePicker';
 import HookStylePicker from './HookStylePicker';
-import { styleById } from '../lib/captionStyles';
+import { styleById, presetFontName } from '../lib/captionStyles';
 import {
   Palette,
   Save,
@@ -110,7 +110,7 @@ export default function TemplateStudio() {
       const preset = styleById(defaultCaptionStyle);
       if (preset) {
         return {
-          font: preset.font_name || preset.family?.replace(/['"]/g, '') || fontFamily,
+          font: presetFontName(preset, fontFamily),
           fontSize: preset.size || fontSize,
           color: preset.color || primaryColor,
           highlight: preset.highlight || highlightColor,

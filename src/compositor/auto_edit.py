@@ -540,6 +540,7 @@ def hook_text_lines(text: str, max_chars: int = 20, max_lines: int = 3) -> List[
 
 def add_hook_card(ass_path: str | Path, text: str, font: str, caption_y: float, show_until: float = 2.4) -> None:
     """Append a big pop-in title card (top third, or lower third if captions sit up top)."""
+    from src.compositor.caption_styles import resolve_font_name
     lines = hook_text_lines(text.upper())
     if not lines:
         return
@@ -555,7 +556,7 @@ def add_hook_card(ass_path: str | Path, text: str, font: str, caption_y: float, 
     )
     y = 300 if caption_y >= 0.4 else 1250
     style = (
-        f"Style: HookCard,{font},80,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,7,3,8,60,60,0,1"
+        f"Style: HookCard,{resolve_font_name(font)},80,&H00FFFFFF,&H000000FF,&H00000000,&H90000000,-1,0,0,0,100,100,0,0,1,7,3,8,60,60,0,1"
     )
     event = (
         f"Dialogue: 1,0:00:00.00,0:00:{show_until:05.2f},HookCard,,0,0,0,,"

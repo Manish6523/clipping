@@ -14,5 +14,9 @@ All are free for commercial use.
 | russo-one-400.ttf | Russo One | SIL OFL 1.1 |
 | luckiest-guy-400.ttf | Luckiest Guy | Apache 2.0 |
 | permanent-marker-400.ttf | Permanent Marker | Apache 2.0 |
+| oswald-700.ttf | Oswald | SIL OFL 1.1 |
+| teko-700.ttf | Teko (registered as "Teko Light") | SIL OFL 1.1 |
+| black-ops-one-400.ttf | Black Ops One | SIL OFL 1.1 |
+| bungee-400.ttf | Bungee | SIL OFL 1.1 |
 
 Sources: Google Fonts via Fontsource (cdn.jsdelivr.net/fontsource), Montserrat from github.com/JulietaUla/Montserrat.

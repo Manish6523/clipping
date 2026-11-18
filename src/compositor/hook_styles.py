@@ -123,7 +123,8 @@ def _pil_font(font_file: str, px: int):
 
 
 def text_width(text: str, font: str, size: float, spacing: float = 0.0) -> float:
-    path = FONTS_DIR / FONT_FILES.get(font, "Montserrat-Black.ttf")
+    from src.compositor.caption_styles import resolve_font_name
+    path = FONTS_DIR / FONT_FILES.get(resolve_font_name(font, "Montserrat Black"), "Montserrat-Black.ttf")
     try:
         em = max(4, int(round(size * _em_scale(str(path)))))
         w = _pil_font(str(path), em).getlength(text)
@@ -246,8 +247,10 @@ def build_hook_events(text: str, style_id: str, caption_y: float, show_until: fl
     """Return (style lines, dialogue lines) for the hook card."""
     st = HOOK_STYLES.get(style_id) or HOOK_STYLES[DEFAULT_HOOK_STYLE]
     font = st["font"]
-    if style_id == DEFAULT_HOOK_STYLE and font_override and font_override in FONT_FILES:
-        font = font_override
+    if style_id == DEFAULT_HOOK_STYLE and font_override:
+        from src.compositor.caption_styles import resolve_font_name
+        if resolve_font_name(font_override) in FONT_FILES:
+            font = resolve_font_name(font_override)
     size = float(st["size"])
     spacing = float(st.get("spacing", 0))
     raw = re.sub(r"\s+", " ", text or "").strip()

@@ -17,6 +17,33 @@ from typing import Any, Dict, List, Optional
 FONTS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "fonts"
 DEFAULT_STYLE = "template"
 
+# Template font names -> the family libass finds in assets/fonts. Covers the browser's @font-face aliases
+# ("AC Anton", "AC Montserrat XB") that older editor presets saved, and bare families such as "Montserrat",
+# which libass on the VPS resolved to FreeSans because the bundled files are registered by their full name.
+_FONT_ALIASES = {
+    "montserrat": "Montserrat ExtraBold", "montserrat xb": "Montserrat ExtraBold",
+    "montserrat extrabold": "Montserrat ExtraBold", "montserrat black": "Montserrat Black",
+    "poppins": "Poppins ExtraBold", "poppins xb": "Poppins ExtraBold", "poppins extrabold": "Poppins ExtraBold",
+    "anton": "Anton", "bangers": "Bangers", "bebas neue": "Bebas Neue", "inter": "Inter",
+    "russo one": "Russo One", "luckiest guy": "Luckiest Guy", "permanent marker": "Permanent Marker",
+    "marker": "Permanent Marker", "oswald": "Oswald", "teko": "Teko Light", "black ops one": "Black Ops One",
+    "bungee": "Bungee",
+}
+
+
+def resolve_font_name(name: Optional[str], default: str = "Montserrat ExtraBold") -> str:
+    """Bundled family for a template's font name; unknown fonts are passed through for system fonts."""
+    raw = str(name or "").split(",")[0].strip().strip("'\"").strip()
+    if not raw:
+        return default
+    key = raw.lower()
+    if key.startswith("ac "):
+        key = key[3:].strip()
+    if key in _FONT_ALIASES:
+        return _FONT_ALIASES[key]
+    return raw[3:].strip() if raw.lower().startswith("ac ") else raw
+
+
 # mode: highlight = active word recoloured | progressive = spoken words stay coloured (karaoke)
 #       box = coloured box behind the active word | glow = neon halo
 STYLES: Dict[str, Dict[str, Any]] = {

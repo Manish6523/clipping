@@ -83,7 +83,8 @@ def generate_ass_subtitles(
         else None
     )
     sub_cfg = template_config.get("subtitles") or template_config.get("captions") or {}
-    font_name = sub_cfg.get("font_name") or sub_cfg.get("font", "Montserrat ExtraBold")
+    from src.compositor.caption_styles import resolve_font_name
+    font_name = resolve_font_name(sub_cfg.get("font_name") or sub_cfg.get("font"))
     font_size = int(sub_cfg.get("font_size") or sub_cfg.get("size", 60))
 
     primary_raw = sub_cfg.get("primary_color") or sub_cfg.get("color", "#FFFFFF")

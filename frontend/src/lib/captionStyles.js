@@ -43,3 +43,12 @@ export const FONT_FAMILY = {
   'Luckiest Guy': "'AC Luckiest Guy'",
   'Permanent Marker': "'AC Permanent Marker'",
 };
+
+/** Renderer font name for a preset (its `font`, else the real family behind its @font-face alias). */
+export function presetFontName(preset, fallback) {
+  if (preset?.font_name) return preset.font_name;
+  if (preset?.font) return preset.font;
+  const fam = preset?.family;
+  const hit = fam && Object.entries(FONT_FAMILY).find(([, v]) => v === fam);
+  return hit ? hit[0] : fallback;
+}
