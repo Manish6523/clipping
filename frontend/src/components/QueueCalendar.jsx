@@ -4,7 +4,7 @@ import {
   Calendar, Clock, Send, AlertTriangle, MonitorPlay, Camera, Scissors, Film,
   Play, Trash2, CalendarX, Eye, X, Check, ArrowRight, Video, Sparkles, Tag
 } from 'lucide-react';
-import { getQueue, postClipNow, rescheduleQueueItem, removeQueueItem } from '../api';
+import { getQueue, postClipNow, rescheduleQueueItem, removeQueueItem, withToken } from '../api';
 import { Page, Panel, Pill, Button, IconButton, EmptyState, Skeleton, Stat, Confirm, Notice } from './ui';
 
 function relTime(date, now) {
@@ -172,8 +172,9 @@ export default function QueueCalendar() {
                 const failed = item.yt_status === 'failed' || item.ig_status === 'failed';
                 const validTime = !Number.isNaN(item.when.getTime());
                 const overdue = item.when < now;
-                const thumbUrl = item.thumbnail_path ? `/renders/${item.thumbnail_path.split(/[/\\]/).pop()}` : null;
-                const videoUrl = item.rendered_video_path ? `/renders/${item.rendered_video_path.split(/[/\\]/).pop()}` : null;
+                // Finished clips live in output/clips; the clip API serves them (Range + auth token).
+                const thumbUrl = item.thumbnail_path ? withToken(`/api/clips/${item.clip_id}/thumbnail`) : null;
+                const videoUrl = item.rendered_video_path ? withToken(`/api/clips/${item.clip_id}/video`) : null;
 
                 return (
                   <Panel key={item.id} tone={failed ? 'bad' : undefined} className="!p-4 transition hover:border-line-strong">
