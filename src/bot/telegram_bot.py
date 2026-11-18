@@ -51,6 +51,52 @@ from src.publisher.scheduler import DripScheduler, load_template_destinations
 logger = logging.getLogger(__name__)
 
 
+TELEGRAM_VIDEO_LIMIT = 49 * 1024 * 1024       # Bot API upload cap is 50 MB
+TELEGRAM_PREVIEW_TARGET = 44 * 1024 * 1024
+
+
+async def telegram_video_file(video_path: str) -> str:
+    """The clip itself if Telegram accepts it, else a 720p preview sized to fit (cached under RENDER_DIR/telegram).
+
+    Only the Telegram copy is shrunk; the full-quality clip is what gets published."""
+    src = Path(video_path)
+    if src.stat().st_size <= TELEGRAM_VIDEO_LIMIT:
+        return str(src)
+    from config.settings import RENDER_DIR
+    tg_dir = Path(RENDER_DIR) / "telegram"
+    tg_dir.mkdir(parents=True, exist_ok=True)
+    for old in tg_dir.glob("*_tg.mp4"):                     # keep the folder small: previews are only needed once
+        if old.stat().st_mtime < src.stat().st_mtime - 3 * 86400:
+            old.unlink(missing_ok=True)
+    out = tg_dir / f"{src.stem}_tg.mp4"
+    if out.exists() and out.stat().st_mtime >= src.stat().st_mtime and out.stat().st_size <= TELEGRAM_VIDEO_LIMIT:
+        return str(out)
+    probe = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(src),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    raw, _ = await probe.communicate()
+    try:
+        duration = max(1.0, float(raw.decode().strip() or 60))
+    except ValueError:
+        duration = 60.0
+    for factor in (1.0, 0.7):
+        video_kbps = max(400, int(TELEGRAM_PREVIEW_TARGET * 8 / duration / 1000 * factor) - 128)
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-loglevel", "error", "-i", str(src),
+            "-vf", "scale=-2:'min(1280,ih)'", "-c:v", "libx264", "-preset", "veryfast",
+            "-b:v", f"{video_kbps}k", "-maxrate", f"{video_kbps}k", "-bufsize", f"{video_kbps * 2}k",
+            "-c:a", "aac", "-b:a", "128k", "-movflags", "+faststart", str(out),
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        _, err = await proc.communicate()
+        if proc.returncode != 0:
+            raise RuntimeError(f"Telegram preview encode failed: {err.decode(errors='ignore')[-200:]}")
+        if out.stat().st_size <= TELEGRAM_VIDEO_LIMIT:
+            logger.info("Clip %s is %.0f MB; sending a %.0f MB preview to Telegram.", src.name,
+                        src.stat().st_size / 1e6, out.stat().st_size / 1e6)
+            return str(out)
+    raise RuntimeError("Telegram preview is still over 50 MB")
+
+
 def build_approval_keyboard(clip_id: int, has_teaser: bool = True) -> InlineKeyboardMarkup:
     """Construct interactive inline approval keyboard for 1-tap mobile actions."""
     teaser_label = "🎬 Teaser: ON" if has_teaser else "🎬 Teaser: OFF"
@@ -641,7 +687,7 @@ class AutoClipBot:
 
         try:
             new_media = InputMediaVideo(
-                media=FSInputFile(video_path),
+                media=FSInputFile(await telegram_video_file(video_path)),
                 caption=caption,
                 parse_mode="HTML",
             )
@@ -710,9 +756,9 @@ class AutoClipBot:
         caption = format_clip_caption_html(clip)
         kb = build_approval_keyboard(clip["id"], has_teaser=bool(clip.get("has_teaser", 1)))
 
-        video_input = FSInputFile(video_path)
         logger.info("Sending clip #%d to Telegram chat %s (%s)...", clip["id"], self.admin_id, video_path)
         try:
+            video_input = FSInputFile(await telegram_video_file(video_path))
             msg = await self.bot.send_video(
                 chat_id=self.admin_id,
                 video=video_input,
@@ -727,7 +773,7 @@ class AutoClipBot:
             logger.error("Failed delivering video to Telegram for clip #%d: %s. Sending text fallback alert.", clip["id"], e)
             # Send notification card so user is still alerted immediately with action buttons
             fallback_text = (
-                f"⚠️ <b>Clip #{clip['id']} Ready!</b> (Video upload to Telegram timed out)\n\n"
+                f"⚠️ <b>Clip #{clip['id']} Ready!</b> (the video could not be sent to Telegram)\n\n"
                 f"{caption}\n\n"
                 f"🔗 <b>Watch in Web UI:</b> http://localhost:8080"
             )

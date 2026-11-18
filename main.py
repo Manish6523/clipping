@@ -85,6 +85,18 @@ root_logger.addHandler(web_handler)
 logger = logging.getLogger("AutoClipDaemon")
 
 
+def add_flag(flags_json, flag):
+    """Append one flag dict to a clip's JSON flags list (merge_flags is only for the profanity summary)."""
+    try:
+        flags = json.loads(flags_json) if flags_json else []
+        if not isinstance(flags, list):
+            flags = []
+    except (TypeError, ValueError):
+        flags = []
+    flags = [f for f in flags if not (isinstance(f, dict) and f.get("type") == flag.get("type"))] + [flag]
+    return json.dumps(flags)
+
+
 class AutoClipEngine:
     """Master engine orchestrating ingestion, intelligence, composition, web UI, and publishing."""
 
@@ -561,16 +573,20 @@ class AutoClipEngine:
                 sentences = SentenceChunker.from_whisper_result(transcription)
 
                 calibrated_candidates = []
+                judged_all: list = []          # every judged candidate, so a rejection reports the real score
                 # Execute CalibratedJudge if in 'new' or 'shadow' mode
                 if PIPELINE_MODE in ("new", "shadow"):
                     try:
-                        calibrated_candidates = await self.calibrated_judge.evaluate_moment(
+                        judged_all = await self.calibrated_judge.evaluate_moment(
                             channel_id=channel_id,
                             sentences=sentences,
                             trigger_context=trigger_ctx,
                             chat_features=chat_features,
                             min_score=min_score,
+                            include_rejected=True,
                         )
+                        calibrated_candidates = [c for c in judged_all
+                                                 if c.get("would_post") and c.get("final_score", 0) >= min_score]
                         logger.info("CalibratedJudge evaluated %d candidates in '%s' mode.", len(calibrated_candidates), PIPELINE_MODE)
                     except Exception as e:
                         logger.warning("CalibratedJudge execution error: %s", e)
@@ -621,6 +637,13 @@ class AutoClipEngine:
                             reasons = [f.get("note", f.get("type")) for f in c_cand.get("flags", [])]
                     elif candidates:
                         score_val = getattr(candidates[0], "virality_score", 0)
+                    elif judged_all:
+                        c_cand = judged_all[0]
+                        score_val = c_cand.get("virality_score", 0)
+                        rubric_dict = c_cand.get("scores", {})
+                        why = c_cand.get("reject_reason") or ("judge would not post it" if not c_cand.get("would_post") else "")
+                        if why:
+                            reasons = [why]
                     else:
                         # The legacy scorer drops everything under the threshold; report what Gemini really gave.
                         score_val = int(getattr(self.scorer, "last_best_score", 0) or 0)
@@ -834,12 +857,14 @@ class AutoClipEngine:
                         try:
                             edited = await auto_edit_clip(
                                 self.renderer, ae_source, ae_words, clip_dur, template, auto_cfg,
-                                censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt
+                                censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt,
+                                channel_name=channel_id,
+                                platform=(channel_record.get("platform") if channel_record else "twitch") or "twitch",
                             )
                         finally:
                             if window_file:
                                 window_file.unlink(missing_ok=True)
-                        flags_json = merge_flags(flags_json, json.dumps([summary_flag(edited["summary"])]), censor_cfg)
+                        flags_json = add_flag(flags_json, summary_flag(edited["summary"]))
                         logger.info("Live clip #%s auto-edited (%s): %s", timestamp_id, auto_style_db, edited["summary"])
                     except Exception as ae_err:
                         logger.warning("Auto-edit failed on live clip, falling back to standard render: %s", ae_err)

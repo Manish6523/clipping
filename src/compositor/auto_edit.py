@@ -673,6 +673,8 @@ async def auto_edit_clip(
     work_dir: str | Path,
     tag: str,
     hook_text: Optional[str] = None,
+    channel_name: Optional[str] = None,
+    platform: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Edit one clip. ``words`` are annotated (censor) and in ``source`` time (0..duration).
 
@@ -704,6 +706,7 @@ async def auto_edit_clip(
         source_path=str(tight_src), start_time=0.0, end_time=tight_dur, output_path=str(base),
         template=template, ass_path=None, teaser_timestamp=None, include_teaser=False,
         censor_words=tight_words, censor_cfg=censor_cfg, words_time_offset=0.0, intermediate=True,
+        channel_name=channel_name, platform=platform,
     )
 
     # 3. Finish (all times now in output time = tight time / speed)
