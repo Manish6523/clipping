@@ -6,7 +6,7 @@ import { clipManual } from '../api';
 import YouTubeRangePicker, { youtubeId, youtubeStartParam } from './YouTubeRangePicker';
 import AutoEditOptions, { loadAutoEdit, autoEditPayload } from './AutoEditOptions';
 import CombinedStyleStudio from './CombinedStyleStudio';
-import { Page, Panel, Button, Input, Select, Field, Segmented, Notice, Progress, Spinner } from './ui';
+import { Page, Panel, Button, Input, Select, Field, Segmented, Notice, Progress, Spinner, Toggle } from './ui';
 import { loadHookStyle, saveHookStyle } from '../lib/hookStyles';
 import { loadCaptionStyle, saveCaptionStyle } from '../lib/captionStyles';
 
@@ -49,6 +49,9 @@ const LENGTHS = [
 ];
 const TIMEOUT_MS = 20 * 60 * 1000;
 
+const loadFlag = (key) => { try { return localStorage.getItem(key) === '1'; } catch { return false; } };
+const saveFlag = (key, v) => { try { localStorage.setItem(key, v ? '1' : '0'); } catch { /* private mode */ } };
+
 export default function QuickClip() {
   const [url, setUrl] = useState('');
   const [templates, setTemplates] = useState([]);
@@ -68,6 +71,10 @@ export default function QuickClip() {
   const [captionStyle, setCaptionStyle] = useState(loadCaptionStyle);
   const pickCaptionStyle = (id) => { setCaptionStyle(id); saveCaptionStyle(id); };
   const [hookStyle, setHookStyle] = useState(loadHookStyle);
+  const [autoLayout, setAutoLayout] = useState(() => loadFlag('qc_auto_template'));
+  const [faceTrack, setFaceTrack] = useState(() => loadFlag('qc_face_track'));
+  const pickAutoLayout = (v) => { setAutoLayout(v); saveFlag('qc_auto_template', v); };
+  const pickFaceTrack = (v) => { setFaceTrack(v); saveFlag('qc_face_track', v); };
   const pickHookStyle = (id) => { setHookStyle(id); saveHookStyle(id); };
 
   // Android share sheet / PWA share_target: /quickclip?url=…&text=…&title=…
@@ -152,6 +159,8 @@ export default function QuickClip() {
         template,
         time_range: hasRange ? `${start}-${end}` : null,
         auto_edit: autoEditPayload(autoEdit),
+        auto_template: autoLayout,
+        face_track: faceTrack,
         caption_style: captionStyle === 'template' ? undefined : captionStyle,
         hook_style: autoEdit.enabled && hookStyle !== 'template' ? hookStyle : undefined,
         ...(!hasRange ? (() => {
@@ -245,6 +254,12 @@ export default function QuickClip() {
               {templates.length === 0 && <option value="">Loading templates…</option>}
               {templates.map((t) => <option key={t} value={t}>{t}</option>)}
             </Select>
+            <div className="mt-3 space-y-2.5">
+              <Toggle checked={autoLayout} onChange={pickAutoLayout} label="Auto template"
+                hint={autoLayout ? 'Each clip gets the layout that fits it (webcam + game, IRL, or gameplay). Captions and hook still come from the template above.' : 'Use the template layout as drawn.'} />
+              <Toggle checked={faceTrack} onChange={pickFaceTrack} label="Face tracking"
+                hint={faceTrack ? 'The crop follows the streamer\'s face.' : 'The crop stays where the template puts it.'} />
+            </div>
           </Panel>
 
           <CombinedStyleStudio captionStyle={captionStyle} onCaptionChange={pickCaptionStyle} hookStyle={hookStyle} onHookChange={pickHookStyle}

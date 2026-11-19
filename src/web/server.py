@@ -1077,6 +1077,11 @@ class WebUIServer:
         if data.get("hook_style") in HOOK_STYLES:
             options["hook_style"] = data["hook_style"]
 
+        # Layout options (off unless asked): pick the layout from the clip itself / follow the face
+        for key in ("auto_template", "face_track"):
+            if isinstance(data.get(key), bool):
+                options[key] = data[key]
+
         # Auto edit (explicit choice; absent = Settings default): {"enabled": true, "style": "punchy|clean|minimal", <feature>: bool}
         ae = data.get("auto_edit")
         if isinstance(ae, dict) and ae.get("enabled", True):

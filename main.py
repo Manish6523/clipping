@@ -253,6 +253,13 @@ class AutoClipEngine:
                         await db.commit()
                     return
 
+                layout_note = None
+                if (options or {}).get("auto_template") or (options or {}).get("face_track"):
+                    from src.compositor.quick_layout import adapt as adapt_layout
+                    update_pipeline_progress("processing", channel_id="manual", step=2, step_name="Reading the layout (auto template / face tracking)...")
+                    template, layout_note = await adapt_layout(
+                        template, str(slice_source), clip_dur,
+                        auto_template=bool(options.get("auto_template")), face_track=bool(options.get("face_track")))
                 update_pipeline_progress("processing", channel_id="manual", step=3, step_name="Transcribing words with faster-whisper...")
                 transcription = await self.transcriber.transcribe(str(slice_source))
                 ass_path = str(work_dir / f"{fake_vod_id}_sub.ass")
@@ -263,6 +270,8 @@ class AutoClipEngine:
                 clip_source, clip_len = str(slice_source), clip_dur
                 manual_title = f"Manual Highlight ({template_name})"
                 flag_list = [{"type": "unscored", "severity": "low", "note": "Manual Quick Clip with user-specified time range"}]
+                if layout_note:
+                    flag_list.append({"type": "layout", "severity": "low", "note": layout_note})
 
                 if auto_cfg:
                     update_pipeline_progress("processing", channel_id="manual", step=4,
@@ -1177,6 +1186,7 @@ class AutoClipEngine:
         self, cand: Dict[str, Any], idx: int, vod_id: str, channel_id: str, template_name: str,
         template: Dict[str, Any], video_url: str, work_dir: Path, words_all: list, censor_cfg: Dict[str, Any],
         auto_cfg: Optional[Dict[str, Any]] = None, clip_styles: Optional[tuple] = None,
+        layout_opts: Optional[Dict[str, Any]] = None,
     ) -> Optional[int]:
         """Download, caption, render and register ONE candidate of a VOD."""
         clip_start, clip_end = cand["start"], cand["end"]
@@ -1196,6 +1206,14 @@ class AutoClipEngine:
         if not downloaded or not slice_source.exists():
             logger.error("Failed to download section %.1f-%.1fs for VOD %s", clip_start, clip_end, vod_id)
             return None
+        extra_flags: list = []
+        if layout_opts and (layout_opts.get("auto_template") or layout_opts.get("face_track")):
+            from src.compositor.quick_layout import adapt as adapt_layout
+            template, layout_note = await adapt_layout(
+                template, str(slice_source), clip_dur,
+                auto_template=bool(layout_opts.get("auto_template")), face_track=bool(layout_opts.get("face_track")))
+            if layout_note:
+                extra_flags.append({"type": "layout", "severity": "low", "note": layout_note})
 
         ass_path = str(work_dir / f"{tag}_sub.ass")
         rendered_mp4 = str(Path(OUTPUT_DIR) / f"{tag}_vertical.mp4")
@@ -1207,7 +1225,6 @@ class AutoClipEngine:
             if float(w.get("end", 0.0)) > clip_start and float(w.get("start", 0.0)) < clip_end
         ]
         clip_source, clip_len = str(slice_source), clip_dur
-        extra_flags: list = []
 
         if auto_cfg:
             edited = await auto_edit_clip(
@@ -1352,6 +1369,7 @@ class AutoClipEngine:
                         cand, idx, vod_id, channel_id, template_name, template, video_url,
                         work_dir, words_all, censor_cfg, auto_cfg=auto_cfg,
                         clip_styles=(metadata.get("caption_style"), metadata.get("hook_style")),
+                        layout_opts={k: metadata.get(k) for k in ("auto_template", "face_track")},
                     )
                 except Exception as clip_err:
                     logger.error("Clip %d/%d of VOD %s failed: %s", idx, len(picked), vod_id, clip_err, exc_info=True)

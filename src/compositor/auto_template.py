@@ -283,3 +283,99 @@ def draw_debug(frame: Any, face: Optional[Dict[str, Any]], cam: Optional[Box], g
     if face:
         cv2.circle(img, (int(face["cx"] / 2), int(face["cy"] / 2)), int(face["w"] / 4) + 2, (0, 215, 255), 2)
     cv2.imwrite(out_path, img, [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+
+# ------------------------------------------------------------------ whole analysis
+
+async def analyse(src: str, dur: float, n: int = 24, use_gemini: bool = True, log=None) -> Dict[str, Any]:
+    """Read a video's layout: what kind it is, where the webcam is, where the face is.
+    Shared by Clip Lab (step 7) and Quick Clip's "auto template" option."""
+    import asyncio
+    import numpy as np
+    import cv2
+    from typing import List as _L, Literal, Optional as _O
+    from pydantic import BaseModel, Field
+    from src.compositor.face_tracker import _Detector
+    log = log or (lambda msg: logger.info("Auto template: %s", msg))
+
+    log(f"Sampling {n} frames across the video…")
+    frames = await asyncio.to_thread(sample_frames, src, dur, n)
+    if not frames:
+        raise RuntimeError("Could not read frames from the video")
+    det = _Detector()
+    if not det.available:
+        raise RuntimeError("No face detector available (OpenCV missing)")
+    log(f"Looking for faces in {len(frames)} frames ({'YuNet' if det.yunet is not None else 'Haar'})…")
+
+    def detect_all():
+        out = []
+        for _, f in frames:
+            faces = det.detect(np.ascontiguousarray(f))
+            out.append([(cx * 2, cy * 2, w * 2, h * 2, c) for cx, cy, w, h, c in faces])
+        return out
+    per_frame = await asyncio.to_thread(detect_all)
+    face = face_summary(per_frame)
+    kind = classify(face)
+    log(f"Found: {kind.replace('_', ' ')}" + (f" (face in {face['frames_with_face']}/{len(frames)} frames)" if face else ""))
+
+    cam, heur, gem_box, source, sides, gemini = None, None, None, None, {}, None
+    best_i = max(range(len(frames)), key=lambda i: max((f[2] * f[3] * f[4] for f in per_frame[i]), default=0))
+    if kind == "facecam":
+        heur = heuristic_cam_box(face)
+        ex, ey = await asyncio.to_thread(persistent_edges, [f for _, f in frames])
+        cam, sides = snap_box(heur, ex, ey, face)
+        source = "edges" if any(v > 0 for v in sides.values()) else "face size"
+
+    if use_gemini:
+        class Box2D(BaseModel):
+            box_2d: _L[int] = Field(..., description="[ymin, xmin, ymax, xmax] normalised to 0-1000")
+
+        class LayoutRead(BaseModel):
+            kind: Literal["gaming_with_facecam", "camera_only", "gameplay_only", "other"]
+            webcam: _O[Box2D] = Field(None, description="The streamer's webcam overlay rectangle, if any")
+            gameplay: _O[Box2D] = Field(None, description="The main game / screen content area")
+            chat: _O[Box2D] = Field(None, description="On-screen chat overlay, if any")
+            notes: str = Field("", description="One short sentence about the layout")
+        try:
+            from src.intelligence.llm.client import GeminiClient
+            from config.settings import GEMINI_API_KEY
+            client = GeminiClient(api_key=GEMINI_API_KEY)
+            await client._sync_keys_from_db()
+            if client._client is not None:
+                log("Asking Gemini to read the layout from one frame…")
+                ok, jpg = cv2.imencode(".jpg", frames[best_i][1], [cv2.IMWRITE_JPEG_QUALITY, 88])
+                res = await client.generate_structured_media(
+                    system_instruction="You read livestream screenshots. Return exact bounding boxes of overlay regions.",
+                    user_prompt=("Find the streamer's webcam overlay (a rectangle showing a real person's camera), the gameplay "
+                                 "or main screen area, and an on-screen chat box if present. If the whole frame is a real camera, "
+                                 "kind is camera_only. Boxes as [ymin, xmin, ymax, xmax] in 0-1000."),
+                    media=jpg.tobytes(), mime_type="image/jpeg", response_model=LayoutRead)
+                if res:
+                    gemini = res.model_dump()
+                    if res.webcam and len(res.webcam.box_2d) == 4:
+                        gem_box = from_gemini_box(res.webcam.box_2d)
+            else:
+                log("No Gemini key: using computer vision only")
+        except Exception as e:
+            log(f"Gemini check skipped: {e}")
+
+    edge_sides = sum(1 for v in sides.values() if v > 0)
+    if gem_box and face and box_contains(gem_box, face["cx"], face["cy"]) and kind in ("facecam", "gameplay_only") \
+            and (gemini or {}).get("kind") in (None, "gaming_with_facecam"):
+        snapped, sides2 = snap_box(gem_box, *(await asyncio.to_thread(persistent_edges, [f for _, f in frames])), face, search=0.12)
+        cam, sides, source, kind = snapped, sides2, "gemini + edges", "facecam"
+    elif gem_box and kind == "facecam" and not box_contains(gem_box, face["cx"], face["cy"]):
+        log("Gemini's webcam box doesn't contain the detected face: ignoring it")
+
+    edge_sides = max(edge_sides, sum(1 for v in sides.values() if v > 0))
+    final, confidence = decide(kind, face, edge_sides, (gemini or {}).get("kind"))
+    if final != kind:
+        log(f"Changed the reading from {kind} to {final} (edges on {edge_sides} sides, Gemini: {(gemini or {}).get('kind', 'not asked')})")
+    kind = final
+    if kind != "facecam":
+        cam, source = None, None
+    if kind == "camera" and not face:
+        face = {"cx": LW / 2, "cy": LH / 2, "w": 200, "h": 220, "ratio": 0, "frames_with_face": 0, "spread": 0}
+    return {"kind": kind, "confidence": confidence, "edge_sides": edge_sides, "face": face, "cam": cam,
+            "heur": heur, "gem_box": gem_box, "source": source, "sides": sides, "gemini": gemini,
+            "frames": frames, "best_i": best_i}
