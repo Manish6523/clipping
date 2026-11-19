@@ -113,6 +113,11 @@ DIRECT_BLOCK_COOLDOWN_S = 30 * 60      # after a block, go through a proxy first
 _direct_blocked_until = 0.0
 
 
+def direct_blocked() -> bool:
+    """True while YouTube is blocking this server (downloads go through free proxies)."""
+    return proxy_fallback_enabled() and time.time() < _direct_blocked_until and not os.getenv("YTDLP_PROXY", "").strip()
+
+
 def proxy_fallback_enabled() -> bool:
     return os.getenv("YTDLP_PROXY_FALLBACK", "1").strip().lower() not in ("0", "false", "no", "off")
 

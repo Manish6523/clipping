@@ -16,6 +16,12 @@ from src.database import is_vod_processed, record_vod, update_vod_status
 logger = logging.getLogger(__name__)
 
 MAX_AUDIO_SECONDS = 3 * 3600  # matches the scorer's ~3h window cap
+AUDIO_FORMAT = "ba[abr<=72]/wa/ba/b"   # ~50 kbps is plenty for speech recognition, ~1/3 the size
+# Through free proxies one long download crawls (often <30 KB/s) and dies: fetch the audio in
+# pieces, several at once through different proxies, then join them.
+AUDIO_CHUNK_S = 600
+AUDIO_CHUNK_PARALLEL = 3
+AUDIO_CHUNK_TRIES = 3
 
 
 class VODWatcher:
@@ -28,6 +34,7 @@ class VODWatcher:
         self.on_vod_clip_ready = on_vod_clip_ready
         self.is_running = False
         self.last_error: Optional[str] = None  # explained yt-dlp error of the last section download
+        self.durations: Dict[str, float] = {}   # video_url -> seconds (from the metadata lookup)
 
     async def poll_youtube_channel_rss(self, channel_id: str) -> List[Dict[str, str]]:
         """Fetch latest uploaded videos via public YouTube RSS feed."""
@@ -75,6 +82,8 @@ class VODWatcher:
 
         try:
             info = json.loads(stdout.decode(errors="ignore"))
+            if info.get("duration"):
+                self.durations[video_url] = float(info["duration"])
             heatmap = info.get("heatmap") or []
             peaks = []
 
@@ -112,7 +121,7 @@ class VODWatcher:
         logger.info("Chat replay: %d messages, %d spikes for %s", len(comments), len(peaks), video_url)
         return peaks
 
-    async def download_audio_first(self, video_url: str, output_dir: Path) -> str:
+    async def download_audio_first(self, video_url: str, output_dir: Path, duration: Optional[float] = None) -> str:
         """Download the audio track (first 3 hours) for transcription.
 
         Native format (m4a/opus) - the transcriber converts it to 16 kHz mono itself; a full-length
@@ -120,12 +129,13 @@ class VODWatcher:
         (previously it returned None and the URL was then treated as a file path).
         """
         output_dir.mkdir(parents=True, exist_ok=True)
-        for old in output_dir.glob("audio_extract.*"):
+        for old in list(output_dir.glob("audio_extract.*")) + list(output_dir.glob("audio_chunk_*")):
             old.unlink(missing_ok=True)
+        duration = duration or getattr(self, "durations", {}).get(video_url)
+        if duration and duration > AUDIO_CHUNK_S * 1.5 and ytdlp.direct_blocked():
+            return await self._download_audio_chunked(video_url, output_dir, min(duration, MAX_AUDIO_SECONDS))
         rc, _out, err = await ytdlp.run([
-            # Low-bitrate audio (~50 kbps) is plenty for speech recognition and is ~1/3 the size -
-            # matters when YouTube blocks the server and this has to come through a free proxy.
-            "-f", "ba[abr<=72]/wa/ba/b",
+            "-f", AUDIO_FORMAT,
             "--download-sections", f"*0-{MAX_AUDIO_SECONDS}",
             "--output", str(output_dir / "audio_extract.%(ext)s"),
             video_url,
@@ -136,6 +146,63 @@ class VODWatcher:
         from src.notify import alerts
         await alerts.download_failed(err, video_url)
         raise RuntimeError(f"Could not download the video's audio: {ytdlp.explain(err)}")
+
+    async def _download_audio_chunked(self, video_url: str, output_dir: Path, duration: float) -> str:
+        """Audio in AUDIO_CHUNK_S pieces, AUDIO_CHUNK_PARALLEL at a time (each its own proxy race),
+        joined into one file. A failed piece is retried on its own."""
+        bounds = []
+        t = 0.0
+        while t < duration - 1:
+            bounds.append((t, min(duration, t + AUDIO_CHUNK_S)))
+            t += AUDIO_CHUNK_S
+        logger.info("YouTube blocks this server: fetching %.0f min of audio in %d pieces through proxies.",
+                    duration / 60, len(bounds))
+        sem = asyncio.Semaphore(AUDIO_CHUNK_PARALLEL)
+        errors: Dict[int, str] = {}
+
+        async def piece(i: int, a: float, b: float) -> Optional[Path]:
+            async with sem:
+                for attempt in range(1, AUDIO_CHUNK_TRIES + 1):
+                    rc, _out, err = await ytdlp.run([
+                        # exact cuts (re-encode at the boundaries): a stream-copy cut lands up to ~10 s
+                        # off, which would shift every transcript timestamp after the join
+                        "-f", AUDIO_FORMAT, "--download-sections", f"*{a:.0f}-{b:.0f}", "--force-keyframes-at-cuts",
+                        "--force-overwrites",
+                        "--output", str(output_dir / f"audio_chunk_{i:03d}.%(ext)s"), video_url,
+                    ], timeout=900)
+                    got = [f for f in output_dir.glob(f"audio_chunk_{i:03d}.*")
+                           if f.suffix not in (".part", ".ytdl") and f.stat().st_size > 0]
+                    if rc == 0 and got:
+                        logger.info("Audio piece %d/%d (%.0f-%.0fs) done.", i + 1, len(bounds), a, b)
+                        return got[0]
+                    errors[i] = err
+                    logger.warning("Audio piece %d/%d failed (try %d/%d): %s", i + 1, len(bounds), attempt,
+                                   AUDIO_CHUNK_TRIES, ytdlp.explain(err)[:160])
+                    if err and not ytdlp.is_proxy_failure(err):
+                        break                        # a real answer (private, removed...): retrying won't help
+                return None
+
+        parts = await asyncio.gather(*(piece(i, a, b) for i, (a, b) in enumerate(bounds)))
+        if not all(parts):
+            err = next(iter(errors.values()), "")
+            from src.notify import alerts
+            await alerts.download_failed(err, video_url)
+            missing = sum(1 for p in parts if not p)
+            raise RuntimeError(f"Could not download the video's audio ({missing} of {len(parts)} pieces failed): {ytdlp.explain(err)}")
+        out = output_dir / "audio_extract.ogg"
+        listing = output_dir / "audio_chunks.txt"
+        listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", str(listing),
+            "-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "40k", str(out),
+            stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
+        _o, e = await proc.communicate()
+        for p in parts:
+            p.unlink(missing_ok=True)
+        listing.unlink(missing_ok=True)
+        if proc.returncode != 0 or not out.exists():
+            raise RuntimeError(f"Could not join the audio pieces: {(e or b'').decode(errors='ignore')[-300:]}")
+        return str(out)
 
     async def download_video_section(
         self,
