@@ -22,6 +22,16 @@ AUDIO_FORMAT = "ba[abr<=72]/wa/ba/b"   # ~50 kbps is plenty for speech recogniti
 AUDIO_CHUNK_S = 600
 AUDIO_CHUNK_PARALLEL = 3
 AUDIO_CHUNK_TRIES = 3
+AUDIO_PIECE_KEEP_S = 2 * 24 * 3600   # finished pieces are kept per video so a re-run only fetches what's missing
+
+
+def audio_piece_dir(video_url: str) -> Path:
+    """Where a video's audio pieces live between runs (keyed by the YouTube id when there is one)."""
+    import hashlib
+    import re
+    m = re.search(r"(?:v=|youtu\.be/|/live/|/shorts/)([A-Za-z0-9_-]{11})", video_url)
+    key = m.group(1) if m else hashlib.sha1(video_url.encode()).hexdigest()[:16]
+    return Path(BUFFER_DIR) / "audio_pieces" / key
 
 
 class VODWatcher:
@@ -129,7 +139,7 @@ class VODWatcher:
         (previously it returned None and the URL was then treated as a file path).
         """
         output_dir.mkdir(parents=True, exist_ok=True)
-        for old in list(output_dir.glob("audio_extract.*")) + list(output_dir.glob("audio_chunk_*")):
+        for old in output_dir.glob("audio_extract.*"):
             old.unlink(missing_ok=True)
         duration = duration or getattr(self, "durations", {}).get(video_url)
         if duration and duration > AUDIO_CHUNK_S * 1.5 and ytdlp.direct_blocked():
@@ -149,18 +159,34 @@ class VODWatcher:
 
     async def _download_audio_chunked(self, video_url: str, output_dir: Path, duration: float) -> str:
         """Audio in AUDIO_CHUNK_S pieces, AUDIO_CHUNK_PARALLEL at a time (each its own proxy race),
-        joined into one file. A failed piece is retried on its own."""
+        joined into one file. A failed piece is retried on its own; finished pieces are kept per
+        video (audio_piece_dir) so a re-run after a failure only downloads what's missing."""
+        import shutil
+        import time as _time
+        pieces_dir = audio_piece_dir(video_url)
+        pieces_dir.mkdir(parents=True, exist_ok=True)
+        for old in pieces_dir.parent.iterdir():          # forget other videos' pieces after a while
+            if old != pieces_dir and old.is_dir() and _time.time() - old.stat().st_mtime > AUDIO_PIECE_KEEP_S:
+                shutil.rmtree(old, ignore_errors=True)
         bounds = []
         t = 0.0
         while t < duration - 1:
             bounds.append((t, min(duration, t + AUDIO_CHUNK_S)))
             t += AUDIO_CHUNK_S
-        logger.info("YouTube blocks this server: fetching %.0f min of audio in %d pieces through proxies.",
-                    duration / 60, len(bounds))
         sem = asyncio.Semaphore(AUDIO_CHUNK_PARALLEL)
         errors: Dict[int, str] = {}
 
+        def existing(i: int) -> List[Path]:
+            return [f for f in pieces_dir.glob(f"audio_chunk_{i:03d}.*")
+                    if f.suffix not in (".part", ".ytdl") and f.stat().st_size > 0]
+
+        have = [i for i in range(len(bounds)) if existing(i)]
+        logger.info("YouTube blocks this server: fetching %.0f min of audio in %d pieces through proxies%s.",
+                    duration / 60, len(bounds), f" ({len(have)} already downloaded)" if have else "")
+
         async def piece(i: int, a: float, b: float) -> Optional[Path]:
+            if existing(i):
+                return existing(i)[0]
             async with sem:
                 for attempt in range(1, AUDIO_CHUNK_TRIES + 1):
                     rc, _out, err = await ytdlp.run([
@@ -168,10 +194,9 @@ class VODWatcher:
                         # off, which would shift every transcript timestamp after the join
                         "-f", AUDIO_FORMAT, "--download-sections", f"*{a:.0f}-{b:.0f}", "--force-keyframes-at-cuts",
                         "--force-overwrites",
-                        "--output", str(output_dir / f"audio_chunk_{i:03d}.%(ext)s"), video_url,
+                        "--output", str(pieces_dir / f"audio_chunk_{i:03d}.%(ext)s"), video_url,
                     ], timeout=900)
-                    got = [f for f in output_dir.glob(f"audio_chunk_{i:03d}.*")
-                           if f.suffix not in (".part", ".ytdl") and f.stat().st_size > 0]
+                    got = existing(i)
                     if rc == 0 and got:
                         logger.info("Audio piece %d/%d (%.0f-%.0fs) done.", i + 1, len(bounds), a, b)
                         return got[0]
@@ -188,7 +213,8 @@ class VODWatcher:
             from src.notify import alerts
             await alerts.download_failed(err, video_url)
             missing = sum(1 for p in parts if not p)
-            raise RuntimeError(f"Could not download the video's audio ({missing} of {len(parts)} pieces failed): {ytdlp.explain(err)}")
+            raise RuntimeError(f"Could not download the video's audio ({missing} of {len(parts)} pieces failed - "
+                               f"the rest are kept, so trying again only fetches those): {ytdlp.explain(err)}")
         out = output_dir / "audio_extract.ogg"
         listing = output_dir / "audio_chunks.txt"
         listing.write_text("".join(f"file '{p.resolve()}'\n" for p in parts))
@@ -197,11 +223,10 @@ class VODWatcher:
             "-vn", "-ac", "1", "-c:a", "libopus", "-b:a", "40k", str(out),
             stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         _o, e = await proc.communicate()
-        for p in parts:
-            p.unlink(missing_ok=True)
         listing.unlink(missing_ok=True)
         if proc.returncode != 0 or not out.exists():
             raise RuntimeError(f"Could not join the audio pieces: {(e or b'').decode(errors='ignore')[-300:]}")
+        shutil.rmtree(pieces_dir, ignore_errors=True)
         return str(out)
 
     async def download_video_section(
