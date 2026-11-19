@@ -18,6 +18,7 @@ import asyncio
 import logging
 import os
 import shutil
+import signal
 import sys
 import tempfile
 import time
@@ -126,17 +127,30 @@ def is_proxy_failure(stderr: str) -> bool:
         "unable to download video data"))
 
 
+def _kill_tree(proc) -> None:
+    """Kill yt-dlp and its ffmpeg children (section downloads run ffmpeg, which would otherwise
+    keep downloading through the proxy after yt-dlp is gone)."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError, OSError):
+        try:
+            proc.kill()
+        except ProcessLookupError:
+            pass
+
+
 async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, bytes, str]:
-    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
+    proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE,
+                                                start_new_session=True)
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=timeout)
     except asyncio.TimeoutError:
-        proc.kill()
+        _kill_tree(proc)
         await proc.communicate()
         return 124, b"", f"yt-dlp timed out after {timeout:.0f}s"
     except asyncio.CancelledError:          # lost a proxy race / caller gave up: don't leave yt-dlp running
         if proc.returncode is None:
-            proc.kill()
+            _kill_tree(proc)
             try:                            # reap it, or asyncio complains once the loop closes
                 await asyncio.wait_for(asyncio.shield(proc.wait()), 5)
             except BaseException:
