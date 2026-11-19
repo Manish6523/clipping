@@ -3,6 +3,7 @@ yt-dlp and the proxy pool are faked - nothing touches the network."""
 import asyncio
 
 import pytest
+from pathlib import Path
 
 from src.monitor import ytdlp
 from src.monitor import proxy_pool as pp
@@ -83,21 +84,39 @@ def test_lookup_races_proxies_without_cookies_and_drops_dead_ones(env):
     assert sorted(pool.bad) == ["http://botted:80", "http://dead:80"] and pool.good == ["http://good:80"]
 
 
-def test_download_uses_race_winner_then_sticks_to_it(env):
+def test_download_races_proxies_into_separate_folders(env, tmp_path):
     calls, answers, mp = env
-    pool = use_pool(mp, ["http://dead:80", "http://good:80"])
+    pool = use_pool(mp, ["http://dead:80", "http://slow:80", "http://good:80"])
     answers[None] = (1, b"", BOT)
-    answers["http://dead:80"] = (1, b"", "ERROR: timed out")
-    rc, _, _ = asyncio.run(ytdlp.run(["--download-sections", "*1-2", "-o", "x.mp4", "https://youtu.be/x"], timeout=60))
-    assert rc == 0
-    probes = [c for c in calls if c["probe"]]
-    downloads = [c for c in calls[1:] if not c["probe"]]
-    assert {c["proxy"] for c in probes} == {"http://dead:80", "http://good:80"}
-    assert [c["proxy"] for c in downloads] == ["http://good:80"]
-    # IP known blocked -> next download goes straight to the remembered proxy, no direct try, no probe
-    calls.clear()
-    assert asyncio.run(ytdlp.run(["-o", "y.mp4", "https://youtu.be/y"], timeout=60))[0] == 0
-    assert [c["proxy"] for c in calls] == ["http://good:80"]
+    answers["http://dead:80"] = (1, b"", "ERROR: ffmpeg exited with code 146")
+    answers["http://slow:80"] = 5.0
+    outs = {}
+
+    async def writing_exec(cmd, timeout):
+        proxy = cmd[cmd.index("--proxy") + 1] if "--proxy" in cmd else None
+        out = cmd[cmd.index("--output") + 1]
+        outs[proxy] = out
+        calls.append(proxy)
+        if proxy == "http://good:80":
+            Path(out).write_bytes(b"video")
+            Path(out + ".part").write_bytes(b"x")
+            return 0, b"", ""
+        ans = answers.get(proxy)
+        if isinstance(ans, float):
+            Path(out + ".part").write_bytes(b"partial")
+            await asyncio.sleep(ans)
+            return 0, b"", ""
+        return ans
+    mp.setattr(ytdlp, "_exec", writing_exec)
+    dest = tmp_path / "out" / "clip.mp4"
+    rc, _, _ = asyncio.run(asyncio.wait_for(
+        ytdlp.run(["--download-sections", "*1-2", "--output", str(dest), "https://youtu.be/x"], timeout=60), 3))
+    assert rc == 0 and dest.read_bytes() == b"video"
+    assert not any(c.get("probe") for c in calls if isinstance(c, dict))          # no separate lookup round
+    assert {p for p in outs if p} == {"http://dead:80", "http://slow:80", "http://good:80"}
+    assert len({outs[p] for p in outs if p}) == 3                                  # every proxy writes elsewhere
+    assert sorted(f.name for f in dest.parent.iterdir()) == ["clip.mp4"]          # temp folders and .part cleaned
+    assert pool.bad == ["http://dead:80"] and pool.good == ["http://good:80"]
 
 
 def test_real_errors_are_not_retried(env):

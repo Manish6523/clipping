@@ -19,6 +19,7 @@ import logging
 import os
 import shutil
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
@@ -121,7 +122,8 @@ def is_proxy_failure(stderr: str) -> bool:
     return is_blocked(stderr) or any(s in low for s in (
         "unable to connect to proxy", "proxyerror", "tunnel connection failed", "timed out", "connection reset",
         "remote end closed", "connection refused", "certificate verify failed", "unable to download api page",
-        "unable to download webpage", "http error 403"))
+        "unable to download webpage", "http error 403", "ffmpeg exited with code", "error opening input",
+        "unable to download video data"))
 
 
 async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, bytes, str]:
@@ -141,6 +143,7 @@ async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, byte
 
 INFO_FLAGS = ("--simulate", "-s", "--skip-download", "--dump-json", "-j", "--dump-single-json", "-J")
 RACE_WIDTH = 6                 # proxies tried at once (most free proxies are dead, slow or blocked by YouTube)
+DOWNLOAD_RACE_WIDTH = 5        # parallel downloads (each a full copy of the section, so a little narrower)
 RACE_ROUNDS = 2
 
 
@@ -156,22 +159,67 @@ def _proxy_cmd(proxy: str, args: Sequence[str]) -> List[str]:
     return base_args(use_cookies=False) + ["--proxy", proxy, "--socket-timeout", "20"] + list(args)
 
 
-async def _race(pool, args: Sequence[str], timeout: float) -> Tuple[Optional[str], Tuple[int, bytes, str]]:
+OUTPUT_FLAGS = ("-o", "--output")
+
+
+def _output_of(args: Sequence[str]) -> Optional[int]:
+    """Index of the output template value in args, if any."""
+    args = list(args)
+    for i, a in enumerate(args[:-1]):
+        if a in OUTPUT_FLAGS:
+            return i + 1
+    return None
+
+
+def _isolated(args: Sequence[str], workdir: Path) -> List[str]:
+    """Same command, but writing into `workdir` (each racing proxy gets its own, so two downloads
+    of the same file never write over each other)."""
+    args = list(args)
+    i = _output_of(args)
+    if i is not None:
+        args[i] = str(workdir / Path(args[i]).name)
+    return args
+
+
+def _adopt(workdir: Path, dest_dir: Path) -> None:
+    """Move the winner's finished files into place (skipping yt-dlp's leftovers)."""
+    for f in workdir.iterdir():
+        if f.is_file() and f.suffix not in (".part", ".ytdl") and not f.name.endswith((".part", ".temp")):
+            os.replace(f, dest_dir / f.name)
+
+
+async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tuple[Optional[str], Tuple[int, bytes, str]]:
     """Run `args` through several proxies at once; first success wins, the rest are killed.
     Returns (winning proxy, result) or (None, last failure). A non-proxy error (private video,
-    bad link) is returned straight away - every proxy would say the same."""
-    proxies = pool.candidates(RACE_WIDTH)
+    bad link) is returned straight away - every proxy would say the same.
+
+    Downloads race too (measured on the VPS: a single free proxy finishes a download well under
+    half the time, and which one will is unpredictable). Each runs into its own temp folder; the
+    winner's files are moved to the real output path."""
+    proxies = pool.candidates(width or RACE_WIDTH)
     if not proxies:
         return None, (1, b"", "")
-    tasks = {asyncio.ensure_future(_exec(_proxy_cmd(p, args), timeout)): p for p in proxies}
+    out_i = _output_of(args)
+    dest_dir = Path(list(args)[out_i]).parent if out_i is not None else None
+    workdirs: dict = {}
+    tasks: dict = {}
+    for n, p in enumerate(proxies):
+        a = list(args)
+        if dest_dir is not None:
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            workdirs[p] = Path(tempfile.mkdtemp(prefix=f".proxyrace{n}_", dir=dest_dir))
+            a = _isolated(args, workdirs[p])
+        tasks[asyncio.ensure_future(_exec(_proxy_cmd(p, a), timeout))] = p
     last: Tuple[int, bytes, str] = (1, b"", "")
     try:
         while tasks:
             done, _ = await asyncio.wait(list(tasks), return_when=asyncio.FIRST_COMPLETED)
-            for t in done:
+            for t in sorted(done, key=lambda t: t.result()[0] == 0):    # book failures before a winner returns
                 proxy = tasks.pop(t)
                 res = t.result()
                 if res[0] == 0:
+                    if proxy in workdirs:
+                        _adopt(workdirs[proxy], dest_dir)
                     return proxy, res
                 last = res
                 if is_proxy_failure(res[2]):
@@ -183,15 +231,16 @@ async def _race(pool, args: Sequence[str], timeout: float) -> Tuple[Optional[str
             t.cancel()
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+        for d in workdirs.values():
+            shutil.rmtree(d, ignore_errors=True)
     return None, last
 
 
 async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int, bytes, str]:
     """Run yt-dlp with the shared arguments. Returns (returncode, stdout, stderr-text).
 
-    Direct first; if YouTube blocks this server, go through proxies from the pool: lookups race
-    several proxies at once, downloads use the last proxy that worked (or the winner of a quick
-    lookup race). Login cookies are never sent through a free proxy (anyone running one could log them)."""
+    Direct first; if YouTube blocks this server, go through proxies from the pool: lookups and
+    downloads race several proxies at once (last-known-good first) and keep the first that finishes. Login cookies are never sent through a free proxy (anyone running one could log them)."""
     global _direct_blocked_until
     pinned = os.getenv("YTDLP_PROXY", "").strip()
     if pinned:
@@ -220,18 +269,8 @@ async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int
             await POOL.ensure()
         except Exception as e:                   # proxy list sources unreachable etc.
             logger.warning("Proxy pool refresh failed: %s", e)
-        if info_only or not url:
-            proxy, (rc, out, err) = await _race(POOL, args, min(timeout or remaining, remaining))
-        else:
-            proxy = POOL.preferred
-            if not proxy:                        # find a proxy that gets through, then download with it
-                proxy, (rc, out, err) = await _race(POOL, ["--simulate", "--print", "id", url], min(150.0, remaining))
-                if not proxy or rc != 0:
-                    last_err = err or last_err
-                    if proxy and rc != 0 and not is_proxy_failure(err):
-                        return rc, out, err
-                    continue
-            rc, out, err = await _exec(_proxy_cmd(proxy, args), min(timeout or remaining, budget_end - time.time()))
+        proxy, (rc, out, err) = await _race(POOL, args, min(timeout or remaining, remaining),
+                                            width=RACE_WIDTH if info_only or not url else DOWNLOAD_RACE_WIDTH)
         if proxy and rc == 0:
             POOL.mark_good(proxy)
             logger.info("yt-dlp succeeded through proxy %s.", proxy)
