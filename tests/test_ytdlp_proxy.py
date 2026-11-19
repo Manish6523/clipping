@@ -131,6 +131,47 @@ def test_race_replaces_dead_proxies_right_away(env):
     assert rc == 0 and pool.good == ["http://spare:80"]          # spare joined the race once d1/d2 died
 
 
+def test_truncated_proxy_download_is_rejected(env, tmp_path):
+    """ffmpeg exits 0 when a proxy drops mid-stream; a short file must not win the race."""
+    calls, answers, mp = env
+    pool = use_pool(mp, ["http://cut:80", "http://full:80"])
+    answers[None] = (1, b"", BOT)
+    lengths = {}
+
+    async def writing_exec(cmd, timeout):
+        if "--proxy" not in cmd:
+            return answers[None]
+        proxy = cmd[cmd.index("--proxy") + 1]
+        out = Path(cmd[cmd.index("--output") + 1])
+        Path(cmd[cmd.index("--print-to-file") + 2]).write_text("4043\n")
+        out.write_bytes(proxy.encode())
+        lengths[str(out)] = 56.0 if proxy == "http://cut:80" else 4043.0
+        if proxy == "http://full:80":
+            await asyncio.sleep(0.05)                     # the truncated one "finishes" first
+        return 0, b"", ""
+
+    async def fake_probe(path):
+        return lengths[str(path)]
+    mp.setattr(ytdlp, "_exec", writing_exec)
+    mp.setattr(ytdlp, "_media_seconds", fake_probe)
+    dest = tmp_path / "a" / "audio_extract.webm"
+    rc, _, _ = asyncio.run(ytdlp.run(["-f", "wa", "--download-sections", "*0-10800", "--output", str(dest),
+                                      "https://youtu.be/x"], timeout=60))
+    assert rc == 0 and dest.read_bytes() == b"http://full:80"
+    assert pool.bad == ["http://cut:80"] and pool.good == ["http://full:80"]
+    assert sorted(f.name for f in dest.parent.iterdir()) == ["audio_extract.webm"]
+
+
+def test_expected_seconds(tmp_path):
+    (tmp_path / ytdlp.DURATION_FILE).write_text("635\n")
+    assert ytdlp._expected_seconds(["--download-sections", "*60.00-90.00"], tmp_path) == 30
+    assert ytdlp._expected_seconds(["--download-sections", "*0-10800"], tmp_path) == 635
+    assert ytdlp._expected_seconds([], tmp_path) == 635
+    (tmp_path / ytdlp.DURATION_FILE).write_text("NA\n")                        # live / unknown
+    assert ytdlp._expected_seconds(["--download-sections", "*0-10800"], tmp_path) is None
+    assert ytdlp._expected_seconds([], tmp_path) is None
+
+
 def test_real_errors_are_not_retried(env):
     calls, answers, mp = env
     use_pool(mp, ["http://p1:80", "http://p2:80"])

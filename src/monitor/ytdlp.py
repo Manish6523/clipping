@@ -123,7 +123,7 @@ def is_proxy_failure(stderr: str) -> bool:
     return is_blocked(stderr) or any(s in low for s in (
         "unable to connect to proxy", "proxyerror", "tunnel connection failed", "timed out", "connection reset",
         "remote end closed", "connection refused", "certificate verify failed", "unable to download api page",
-        "unable to download webpage", "http error 403", "ffmpeg exited with code", "error opening input",
+        "unable to download webpage", "http error 403", "ffmpeg exited with code", "error opening input", "incomplete download",
         "unable to download video data"))
 
 
@@ -202,8 +202,56 @@ def _isolated(args: Sequence[str], workdir: Path) -> List[str]:
 def _adopt(workdir: Path, dest_dir: Path) -> None:
     """Move the winner's finished files into place (skipping yt-dlp's leftovers)."""
     for f in workdir.iterdir():
-        if f.is_file() and f.suffix not in (".part", ".ytdl") and not f.name.endswith((".part", ".temp")):
+        if f.is_file() and f.name != DURATION_FILE and f.suffix not in (".part", ".ytdl") and not f.name.endswith((".part", ".temp")):
             os.replace(f, dest_dir / f.name)
+
+
+DURATION_FILE = ".source_duration"
+MEDIA_SKIP = (".part", ".ytdl", ".json", ".vtt", ".srt", ".txt")
+
+
+def _expected_seconds(args: Sequence[str], workdir: Path) -> Optional[float]:
+    """How long the download should be: the requested section (capped at the video's length,
+    which yt-dlp wrote to DURATION_FILE), or the whole video. None when unknown (live, odd specs)."""
+    try:
+        total = float((workdir / DURATION_FILE).read_text().split()[0])
+    except (OSError, ValueError, IndexError):
+        total = None
+    args = list(args)
+    if "--download-sections" in args:
+        spec = str(args[args.index("--download-sections") + 1]).lstrip("*")
+        try:
+            a, b = (float(x) for x in spec.split("-", 1))
+        except ValueError:
+            return None
+        if total is None:
+            return None                      # live / unknown length: can't tell short from complete
+        return max(0.0, min(b, total) - a)
+    return total
+
+
+async def _media_seconds(path: Path) -> Optional[float]:
+    try:
+        proc = await asyncio.create_subprocess_exec(
+            "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path),
+            stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+        out, _ = await asyncio.wait_for(proc.communicate(), 30)
+        return float(out.decode().strip())
+    except Exception:
+        return None
+
+
+async def _check_complete(args: Sequence[str], workdir: Path) -> Optional[str]:
+    """An error if the proxy dropped mid-download: ffmpeg treats a dropped connection as the end
+    of the stream and exits 0, leaving e.g. 56 s of a 67-min video's audio (seen on the VPS)."""
+    expected = _expected_seconds(args, workdir)
+    files = [f for f in workdir.iterdir() if f.is_file() and f.name != DURATION_FILE and not f.name.endswith(MEDIA_SKIP)]
+    if not expected or expected < 5 or not files:
+        return None
+    got = await _media_seconds(max(files, key=lambda f: f.stat().st_size))
+    if got is not None and got < expected * 0.9 - 2:
+        return f"ERROR: incomplete download through proxy (got {got:.0f}s of {expected:.0f}s)"
+    return None
 
 
 async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tuple[Optional[str], Tuple[int, bytes, str]]:
@@ -223,6 +271,7 @@ async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tu
     workdirs: dict = {}
     tasks: dict = {}
     tried: set = set()
+    verify = dest_dir is not None and "--skip-download" not in args
     deadline = time.time() + timeout
 
     def launch(p: str) -> None:
@@ -232,6 +281,8 @@ async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tu
             dest_dir.mkdir(parents=True, exist_ok=True)
             workdirs[p] = Path(tempfile.mkdtemp(prefix=f".proxyrace{len(tried)}_", dir=dest_dir))
             a = _isolated(args, workdirs[p])
+            if verify:
+                a = ["--print-to-file", "%(duration)s", str(workdirs[p] / DURATION_FILE)] + a
         tasks[asyncio.ensure_future(_exec(_proxy_cmd(p, a), max(1.0, deadline - time.time())))] = p
 
     for p in proxies:
@@ -243,6 +294,11 @@ async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tu
             for t in sorted(done, key=lambda t: t.result()[0] == 0):    # book failures before a winner returns
                 proxy = tasks.pop(t)
                 res = t.result()
+                if res[0] == 0 and verify and proxy in workdirs:
+                    problem = await _check_complete(args, workdirs[proxy])
+                    if problem:
+                        logger.warning("Proxy %s: %s - discarding it.", proxy, problem)
+                        res = (1, res[1], problem)
                 if res[0] == 0:
                     if proxy in workdirs:
                         _adopt(workdirs[proxy], dest_dir)
