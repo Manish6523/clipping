@@ -137,6 +137,10 @@ async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, byte
     except asyncio.CancelledError:          # lost a proxy race / caller gave up: don't leave yt-dlp running
         if proc.returncode is None:
             proc.kill()
+            try:                            # reap it, or asyncio complains once the loop closes
+                await asyncio.wait_for(asyncio.shield(proc.wait()), 5)
+            except BaseException:
+                pass
         raise
     return proc.returncode or 0, out or b"", (err or b"").decode(errors="ignore")
 
@@ -144,7 +148,7 @@ async def _exec(cmd: Sequence[str], timeout: Optional[float]) -> Tuple[int, byte
 INFO_FLAGS = ("--simulate", "-s", "--skip-download", "--dump-json", "-j", "--dump-single-json", "-J")
 RACE_WIDTH = 6                 # proxies tried at once (most free proxies are dead, slow or blocked by YouTube)
 DOWNLOAD_RACE_WIDTH = 5        # parallel downloads (each a full copy of the section, so a little narrower)
-RACE_ROUNDS = 2
+RACE_ROUNDS = 6                # fresh batches of proxies while the time budget lasts
 
 
 def _is_info_only(args: Sequence[str]) -> bool:
