@@ -214,20 +214,28 @@ async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tu
     Downloads race too (measured on the VPS: a single free proxy finishes a download well under
     half the time, and which one will is unpredictable). Each runs into its own temp folder; the
     winner's files are moved to the real output path."""
-    proxies = pool.candidates(width or RACE_WIDTH)
+    width = width or RACE_WIDTH
+    proxies = pool.candidates(width)
     if not proxies:
         return None, (1, b"", "")
     out_i = _output_of(args)
     dest_dir = Path(list(args)[out_i]).parent if out_i is not None else None
     workdirs: dict = {}
     tasks: dict = {}
-    for n, p in enumerate(proxies):
+    tried: set = set()
+    deadline = time.time() + timeout
+
+    def launch(p: str) -> None:
+        tried.add(p)
         a = list(args)
         if dest_dir is not None:
             dest_dir.mkdir(parents=True, exist_ok=True)
-            workdirs[p] = Path(tempfile.mkdtemp(prefix=f".proxyrace{n}_", dir=dest_dir))
+            workdirs[p] = Path(tempfile.mkdtemp(prefix=f".proxyrace{len(tried)}_", dir=dest_dir))
             a = _isolated(args, workdirs[p])
-        tasks[asyncio.ensure_future(_exec(_proxy_cmd(p, a), timeout))] = p
+        tasks[asyncio.ensure_future(_exec(_proxy_cmd(p, a), max(1.0, deadline - time.time())))] = p
+
+    for p in proxies:
+        launch(p)
     last: Tuple[int, bytes, str] = (1, b"", "")
     try:
         while tasks:
@@ -242,6 +250,11 @@ async def _race(pool, args: Sequence[str], timeout: float, width: int = 0) -> Tu
                 last = res
                 if is_proxy_failure(res[2]):
                     pool.mark_bad(proxy)
+                    # keep the race full: a dead proxy is replaced at once, so one slow survivor
+                    # isn't left to carry a long download alone
+                    nxt = next((q for q in pool.candidates(len(tried) + width + RACE_WIDTH) if q not in tried), None)
+                    if nxt and deadline - time.time() > 30:
+                        launch(nxt)
                 else:
                     return proxy, res
     finally:

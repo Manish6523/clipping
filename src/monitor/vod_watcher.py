@@ -123,7 +123,9 @@ class VODWatcher:
         for old in output_dir.glob("audio_extract.*"):
             old.unlink(missing_ok=True)
         rc, _out, err = await ytdlp.run([
-            "-f", "ba/b",
+            # Low-bitrate audio (~50 kbps) is plenty for speech recognition and is ~1/3 the size -
+            # matters when YouTube blocks the server and this has to come through a free proxy.
+            "-f", "ba[abr<=72]/wa/ba/b",
             "--download-sections", f"*0-{MAX_AUDIO_SECONDS}",
             "--output", str(output_dir / "audio_extract.%(ext)s"),
             video_url,

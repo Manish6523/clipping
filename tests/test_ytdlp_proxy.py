@@ -119,6 +119,18 @@ def test_download_races_proxies_into_separate_folders(env, tmp_path):
     assert pool.bad == ["http://dead:80"] and pool.good == ["http://good:80"]
 
 
+def test_race_replaces_dead_proxies_right_away(env):
+    calls, answers, mp = env
+    pool = use_pool(mp, ["http://d1:80", "http://d2:80", "http://slow:80", "http://spare:80"])
+    answers[None] = (1, b"", BOT)
+    answers["http://d1:80"] = (1, b"", "ERROR: Unable to connect to proxy")
+    answers["http://d2:80"] = (1, b"", "ERROR: ffmpeg exited with code 146")
+    answers["http://slow:80"] = 5.0
+    mp.setattr(ytdlp, "DOWNLOAD_RACE_WIDTH", 3)
+    rc, _, _ = asyncio.run(asyncio.wait_for(ytdlp.run(["-o", "/tmp/x_never_written.mp4", "https://youtu.be/x"], timeout=60), 3))
+    assert rc == 0 and pool.good == ["http://spare:80"]          # spare joined the race once d1/d2 died
+
+
 def test_real_errors_are_not_retried(env):
     calls, answers, mp = env
     use_pool(mp, ["http://p1:80", "http://p2:80"])
