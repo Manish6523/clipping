@@ -42,15 +42,21 @@ GLOBAL_SOURCES = [
 CHECK_URL = "https://www.youtube.com/generate_204"
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 
-POOL_TARGET = int(os.getenv("YTDLP_PROXY_POOL", "12"))
+POOL_TARGET = int(os.getenv("YTDLP_PROXY_POOL", "20"))
 POOL_MIN = 3                       # refill below this
 POOL_MAX_AGE_S = 45 * 60           # free proxies die quickly; revalidate after this
 BAD_FOR_S = 3600                   # a failed proxy (and every port of its host) is skipped this long
 HOST_STRIKES = 2                   # failures on different ports before the whole host is skipped
+SUBNET_STRIKES = 3                 # failures across one /24 before the whole block is skipped
 
 
 def _host(proxy: str) -> str:
     return proxy.split("://", 1)[-1].rsplit(":", 1)[0]
+
+
+def _subnet(proxy: str) -> str:
+    h = _host(proxy)
+    return h.rsplit(".", 1)[0] + ".*" if h.count(".") == 3 else h
 
 
 def _parse(url: str, text: str, json_body=None) -> List[str]:
@@ -173,7 +179,8 @@ class ProxyPool:
         now = now or time.time()
         if now - self._bad.get(proxy, 0) <= BAD_FOR_S:
             return True
-        return len([t for t in self._host_strikes.get(_host(proxy), []) if now - t <= BAD_FOR_S]) >= HOST_STRIKES
+        recent = lambda key: len([t for t in self._host_strikes.get(key, []) if now - t <= BAD_FOR_S])
+        return recent(_host(proxy)) >= HOST_STRIKES or recent(_subnet(proxy)) >= SUBNET_STRIKES
 
     def candidates(self, n: int) -> List[str]:
         """Up to n proxies to try, last-known-good first, then fastest."""
@@ -185,12 +192,15 @@ class ProxyPool:
         self.preferred = proxy
 
     def mark_bad(self, proxy: str) -> None:
-        """Drop a proxy; after HOST_STRIKES failures on one host, drop all its ports (seen on the VPS:
-        one host on a dozen ports kept serving cut-off downloads)."""
+        """Drop a proxy; after HOST_STRIKES failures on one host drop all its ports, after
+        SUBNET_STRIKES in one /24 drop the block (seen on the VPS: 147.161.246.34/.37/... on dozens
+        of ports kept serving cut-off downloads)."""
         with self._lock:
             now = time.time()
             self._bad[proxy] = now
             self._host_strikes.setdefault(_host(proxy), []).append(now)
+            if _subnet(proxy) != _host(proxy):
+                self._host_strikes.setdefault(_subnet(proxy), []).append(now)
             self._pool = [p for p in self._pool if not self._is_bad(p, now)]
             if self.preferred and self._is_bad(self.preferred, now):
                 self.preferred = None

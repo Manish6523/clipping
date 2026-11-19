@@ -240,3 +240,13 @@ def test_a_stalled_direct_download_falls_back_to_proxies_without_cooldown(env):
 def test_every_call_has_a_stall_timeout():
     args = ytdlp.base_args(use_cookies=False)
     assert args[args.index("--downloader-args") + 1] == f"ffmpeg_i:-rw_timeout {ytdlp.STALL_TIMEOUT_S * 1_000_000}"
+
+
+def test_a_failing_address_block_is_dropped():
+    pool = pp.ProxyPool(country="")
+    pool._pool = ["http://5.5.5.1:1", "http://5.5.5.2:1", "http://5.5.5.3:1", "http://5.5.5.4:1", "http://6.6.6.6:1"]
+    pool.mark_bad("http://5.5.5.1:1")
+    pool.mark_bad("http://5.5.5.2:1")
+    assert "http://5.5.5.3:1" in pool.candidates(9)
+    pool.mark_bad("http://5.5.5.3:1")
+    assert pool.candidates(9) == ["http://6.6.6.6:1"] and pool._is_bad("http://5.5.5.99:8080")

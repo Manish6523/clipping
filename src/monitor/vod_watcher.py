@@ -20,7 +20,7 @@ AUDIO_FORMAT = "ba[abr<=72]/wa/ba/b"   # ~50 kbps is plenty for speech recogniti
 # Through free proxies one long download crawls (often <30 KB/s) and dies: fetch the audio in
 # pieces, several at once through different proxies, then join them.
 AUDIO_CHUNK_S = 600
-AUDIO_CHUNK_PARALLEL = 3
+AUDIO_CHUNK_PARALLEL = 5
 AUDIO_CHUNK_TRIES = 3
 AUDIO_PIECE_KEEP_S = 2 * 24 * 3600   # finished pieces are kept per video so a re-run only fetches what's missing
 
