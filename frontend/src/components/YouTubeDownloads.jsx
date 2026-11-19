@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Download, Upload, Trash2, CheckCircle2, AlertTriangle, Loader2, Play } from 'lucide-react';
 import axios from 'axios';
 import { Panel, Button, IconButton, Input, Field, Notice, Pill } from './ui';
+import FetchHelper from './FetchHelper';
 
 /**
  * Settings → YouTube downloads: yt-dlp health on THIS server, cookies.txt upload for
@@ -89,6 +90,8 @@ export default function YouTubeDownloads() {
       )}
       {status && !status.js_runtime && <Notice tone="warn" icon={AlertTriangle}>Install Deno or Node.js on the server.</Notice>}
       {status && !status.challenge_solver_installed && <Notice tone="warn" icon={AlertTriangle}>Run <code className="font-mono">pip install -U "yt-dlp[default]"</code></Notice>}
+
+      <FetchHelper />
 
       <div className="rounded-xl bg-canvas border border-line p-3 space-y-2.5">
         <p className="text-[11.5px] text-muted leading-relaxed">

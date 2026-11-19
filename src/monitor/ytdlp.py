@@ -351,6 +351,15 @@ async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int
     if pinned:
         return await _exec(base_args() + ["--proxy", pinned] + list(args), timeout)
 
+    # The user's own PC (tools/fetch_helper.py) when it's connected: its home connection isn't blocked
+    from src.monitor.remote_fetch import FETCHER
+    if FETCHER.online():
+        res = await FETCHER.submit(args, timeout)
+        if res is not None:
+            if res[0] == 0 or not (is_blocked(res[2]) or is_proxy_failure(res[2]) or is_stalled(res[2])):
+                return res
+            logger.warning("Fetch helper failed (%s); trying the server's own route.", explain(res[2])[:120])
+
     use_pool = proxy_fallback_enabled()
     direct_err = ""
     if not use_pool or time.time() >= _direct_blocked_until:
@@ -451,12 +460,14 @@ def status() -> dict:
     proxies = {"enabled": bool(os.getenv("YTDLP_PROXY", "").strip()) or proxy_fallback_enabled(),
                "pinned": bool(os.getenv("YTDLP_PROXY", "").strip()),
                "direct_blocked": time.time() < _direct_blocked_until, **POOL.status()}
+    from src.monitor.remote_fetch import FETCHER
 
     return {
         "yt_dlp_version": version,
         "js_runtime": runtime,
         "challenge_solver_installed": ejs,
         "proxy": proxies,
+        "fetch_helper": FETCHER.status(),
         "cookies": {"present": bool(c), "path": str(c) if c else None,
                     "updated": c.stat().st_mtime if c else None,
                     "expires": cookies_expiry(c) if c else None},

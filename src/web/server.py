@@ -88,6 +88,9 @@ class WebUIServer:
             or path == "/api/status"
             or path == "/api/auth/config"
             or path == "/api/auth/verify"
+            or path == "/api/fetcher/script"             # the helper script itself (public code)
+            or path.startswith("/api/fetcher/next")      # home fetch helper: own token (handle_fetcher_*)
+            or path.startswith("/api/fetcher/result/")
             or not (path.startswith("/api/") or path.startswith("/ws") or path.startswith("/renders/") or path.startswith("/output/"))
         ):
             return await handler(request)
@@ -189,6 +192,11 @@ class WebUIServer:
         self.app.router.add_post("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_upload)
         self.app.router.add_delete("/api/settings/youtube-downloads/cookies", self.handle_ytdlp_cookies_delete)
         self.app.router.add_post("/api/settings/youtube-downloads/test", self.handle_ytdlp_test)
+        self.app.router.add_get("/api/fetcher/script", self.handle_fetcher_script)
+        self.app.router.add_get("/api/fetcher/next", self.handle_fetcher_next)
+        self.app.router.add_post("/api/fetcher/result/{job_id}", self.handle_fetcher_result)
+        self.app.router.add_get("/api/settings/fetch-helper", self.handle_fetcher_status)
+        self.app.router.add_post("/api/settings/fetch-helper/rotate", self.handle_fetcher_rotate)
         self.app.router.add_get("/api/censor/sfx", self.handle_list_censor_sfx)
         self.app.router.add_post("/api/censor/sfx", self.handle_upload_censor_sfx)
         self.app.router.add_get("/api/censor/sfx/{name}", self.handle_get_censor_sfx)
@@ -1355,6 +1363,89 @@ class WebUIServer:
     async def handle_ytdlp_status(self, request: web.Request) -> web.Response:
         from src.monitor import ytdlp
         return web.json_response(ytdlp.status())
+
+    # ------------------------------------------------------------------
+    # Home fetch helper (tools/fetch_helper.py): yt-dlp on the user's PC
+    # ------------------------------------------------------------------
+    async def _fetcher_authorized(self, request: web.Request) -> bool:
+        import hmac
+        from src.monitor.remote_fetch import get_token
+        given = request.headers.get("Authorization", "")[7:].strip() if request.headers.get("Authorization", "").startswith("Bearer ") else ""
+        tok = await get_token(create=False)
+        return bool(tok and given and hmac.compare_digest(given, tok))
+
+    async def handle_fetcher_script(self, request: web.Request) -> web.Response:
+        path = Path(__file__).resolve().parents[2] / "tools" / "fetch_helper.py"
+        return web.Response(body=path.read_bytes(), content_type="text/x-python",
+                            headers={"Content-Disposition": 'attachment; filename="fetch_helper.py"'})
+
+    async def handle_fetcher_next(self, request: web.Request) -> web.Response:
+        """Long-poll: the helper asks for the next yt-dlp job."""
+        from src.monitor.remote_fetch import FETCHER
+        if not await self._fetcher_authorized(request):
+            return web.json_response({"error": "bad token"}, status=401)
+        if not FETCHER.enabled():
+            return web.json_response({"job": None, "disabled": True})
+        try:
+            wait = max(1.0, min(float(request.query.get("wait", 25)), 50.0))
+            slots = int(request.query.get("slots", 1))
+        except ValueError:
+            wait, slots = 25.0, 1
+        info = {"name": request.headers.get("X-Helper-Name", "")[:60], "version": request.headers.get("X-Helper-Version", "")[:20],
+                "yt_dlp": request.headers.get("X-Helper-YtDlp", "")[:20]}
+        job = await FETCHER.next_job(wait, slots, info)
+        return web.json_response({"job": job})
+
+    async def handle_fetcher_result(self, request: web.Request) -> web.Response:
+        """The helper uploads a job's outcome: a 'meta' JSON part, optional 'stdout', and the files it made."""
+        from src.monitor.remote_fetch import FETCHER, safe_file_name
+        if not await self._fetcher_authorized(request):
+            return web.json_response({"error": "bad token"}, status=401)
+        job = FETCHER.job(request.match_info["job_id"])
+        reader = await request.multipart()
+        meta, stdout, written = {}, b"", []
+        while True:
+            part = await reader.next()
+            if part is None:
+                break
+            if part.name == "meta":
+                meta = json.loads((await part.read()).decode() or "{}")
+            elif part.name == "stdout":
+                stdout = await part.read()
+            elif part.name == "file":
+                name = safe_file_name(part.filename or "")
+                if not job or not job.dest_dir or not name:
+                    await part.release()
+                    continue
+                job.dest_dir.mkdir(parents=True, exist_ok=True)
+                tmp = job.dest_dir / f".fetch_{job.id}_{name}"
+                with open(tmp, "wb") as fh:
+                    while True:
+                        chunk = await part.read_chunk(1 << 20)
+                        if not chunk:
+                            break
+                        fh.write(chunk)
+                written.append((tmp, job.dest_dir / name))
+            else:
+                await part.release()
+        if not job:
+            return web.json_response({"ok": False, "error": "job no longer wanted"}, status=410)
+        for tmp, final in written:
+            os.replace(tmp, final)
+        FETCHER.finish(job.id, int(meta.get("rc", 1)), stdout, str(meta.get("stderr", ""))[-20000:])
+        return web.json_response({"ok": True, "files": [f.name for _, f in written]})
+
+    async def handle_fetcher_status(self, request: web.Request) -> web.Response:
+        from src.monitor.remote_fetch import FETCHER, get_token
+        return web.json_response({**FETCHER.status(), "token": await get_token(create=True)})
+
+    async def handle_fetcher_rotate(self, request: web.Request) -> web.Response:
+        import secrets as _secrets
+        from src.database import set_system_setting
+        from src.monitor.remote_fetch import FETCHER, TOKEN_KEY
+        await set_system_setting(TOKEN_KEY, _secrets.token_urlsafe(24), category="youtube", description="Home fetch helper access token")
+        FETCHER.last_seen = 0.0
+        return await self.handle_fetcher_status(request)
 
     async def handle_ytdlp_cookies_upload(self, request: web.Request) -> web.Response:
         """Store a Netscape-format cookies.txt (exported from a logged-in browser) for yt-dlp."""

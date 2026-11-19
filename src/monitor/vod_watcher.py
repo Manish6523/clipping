@@ -142,7 +142,8 @@ class VODWatcher:
         for old in output_dir.glob("audio_extract.*"):
             old.unlink(missing_ok=True)
         duration = duration or getattr(self, "durations", {}).get(video_url)
-        if duration and duration > AUDIO_CHUNK_S * 1.5 and ytdlp.direct_blocked():
+        from src.monitor.remote_fetch import FETCHER
+        if duration and duration > AUDIO_CHUNK_S * 1.5 and ytdlp.direct_blocked() and not FETCHER.online():
             return await self._download_audio_chunked(video_url, output_dir, min(duration, MAX_AUDIO_SECONDS))
         rc, _out, err = await ytdlp.run([
             "-f", AUDIO_FORMAT,
