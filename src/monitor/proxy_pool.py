@@ -45,6 +45,12 @@ UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like 
 POOL_TARGET = int(os.getenv("YTDLP_PROXY_POOL", "12"))
 POOL_MIN = 3                       # refill below this
 POOL_MAX_AGE_S = 45 * 60           # free proxies die quickly; revalidate after this
+BAD_FOR_S = 3600                   # a failed proxy (and every port of its host) is skipped this long
+HOST_STRIKES = 2                   # failures on different ports before the whole host is skipped
+
+
+def _host(proxy: str) -> str:
+    return proxy.split("://", 1)[-1].rsplit(":", 1)[0]
 
 
 def _parse(url: str, text: str, json_body=None) -> List[str]:
@@ -75,6 +81,7 @@ class ProxyPool:
         self._pool: List[str] = []
         self._latency: Dict[str, float] = {}
         self._bad: Dict[str, float] = {}          # proxy -> time it failed (skipped for a while)
+        self._host_strikes: Dict[str, List[float]] = {}   # host -> failure times (one host often has many ports)
         self._lock = threading.Lock()
         self._refresh_lock: Optional[asyncio.Lock] = None
         self.preferred: Optional[str] = None      # last proxy that worked - tried first
@@ -98,7 +105,7 @@ class ProxyPool:
         with concurrent.futures.ThreadPoolExecutor(max_workers=len(sources)) as ex:
             list(ex.map(fetch, sources))
         now = time.time()
-        cands = [p for p in found if now - self._bad.get(p, 0) > 3600]
+        cands = [p for p in found if not self._is_bad(p, now)]
         random.shuffle(cands)
         return cands[: self.max_candidates]
 
@@ -162,6 +169,12 @@ class ProxyPool:
             if self.needs_refresh():
                 await asyncio.get_running_loop().run_in_executor(None, self.refresh)
 
+    def _is_bad(self, proxy: str, now: Optional[float] = None) -> bool:
+        now = now or time.time()
+        if now - self._bad.get(proxy, 0) <= BAD_FOR_S:
+            return True
+        return len([t for t in self._host_strikes.get(_host(proxy), []) if now - t <= BAD_FOR_S]) >= HOST_STRIKES
+
     def candidates(self, n: int) -> List[str]:
         """Up to n proxies to try, last-known-good first, then fastest."""
         with self._lock:
@@ -172,11 +185,14 @@ class ProxyPool:
         self.preferred = proxy
 
     def mark_bad(self, proxy: str) -> None:
+        """Drop a proxy; after HOST_STRIKES failures on one host, drop all its ports (seen on the VPS:
+        one host on a dozen ports kept serving cut-off downloads)."""
         with self._lock:
-            if proxy in self._pool:
-                self._pool.remove(proxy)
-            self._bad[proxy] = time.time()
-            if self.preferred == proxy:
+            now = time.time()
+            self._bad[proxy] = now
+            self._host_strikes.setdefault(_host(proxy), []).append(now)
+            self._pool = [p for p in self._pool if not self._is_bad(p, now)]
+            if self.preferred and self._is_bad(self.preferred, now):
                 self.preferred = None
 
     def status(self) -> dict:

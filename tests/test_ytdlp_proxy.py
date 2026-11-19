@@ -213,3 +213,13 @@ def test_pool_parsing_and_bookkeeping():
     assert pool.candidates(2) == ["http://b:1", "http://a:1"]
     pool.mark_bad("http://b:1")
     assert pool.candidates(5) == ["http://a:1", "http://c:1"] and pool.preferred is None
+
+
+def test_a_host_that_keeps_failing_is_dropped_on_every_port():
+    pool = pp.ProxyPool(country="")
+    pool._pool = ["http://9.9.9.9:1", "http://9.9.9.9:2", "http://9.9.9.9:3", "http://8.8.8.8:1"]
+    pool.mark_bad("http://9.9.9.9:1")
+    assert pool.candidates(5) == ["http://9.9.9.9:2", "http://9.9.9.9:3", "http://8.8.8.8:1"]   # one strike: other ports stay
+    pool.mark_bad("http://9.9.9.9:2")
+    assert pool.candidates(5) == ["http://8.8.8.8:1"]
+    assert pool._is_bad("http://9.9.9.9:4444")            # new ports of that host are skipped at refresh too
