@@ -95,11 +95,24 @@ def js_runtime_args() -> List[str]:
     return []
 
 
+STALL_TIMEOUT_S = 60
+
+
+def is_stalled(stderr: str) -> bool:
+    """A download that died mid-way on the network (not a YouTube answer)."""
+    low = (stderr or "").lower()
+    return any(x in low for x in ("timed out", "connection reset", "i/o error", "ffmpeg exited with code",
+                                  "error opening input", "remote end closed", "unable to download video data"))
+
+
 def base_args(use_cookies: bool = True) -> List[str]:
     args = [
         sys.executable, "-m", "yt_dlp", "--no-warnings",
         "--force-ipv4",
         "--remote-components", "ejs:github",
+        # a download that stops receiving data fails after 60 s instead of hanging until the
+        # overall timeout (seen on the VPS: a direct download sat silent for 26 min)
+        "--downloader-args", f"ffmpeg_i:-rw_timeout {STALL_TIMEOUT_S * 1_000_000}",
     ]
     cookies = cookies_path() if use_cookies else None
     if cookies:
@@ -342,11 +355,17 @@ async def run(args: Sequence[str], timeout: Optional[float] = None) -> Tuple[int
     direct_err = ""
     if not use_pool or time.time() >= _direct_blocked_until:
         rc, out, err = await _exec(base_args() + list(args), timeout)
-        if rc == 0 or not use_pool or not is_blocked(err):
+        if rc == 0 or not use_pool:
+            return rc, out, err
+        if is_blocked(err):
+            _direct_blocked_until = time.time() + DIRECT_BLOCK_COOLDOWN_S
+            logger.warning("YouTube blocked this server's IP (%s); retrying through a proxy.", explain(err)[:120])
+        elif is_stalled(err) and not _is_info_only(args):
+            # YouTube throttling this server mid-download: proxies, but no cooldown (lookups still work)
+            logger.warning("Direct download stalled (%s); retrying through a proxy.", explain(err)[:120])
+        else:
             return rc, out, err
         direct_err = err
-        _direct_blocked_until = time.time() + DIRECT_BLOCK_COOLDOWN_S
-        logger.warning("YouTube blocked this server's IP (%s); retrying through a proxy.", explain(err)[:120])
 
     from src.monitor.proxy_pool import POOL
     budget_end = time.time() + max(120.0, (timeout or 900) * 1.5)

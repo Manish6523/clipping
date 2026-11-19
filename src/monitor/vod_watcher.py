@@ -291,7 +291,11 @@ class VODWatcher:
 
         work_dir = Path(BUFFER_DIR) / "vods" / vod_id
         work_dir.mkdir(parents=True, exist_ok=True)
+        from src.monitor.storage_gc import in_use
+        with in_use(work_dir):          # the 15-min temp sweep must not touch a VOD still being worked on
+            await self._process_vod_in(platform, channel_id, vod_id, title, video_url, template_name, options, work_dir)
 
+    async def _process_vod_in(self, platform, channel_id, vod_id, title, video_url, template_name, options, work_dir) -> None:
         try:
             # 1. Parse heatmap peaks
             peaks = await self.fetch_heatmap_peaks(video_url)

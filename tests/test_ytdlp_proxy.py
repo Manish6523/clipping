@@ -223,3 +223,20 @@ def test_a_host_that_keeps_failing_is_dropped_on_every_port():
     pool.mark_bad("http://9.9.9.9:2")
     assert pool.candidates(5) == ["http://8.8.8.8:1"]
     assert pool._is_bad("http://9.9.9.9:4444")            # new ports of that host are skipped at refresh too
+
+
+def test_a_stalled_direct_download_falls_back_to_proxies_without_cooldown(env):
+    calls, answers, mp = env
+    pool = use_pool(mp, ["http://good:80"])
+    answers[None] = (1, b"", "[in#0] Error opening input: Connection timed out\nERROR: ffmpeg exited with code 146")
+    rc, _, _ = asyncio.run(ytdlp.run(["--download-sections", "*0-60", "-o", "/tmp/never_written_x.webm", "https://youtu.be/x"], timeout=60))
+    assert rc == 0 and pool.good == ["http://good:80"] and ytdlp._direct_blocked_until == 0.0
+    # a lookup that times out is just returned (no proxy hunt for a flaky metadata call)
+    calls.clear()
+    answers[None] = (1, b"", "ERROR: timed out")
+    assert asyncio.run(ytdlp.run(["--simulate", "u"]))[0] == 1 and len(calls) == 1
+
+
+def test_every_call_has_a_stall_timeout():
+    args = ytdlp.base_args(use_cookies=False)
+    assert args[args.index("--downloader-args") + 1] == f"ffmpeg_i:-rw_timeout {ytdlp.STALL_TIMEOUT_S * 1_000_000}"

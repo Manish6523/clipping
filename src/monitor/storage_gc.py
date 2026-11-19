@@ -8,12 +8,13 @@ Runs continuously in the background to ensure:
 """
 
 import asyncio
+import contextlib
 import logging
 import os
 import shutil
 import time
 from pathlib import Path
-from typing import List, Set
+from typing import Dict, List, Set
 
 from datetime import datetime, timedelta, timezone
 
@@ -25,6 +26,29 @@ logger = logging.getLogger(__name__)
 MAX_BUFFER_BYTES = 1500 * 1024 * 1024
 # Max age for intermediate temporary files (15 minutes)
 MAX_TEMP_FILE_AGE_SECONDS = 900
+
+
+# Folders a running job is still using (a long VOD can take an hour: its audio, chat and slices
+# must not be swept at 15 min). Registered with `in_use(path)`.
+_IN_USE: Dict[str, int] = {}
+# Folders with their own expiry (vod_watcher keeps a video's audio pieces for 2 days)
+KEEP_DIR_NAMES = ("/audio_pieces/",)
+
+
+@contextlib.contextmanager
+def in_use(path):
+    key = str(Path(path).resolve()).lower().rstrip("/") + "/"
+    _IN_USE[key] = _IN_USE.get(key, 0) + 1
+    try:
+        yield
+    finally:
+        _IN_USE[key] -= 1
+        if _IN_USE[key] <= 0:
+            _IN_USE.pop(key, None)
+
+
+def _held(resolved_lower: str) -> bool:
+    return any(k in resolved_lower for k in KEEP_DIR_NAMES) or any(resolved_lower.startswith(k) for k in _IN_USE)
 
 
 def _with_siblings(path_str: str) -> List[str]:
@@ -102,6 +126,8 @@ def clean_directory_by_age(
                         continue
                     if resolved_str in protected or str(item).lower() in protected:
                         continue
+                    if _held(resolved_str):
+                        continue
                 except Exception:
                     pass
 
@@ -143,6 +169,8 @@ def enforce_directory_quota(
                     if "story_seeds" in resolved_str or "\\assets\\" in resolved_str or "/assets/" in resolved_str:
                         continue
                     if resolved_str in protected or str(item).lower() in protected:
+                        continue
+                    if _held(resolved_str):
                         continue
                 except Exception:
                     pass
