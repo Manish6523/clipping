@@ -69,7 +69,7 @@ def emphasis_score(w: Dict[str, Any], is_hype) -> float:
     return s
 
 
-def pick_emphasis(words: Sequence[Dict[str, Any]], dur: float, is_hype, min_gap: float = 1.4) -> List[Dict[str, Any]]:
+def pick_emphasis(words: Sequence[Dict[str, Any]], dur: float, is_hype, min_gap: float = 1.4, every: float = 4.0) -> List[Dict[str, Any]]:
     """Key words to show bigger / coloured: hype words, numbers & money, superlatives, shouted words.
     At most one every ~1.4 s and ~one per 4 s of clip, so it stays special."""
     cands = []
@@ -81,7 +81,7 @@ def pick_emphasis(words: Sequence[Dict[str, Any]], dur: float, is_hype, min_gap:
             cands.append((sc, float(w["start"]), (w.get("word") or "").strip().strip(".,;:")))
     cands.sort(key=lambda c: (-c[0], c[1]))
     chosen: List[Tuple[float, str]] = []
-    cap = max(1, int(dur / 4))
+    cap = max(1, int(dur / max(1.0, every)))
     for sc, t, word in cands:
         if any(abs(t - c[0]) < min_gap for c in chosen):
             continue
@@ -110,7 +110,7 @@ def build_plan(cfg: Dict[str, Any], words: Sequence[Dict[str, Any]], dur: float,
     """The automatic plan (times in the given words' / punches' timeline)."""
     amount = float(cfg.get("box_zoom_amount", cfg.get("zoom_amount", 0.14)) if zoom_target else cfg.get("zoom_amount", 0.14))
     zooms = _ids("z", [{"t": round(p, 3), "amount": round(amount, 3), "on": True, "by": "auto"} for p in punches])
-    emphasis = pick_emphasis(words, dur, is_hype) if cfg.get("word_pop") else []
+    emphasis = pick_emphasis(words, dur, is_hype, every=float(cfg.get("emphasis_every", 4.0))) if cfg.get("word_pop") else []
     sfx: List[Dict[str, Any]] = []
     if cfg.get("sfx"):
         for i, z in enumerate(zooms):

@@ -355,6 +355,13 @@ async def create_clip(
         )
         await db.commit()
         new_clip_id = cursor.lastrowid or 0
+        if new_clip_id and flags and "auto_edited" in str(flags):
+            try:                                   # snapshot for auto-edit learning (kept after deletion)
+                from src.intelligence.edit_learning import record_created
+                await record_created(db, new_clip_id, channel_id, flags, float(raw_end) - float(raw_start))
+                await db.commit()
+            except Exception as learn_err:
+                logger.debug("Auto-edit outcome snapshot failed for clip %s: %s", new_clip_id, learn_err)
         if edit_plan and new_clip_id:
             await db.execute("UPDATE clips SET edit_plan = ? WHERE id = ?",
                              (edit_plan if isinstance(edit_plan, str) else json.dumps(edit_plan), new_clip_id))

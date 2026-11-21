@@ -838,7 +838,31 @@ async def put_edit_plan(request: web.Request) -> web.Response:
         plan = validate(body.get("plan") if isinstance(body, dict) and "plan" in body else body)
     except (ValueError, TypeError) as e:
         return make_json_error("BAD_PLAN", str(e))
-    return await _rerender_with_plan(clip, plan)
+    resp = await _rerender_with_plan(clip, plan)
+    if resp.status == 200:                         # what you switched off / added teaches auto edit
+        from src.intelligence.edit_learning import record_user_changes
+        await record_user_changes(clip_id, _plan_of(clip), plan)
+    return resp
+
+
+async def get_edit_learning(request: web.Request) -> web.Response:
+    from src.database import get_system_setting
+    from src.compositor.auto_edit import TUNING
+    try:
+        data = json.loads(await get_system_setting("auto_edit_tuning", "{}") or "{}")
+    except (TypeError, ValueError):
+        data = {}
+    return web.json_response({**data, "active": TUNING})
+
+
+async def run_edit_learning(request: web.Request) -> web.Response:
+    from src.intelligence.edit_learning import analyze
+    return web.json_response(await analyze(apply=True))
+
+
+async def reset_edit_learning(request: web.Request) -> web.Response:
+    from src.intelligence.edit_learning import reset
+    return web.json_response(await reset())
 
 
 async def regenerate_edit_plan(request: web.Request) -> web.Response:
@@ -1152,6 +1176,9 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips/{id}/edit-plan", get_edit_plan)
     app.router.add_put("/api/clips/{id}/edit-plan", put_edit_plan)
     app.router.add_post("/api/clips/{id}/edit-plan/regenerate", regenerate_edit_plan)
+    app.router.add_get("/api/auto-edit/learning", get_edit_learning)
+    app.router.add_post("/api/auto-edit/learning/run", run_edit_learning)
+    app.router.add_post("/api/auto-edit/learning/reset", reset_edit_learning)
     app.router.add_get("/api/clips/{id}", get_clip_by_id)
     app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)

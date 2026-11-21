@@ -60,14 +60,27 @@ STYLES: Dict[str, Dict[str, Any]] = {
 FEATURE_KEYS = ("tighten", "jump_cuts", "remove_fillers", "hook_card", "zooms", "sfx", "word_pop", "loudnorm", "cold_open", "ai_director")
 
 
+# Learned adjustments per style (intelligence/edit_learning.py keeps this in sync with the
+# auto_edit_tuning setting). Explicit per-request toggles always win over them.
+TUNING: Dict[str, Dict[str, Any]] = {}
+TUNABLE = {"cold_open": bool, "sfx_cuts": bool, "sfx_words": bool, "ai_director": bool,
+           "zoom_every": (3.5, 8.0), "emphasis_every": (3.0, 7.0), "box_zoom_amount": (0.08, 0.3)}
+
+
 def resolve_config(opts: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-    """Merge a style preset with explicit per-feature toggles. None/disabled -> None."""
+    """Merge a style preset (+ learned tuning) with explicit per-feature toggles. None/disabled -> None."""
     if not opts or opts is False or (isinstance(opts, dict) and opts.get("enabled") is False):
         return None
     opts = opts if isinstance(opts, dict) else {}
     style = opts.get("style") if opts.get("style") in STYLES else "punchy"
     cfg = dict(STYLES[style])
     cfg["style"] = style
+    for k, v in (TUNING.get(style) or {}).items():
+        rule = TUNABLE.get(k)
+        if rule is bool and isinstance(v, bool):
+            cfg[k] = v
+        elif isinstance(rule, tuple) and isinstance(v, (int, float)):
+            cfg[k] = min(rule[1], max(rule[0], float(v)))
     for k in FEATURE_KEYS:
         if isinstance(opts.get(k), bool):
             cfg[k] = opts[k]

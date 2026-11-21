@@ -818,6 +818,38 @@ async def migration_v25(db):
         await db.execute("ALTER TABLE clips ADD COLUMN edit_plan TEXT")
 
 
+@migration(26, "Auto-edit outcomes for learning")
+async def migration_v26(db):
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS auto_edit_outcomes (
+            clip_id INTEGER PRIMARY KEY,
+            channel_id TEXT,
+            style TEXT,
+            plan_by TEXT,
+            duration REAL,
+            zooms INTEGER DEFAULT 0,
+            emphasis INTEGER DEFAULT 0,
+            sfx INTEGER DEFAULT 0,
+            cold_open INTEGER DEFAULT 0,
+            hook INTEGER DEFAULT 0,
+            quality_issues INTEGER DEFAULT 0,
+            user_changes TEXT,
+            decision TEXT,
+            views INTEGER,
+            retention REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+    # back-fill from clips auto-edited before this table existed
+    from src.intelligence.edit_learning import record_created
+    cur = await db.execute("SELECT id, channel_id, flags, raw_start, raw_end FROM clips WHERE flags LIKE '%auto_edited%'")
+    for row in await cur.fetchall():
+        try:
+            await record_created(db, row[0], row[1], row[2], float(row[4] or 0) - float(row[3] or 0))
+        except Exception:
+            pass
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

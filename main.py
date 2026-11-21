@@ -1472,6 +1472,8 @@ class AutoClipEngine:
         # Start Storage Garbage Collector loop (auto-cleans temp files and caps buffer at 1.5GB)
         gc_dirs = [Path("temp"), Path(RENDER_DIR), Path("tmp")]
         gc_task = asyncio.create_task(run_storage_gc_loop(gc_dirs, interval_seconds=120))
+        from src.intelligence.edit_learning import learning_loop
+        learn_task = asyncio.create_task(learning_loop())        # auto edit tunes itself daily from results
 
         # Start Channel Monitor synchronizer loop
         async def _channel_sync_loop():
@@ -1540,6 +1542,7 @@ class AutoClipEngine:
             self.running = False
             scheduler_task.cancel()
             gc_task.cancel()
+            learn_task.cancel()
             sync_task.cancel()
             vod_task.cancel()
         elif self.bot.bot and not TELEGRAM_POLLING_ENABLED:

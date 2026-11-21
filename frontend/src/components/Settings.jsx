@@ -26,6 +26,7 @@ import axios from 'axios';
 import CensorSettings from './CensorSettings';
 import StorageAlerts from './StorageAlerts';
 import YouTubeDownloads from './YouTubeDownloads';
+import AutoEditLearning from './AutoEditLearning';
 import {
   Page,
   Panel,
@@ -610,6 +611,10 @@ export default function Settings() {
                   <option value="false">Off (built-in rules)</option>
                 </Select>
               </Field>
+            </div>
+
+            <div className="pt-2 border-t border-line">
+              <AutoEditLearning />
             </div>
           </Panel>
         </div>
