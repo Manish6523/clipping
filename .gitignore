@@ -96,3 +96,6 @@ config/tokens/
 
 # Downloaded on first use (face tracking model)
 config/models/
+
+# Your own sound effects (licences vary) live on the server only; the bundled ones stay tracked
+assets/sfx/*/

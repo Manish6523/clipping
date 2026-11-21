@@ -931,8 +931,10 @@ async def auto_edit_clip(
             sfx.append((f, 0.0, 0.35))
         if lead and (f := sfx_file("rewind", seed) or sfx_file("whoosh", seed + 1)):
             sfx.append((f, max(0.0, (lead - 0.25) / speed), 0.4))
-        if lead and (f := sfx_file("riser", seed)) and float(co["start"]) > 1.6:
-            sfx.append((f, at(float(co["start"]) - 1.4) / speed, 0.3))
+        if lead and (f := sfx_file("riser", seed)):
+            rl = await _duration(f) or 1.4                  # the swell ends right where the payoff starts
+            if float(co["start"]) > rl:
+                sfx.append((f, at(float(co["start"]) - rl) / speed, 0.3))
         for i, it in enumerate(local.get("sfx") or []):
             if not it.get("on", True):
                 continue
