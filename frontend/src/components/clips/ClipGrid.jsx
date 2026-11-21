@@ -46,7 +46,7 @@ function ClipCard({ clip, active, selecting, selected, onOpen, onToggle, busy })
 }
 
 /** Video + actions + every detail of one clip. Used by the grid side panel / sheet and the reels side panel. */
-export function ClipPanel({ clip, actions, onPublish, onStyle, onSkip, showVideo = true }) {
+export function ClipPanel({ clip, actions, onPublish, onStyle, onEdits, onSkip, showVideo = true }) {
   if (!clip) return null;
   return (
     <div className="space-y-3">
@@ -55,7 +55,7 @@ export function ClipPanel({ clip, actions, onPublish, onStyle, onSkip, showVideo
             poster={withToken(clip.thumbnail_url) || undefined} className="w-full max-h-[52dvh] aspect-[9/16] object-contain rounded-xl bg-black" />
         : <div className="w-full aspect-[9/16] max-h-[40dvh] rounded-xl bg-black flex items-center justify-center text-muted text-xs">No rendered video</div>)}
       {actions.applying[clip.id] && <p className="text-xs text-accent flex items-center gap-1.5"><Loader2 size={13} className="animate-spin" />Re-rendering: {actions.applying[clip.id]}</p>}
-      <ClipActionBar clip={clip} actions={actions} onPublish={onPublish} onStyle={onStyle} onSkip={onSkip} busy={!!actions.applying[clip.id]} />
+      <ClipActionBar clip={clip} actions={actions} onPublish={onPublish} onStyle={onStyle} onEdits={onEdits} onSkip={onSkip} busy={!!actions.applying[clip.id]} />
       <ClipDetails clip={clip} actions={actions} />
     </div>
   );
@@ -63,7 +63,7 @@ export function ClipPanel({ clip, actions, onPublish, onStyle, onSkip, showVideo
 
 const GROUPS = { none: null, channel: (c) => `@${c.channel_id || 'unknown'}`, day: (c) => new Date(c.created_at).toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' }) };
 
-export default function ClipGrid({ feed, clips, actions, onPublish, onStyle, isWide, group }) {
+export default function ClipGrid({ feed, clips, actions, onPublish, onStyle, onEdits, isWide, group }) {
   const [openId, setOpenId] = useState(null);
   const [selected, setSelected] = useState(() => new Set());
   const [selecting, setSelecting] = useState(false);
@@ -189,12 +189,12 @@ export default function ClipGrid({ feed, clips, actions, onPublish, onStyle, isW
 
       {isWide && open && (
         <aside className="w-[360px] xl:w-[400px] shrink-0 sticky top-[72px] max-h-[calc(100dvh-88px)] overflow-y-auto rounded-2xl bg-surface border border-line p-3" data-testid="clip-panel">
-          <ClipPanel clip={open} actions={panelActions} onPublish={onPublish} onStyle={onStyle} />
+          <ClipPanel clip={open} actions={panelActions} onPublish={onPublish} onStyle={onStyle} onEdits={onEdits} />
         </aside>
       )}
       {!isWide && (
         <Sheet open={!!open} onClose={() => setOpenId(null)} title={open ? `Clip #${open.id}` : ''} wide>
-          {open && <ClipPanel clip={open} actions={panelActions} onPublish={onPublish} onStyle={onStyle} />}
+          {open && <ClipPanel clip={open} actions={panelActions} onPublish={onPublish} onStyle={onStyle} onEdits={onEdits} />}
         </Sheet>
       )}
 

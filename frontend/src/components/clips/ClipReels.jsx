@@ -116,7 +116,7 @@ function ReelItem({ clip, index, active, near, muted, onToggleMute, actions, rai
   );
 }
 
-export default function ClipReels({ feed, clips, actions, onPublish, onStyle, isWide }) {
+export default function ClipReels({ feed, clips, actions, onPublish, onStyle, onEdits, isWide }) {
   const navigate = useNavigate();
   const scroller = useRef(null);
   const [activeIdx, setActiveIdx] = useState(0);
@@ -157,10 +157,10 @@ export default function ClipReels({ feed, clips, actions, onPublish, onStyle, is
   }, [activeIdx, clips.length]);
 
   const railFor = useCallback((clip) => clipActions(clip, {
-    actions, navigate, rail: true, onPublish, onStyle,
+    actions, navigate, rail: true, onPublish, onStyle, onEdits,
     onSkip: () => go(1),
     onDetails: (c) => setDetailsFor(c.id),
-  }).filter((a) => !(isWide && a.id === 'details')), [actions, navigate, onPublish, onStyle, go, isWide]);
+  }).filter((a) => !(isWide && a.id === 'details')), [actions, navigate, onPublish, onStyle, onEdits, go, isWide]);
 
   // Keyboard: arrows / J K move, A R S P E D act, M mute, space pause
   useEffect(() => {

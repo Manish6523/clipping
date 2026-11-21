@@ -1,9 +1,9 @@
 import React from 'react';
-import { Check, X, SkipForward, Send, Scissors, Download, Palette, Info, Trash2 } from 'lucide-react';
+import { Check, X, SkipForward, Send, Scissors, Download, Palette, Info, Trash2, Wand2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 /** Which actions a clip offers, in order. Same list for the grid, the details sheet and the reels rail. */
-export function clipActions(clip, { onSkip, onDetails, onPublish, onStyle, actions, navigate, rail = false }) {
+export function clipActions(clip, { onSkip, onDetails, onPublish, onStyle, onEdits, actions, navigate, rail = false }) {
   const reviewable = ['pending_approval', 'approved'].includes(clip.status);
   const list = [];
   if (reviewable) list.push({ id: 'approve', label: 'Approve', key: 'A', icon: Check, tone: 'good', run: () => actions.approve(clip) });
@@ -12,6 +12,7 @@ export function clipActions(clip, { onSkip, onDetails, onPublish, onStyle, actio
   if (clip.status !== 'published') list.push({ id: 'publish', label: 'Publish', key: 'P', icon: Send, tone: 'accent', run: () => onPublish(clip) });
   list.push({ id: 'edit', label: 'Edit', key: 'E', icon: Scissors, run: () => navigate(`/clips/${clip.id}/editor`) });
   list.push({ id: 'style', label: 'Style', icon: Palette, run: () => onStyle(clip) });
+  if (onEdits) list.push({ id: 'edits', label: 'Edits', icon: Wand2, run: () => onEdits(clip) });
   list.push({ id: 'download', label: 'Save', icon: Download, disabled: !clip.download_url, run: () => actions.download(clip) });
   if (rail && onDetails) list.push({ id: 'details', label: 'Details', key: 'D', icon: Info, run: () => onDetails(clip) });
   return list;

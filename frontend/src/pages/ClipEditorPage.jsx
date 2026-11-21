@@ -149,6 +149,16 @@ export default function ClipEditorPage() {
     return () => v.removeEventListener('timeupdate', handleTimeUpdate);
   }, [edl, setCurrentTime]);
 
+  // Seek requests from panels that don't own the player (Auto edit)
+  const seekRequest = useEditorStore((st) => st.seekRequest);
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || !seekRequest) return;
+    v.pause();
+    v.currentTime = Math.max(0, seekRequest.t);
+    setCurrentTime(v.currentTime);
+  }, [seekRequest, setCurrentTime]);
+
   // Keyboard Shortcuts (desktop)
   useEffect(() => {
     const handleKeyDown = (e) => {

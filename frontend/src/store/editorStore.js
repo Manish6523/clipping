@@ -123,6 +123,9 @@ export const useEditorStore = create((set, get) => ({
   },
 
   setCurrentTime: (time) => set({ currentTime: time }),
+  // Panels without the <video> (e.g. Auto edit) ask the page to jump the player here
+  seekRequest: null,
+  requestSeek: (t) => set({ seekRequest: { t, at: Date.now() } }),
   setIsPlaying: (playing) => set({ isPlaying: playing }),
   setPreviewMode: (mode) => set({ previewMode: mode }),
   setActiveTab: (tab) => set({ activeTab: tab }),

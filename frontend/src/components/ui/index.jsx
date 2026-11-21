@@ -221,14 +221,15 @@ export function Field({ label, hint, error, children, className = '', right }) {
 
 export function Toggle({ checked, onChange, label, hint, disabled }) {
   return (
-    <label className={cx('flex items-center justify-between gap-3 select-none', disabled ? 'opacity-50' : 'cursor-pointer')}>
+    <label className={cx('flex items-center justify-between gap-3 select-none [@media(pointer:coarse)]:min-h-[44px]', disabled ? 'opacity-50' : 'cursor-pointer')}>
       {(label || hint) && (
         <span className="min-w-0">
           {label && <span className="block text-[13px] text-ink">{label}</span>}
           {hint && <span className="block text-[11px] text-muted leading-snug">{hint}</span>}
         </span>
       )}
-      <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)}
+      {/* data-compact: the 44px touch target is the whole row (label), not a stretched switch */}
+      <button type="button" role="switch" aria-checked={checked} disabled={disabled} onClick={() => onChange(!checked)} data-compact
         className={cx('relative shrink-0 w-11 h-6 rounded-full transition-colors', checked ? 'bg-accent-strong' : 'bg-white/[0.14]')}>
         <span className={cx('absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform', checked && 'translate-x-5')} />
       </button>

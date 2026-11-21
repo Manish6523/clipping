@@ -9,6 +9,7 @@ import {
   Share2,
   SlidersHorizontal,
   ChevronLeft,
+  Wand2,
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 
@@ -17,6 +18,7 @@ const PRIMARY_ITEMS = [
   { id: 'transcript', label: 'Script', icon: FileText },
   { id: 'captions', label: 'Captions', icon: Type },
   { id: 'length', label: 'Length', icon: Clock },
+  { id: 'autoedit', label: 'Edits', icon: Wand2 },
   { id: 'publish', label: 'Publish', icon: Share2 },
 ];
 const ADVANCED_ITEMS = [

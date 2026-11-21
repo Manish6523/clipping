@@ -13,7 +13,8 @@ import {
   Volume2,
   Bookmark,
   Share2,
-  Sparkles
+  Sparkles,
+  Wand2
 } from 'lucide-react';
 import { useEditorStore } from '../../store/editorStore';
 import ClipPanel from './panels/ClipPanel';
@@ -23,6 +24,7 @@ import TranscriptPanel from './panels/TranscriptPanel';
 import AudioPanel from './panels/AudioPanel';
 import PresetsPanel from './panels/PresetsPanel';
 import PublishPanel from './panels/PublishPanel';
+import AutoEditPanel from './panels/AutoEditPanel';
 
 const PANEL_CONFIG = {
   clip: { label: 'Clip Length & Overview', icon: Clock, component: ClipPanel },
@@ -33,6 +35,7 @@ const PANEL_CONFIG = {
   audio: { label: 'Audio & Normalization', icon: Volume2, component: AudioPanel },
   presets: { label: 'Layout Presets', icon: Bookmark, component: PresetsPanel },
   publish: { label: 'Publish & Queue', icon: Share2, component: PublishPanel },
+  autoedit: { label: 'Auto edit: zooms, words, sounds', icon: Wand2, component: AutoEditPanel },
 };
 
 /**
@@ -113,6 +116,7 @@ export default function PanelHost({
     { id: 'presets', label: 'Presets', icon: Bookmark },
     { id: 'clip', label: 'Length', icon: Clock },
     { id: 'audio', label: 'Audio', icon: Volume2 },
+    { id: 'autoedit', label: 'Auto edit', icon: Wand2 },
     { id: 'publish', label: 'Publish', icon: Share2 },
   ];
 
@@ -120,7 +124,7 @@ export default function PanelHost({
     return (
       <div className="w-full h-full bg-surface border border-white/[0.06] rounded-2xl flex flex-col shadow-xl select-none overflow-hidden">
         {/* Unified Tool Tabs Header */}
-        <div className="grid grid-cols-7 gap-0.5 bg-canvas p-1.5 border-b border-white/[0.06] shrink-0" role="tablist" aria-label="Tools">
+        <div className="grid grid-cols-8 gap-0.5 bg-canvas p-1.5 border-b border-white/[0.06] shrink-0" role="tablist" aria-label="Tools">
           {tabs.map((t) => {
             const Icon = t.icon;
             const isActive = (resolvedPanel === t.id);

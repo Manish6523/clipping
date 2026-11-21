@@ -25,6 +25,11 @@ def clip(i, status="pending_approval", ch="kaicenat", score=88, tags="#kaicenat 
 
 CLIPS = [clip(i, score=95 - i) for i in range(1, 13)] + [clip(20, "queued", "ishowspeed"), clip(21, "published", "ishowspeed")]
 calls = []
+PLAN = {"version": 1, "style": "punchy", "by": "auto", "zoom_target": {"layer": "l_face", "name": "Facecam"},
+        "zooms": [{"id": "z1", "t": 9.4, "amount": 0.22, "on": True, "by": "auto"}, {"id": "z2", "t": 16.3, "amount": 0.22, "on": True, "by": "auto"}],
+        "emphasis": [{"id": "e1", "t": 6.4, "word": "won", "on": True, "by": "auto"}],
+        "sfx": [{"id": "s1", "t": 9.38, "cat": "hit", "vol": 0.45, "on": True, "by": "auto", "file": "boom.wav"}],
+        "cold_open": {"on": True, "start": 15.8, "end": 17.6, "by": "auto"}, "hook": {"on": True, "text": "Hook line"}}
 
 
 def handler(route):
@@ -47,6 +52,16 @@ def handler(route):
         return route.fulfill(body=SAMPLE, headers={"Content-Type": "video/mp4"})
     if re.match(r"/api/clips/\d+/(update|queue|discard)", path):
         return route.fulfill(json={"success": True, "scheduled": []})
+    if path.endswith("/edit-plan") and req.method == "GET":
+        return route.fulfill(json={"clip_id": 1, "auto_edited": True, "start": 0.0, "end": 31.0, "speed": 1.02,
+                                   "layers": [{"id": "l_game", "name": "Gameplay"}, {"id": "l_face", "name": "Facecam"}],
+                                   "source_available": True, "sfx_library": {"hit": ["boom.wav"], "pop": ["pop.wav"], "ding": ["boop.wav"],
+                                                                             "whoosh": ["whoosh.wav"], "swish": ["whoosh.wav"], "rewind": [], "riser": []},
+                                   "plan": PLAN})
+    if path.endswith("/edit-plan") and req.method == "PUT":
+        return route.fulfill(json={"success": True, "plan": json.loads(req.post_data)["plan"], "video_url": "/api/clips/1/video?v=2"})
+    if path.endswith("/words"):
+        return route.fulfill(json={"words": [{"word": "insane", "start": 12.8, "end": 13.1}]})
     if path == "/api/auth/config":
         return route.fulfill(json={"auth_lock_enabled": False})
     if path == "/api/templates":
@@ -97,8 +112,32 @@ def run(p, name, viewport, touch):
     assert [c for c in calls if c[1] == "/api/clips/1/queue"], calls
     with pg.expect_download() if False else _noop():
         pass
-    if touch:
-        pg.keyboard.press("Escape")
+
+    # ---- auto edits: switch a zoom off, change a sound, add a zoom, apply
+    if touch and not pg.locator('[role="dialog"]').count():
+        pg.locator('[data-testid="clip-card"] >> nth=0').locator("button").first.click()
+        pg.wait_for_selector('[role="dialog"] [data-testid="clip-details"]')
+    scope = pg.locator('[role="dialog"]') if touch else pg.locator('[data-testid="clip-panel"]')
+    scope.locator('[data-action="edits"]').first.click()
+    pg.wait_for_selector('[data-testid="edit-plan"] [data-testid="plan-row"]')
+    plan_ui = pg.locator('[data-testid="edit-plan"]')
+    assert plan_ui.get_by_text("WON").is_visible()
+    rows = plan_ui.locator('[data-testid="plan-row"]')
+    rows.nth(0).get_by_role("switch").click()                       # first zoom off (undo)
+    plan_ui.get_by_label("Sound type", exact=True).first.select_option("pop")
+    plan_ui.get_by_role("button", name="At playhead", exact=True).click()       # add a zoom
+    pg.screenshot(path=f"{SHOT}{name}_edits.png")
+    plan_ui.locator('[data-testid="apply-plan"]').click()
+    pg.wait_for_timeout(600)
+    put = [c for c in calls if c[0] == "PUT" and c[1].endswith("/edit-plan")]
+    sent = json.loads(put[-1][2])["plan"]
+    z1 = next(z for z in sent["zooms"] if z["id"] == "z1")
+    assert z1["on"] is False and sent["sfx"][0]["cat"] == "pop" and len(sent["zooms"]) == 3, sent
+    assert any(z["by"] == "user" for z in sent["zooms"])
+    for _ in range(3):
+        if pg.locator('[role="dialog"]').count():
+            pg.keyboard.press("Escape")
+            pg.wait_for_timeout(200)
 
     # ---- reels
     pg.get_by_role("tab", name=re.compile("Reels")).click()

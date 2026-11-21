@@ -777,14 +777,17 @@ async def get_edit_plan(request: web.Request) -> web.Response:
         return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
     from src.bot.trimmer import load_template
     from src.compositor.auto_edit import _layout_layers
+    speed = 1.02
     try:
-        layers = [{"id": l.get("id"), "name": l.get("name") or l.get("id")} for l in _layout_layers(load_template(clip.get("template_name") or ""))]
+        tpl = load_template(clip.get("template_name") or "")
+        layers = [{"id": l.get("id"), "name": l.get("name") or l.get("id")} for l in _layout_layers(tpl)]
+        speed = float((tpl.get("anti_shadowban") or {}).get("speed_multiplier", 1.02) or 1.0)
     except Exception:
         layers = []
     return web.json_response({
         "clip_id": clip_id, "auto_edited": _is_auto_edited(clip), "plan": _plan_of(clip),
         "start": clip.get("adjusted_start") or 0.0, "end": clip.get("adjusted_end") or 0.0,
-        "speed": 1.02, "layers": layers, "sfx_library": _sfx_library(),
+        "speed": speed, "layers": layers, "sfx_library": _sfx_library(),
         "source_available": bool(clip.get("source_video_path") and Path(clip["source_video_path"]).exists()),
     })
 

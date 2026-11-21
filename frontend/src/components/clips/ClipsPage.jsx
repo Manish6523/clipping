@@ -9,6 +9,7 @@ import ClipGrid from './ClipGrid';
 import ClipReels from './ClipReels';
 import StyleSheet from './StyleSheet';
 import UndoBar from './UndoBar';
+import EditsSheet from './EditsSheet';
 import { STATUS_TABS, SORTS } from './model';
 
 const VIEW_KEY = 'autoclip_clips_view';
@@ -57,6 +58,7 @@ export default function ClipsPage() {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [publishing, setPublishing] = useState(null);
   const [styling, setStyling] = useState(null);
+  const [editing, setEditing] = useState(null);
   const feed = useClipFeed();
   const actions = useClipActions();
 
@@ -103,10 +105,10 @@ export default function ClipsPage() {
       {toolbar}
       {reels ? (
         <div className="flex-1 min-h-0">
-          <ClipReels feed={feed} clips={clips} actions={actions} onPublish={setPublishing} onStyle={setStyling} isWide={isWide} />
+          <ClipReels feed={feed} clips={clips} actions={actions} onPublish={setPublishing} onStyle={setStyling} onEdits={setEditing} isWide={isWide} />
         </div>
       ) : (
-        <ClipGrid feed={feed} clips={clips} actions={actions} onPublish={setPublishing} onStyle={setStyling} isWide={isWide} group={group} />
+        <ClipGrid feed={feed} clips={clips} actions={actions} onPublish={setPublishing} onStyle={setStyling} onEdits={setEditing} isWide={isWide} group={group} />
       )}
 
       <Sheet open={filtersOpen} onClose={() => setFiltersOpen(false)} title="Filters"
@@ -124,6 +126,7 @@ export default function ClipsPage() {
       <PublishSheet open={!!publishing} clip={publishing} onClose={() => setPublishing(null)}
         onDone={() => { setPublishing(null); actions.refresh(); actions.flash('Publishing started', 'ok'); }} />
       <StyleSheet clip={styling} onClose={() => setStyling(null)} actions={actions} />
+      <EditsSheet clip={editing} onClose={() => setEditing(null)} actions={actions} />
       <UndoBar actions={actions} />
     </div>
   );

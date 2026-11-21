@@ -74,6 +74,7 @@ class ClipTrimmer:
                 stored = json.loads(clip.get("edit_plan") or "null")
             except (TypeError, ValueError):
                 stored = None
+            before = json.dumps(stored, sort_keys=True) if isinstance(stored, dict) else None
             res = await auto_edit_clip(
                 self.renderer, window, window_words, dur, template, auto_cfg, censor_cfg,
                 out_path, RENDER_DIR, f"ae_{clip['id']}_{tmp_id}",
@@ -81,7 +82,7 @@ class ClipTrimmer:
                 plan=stored if isinstance(stored, dict) else None, plan_offset=start_time,
             )
             # Follow-up renders repeat this exact plan (older clips get one on their first re-render)
-            if res.get("plan") and res["plan"] != stored:
+            if res.get("plan") and json.dumps(res["plan"], sort_keys=True) != before:
                 from src.database import set_clip_edit_plan
                 await set_clip_edit_plan(clip["id"], res["plan"])
         finally:
