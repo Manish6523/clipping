@@ -87,6 +87,7 @@ export default function Settings() {
   const [videoJudgeTopK, setVideoJudgeTopK] = useState(3);
   const [autoEditStyle, setAutoEditStyle] = useState('punchy');
   const [autoEditHookCard, setAutoEditHookCard] = useState(true);
+  const [autoEditAi, setAutoEditAi] = useState(true);
   const [enableBackgroundVod, setEnableBackgroundVod] = useState(false);
   const [banner, setBanner] = useState(null);
 
@@ -112,6 +113,7 @@ export default function Settings() {
       setVideoJudgeTopK(res.data.video_judge_top_k || 3);
       setAutoEditStyle(res.data.auto_edit_style || 'punchy');
       setAutoEditHookCard(res.data.auto_edit_hook_card ?? true);
+      setAutoEditAi(res.data.auto_edit_ai_director ?? true);
       setEnableBackgroundVod(Boolean(res.data.enable_background_vod));
     } catch (err) {
       console.error('Failed to load settings:', err);
@@ -198,6 +200,7 @@ export default function Settings() {
         auto_edit_enabled: autoEditEnabled,
         auto_edit_style: autoEditStyle,
         auto_edit_hook_card: autoEditHookCard,
+        auto_edit_ai_director: autoEditAi,
         enable_background_vod: enableBackgroundVod,
         video_judge_enabled: videoJudge,
         video_judge_top_k: videoJudgeTopK,
@@ -593,6 +596,18 @@ export default function Settings() {
                 <Select value={autoEditHookCard ? 'true' : 'false'} onChange={(e) => setAutoEditHookCard(e.target.value === 'true')}>
                   <option value="true">Enabled (Show Title Card)</option>
                   <option value="false">Disabled (No Title Card)</option>
+                </Select>
+              </Field>
+            </div>
+
+            <div className="pt-2 border-t border-line">
+              <Field
+                label="AI Edit Director"
+                hint="Gemini reads each clip's transcript and decides where to zoom, which words to pop, extra sounds, the cold open and the hook. Off = the built-in rules. Uses one AI call per clip; falls back to the rules if the AI is unavailable."
+              >
+                <Select value={autoEditAi ? 'true' : 'false'} onChange={(e) => setAutoEditAi(e.target.value === 'true')}>
+                  <option value="true">On (AI decides the edit)</option>
+                  <option value="false">Off (built-in rules)</option>
                 </Select>
               </Field>
             </div>

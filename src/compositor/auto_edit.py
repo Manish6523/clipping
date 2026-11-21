@@ -41,14 +41,14 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": True, "word_pop": True, "loudnorm": True,
         "max_gap": 0.32, "zoom_amount": 0.14, "zoom_every": 4.5, "hook_snap": True,
-        "box_zoom_amount": 0.22, "sfx_cuts": True, "sfx_words": True, "cold_open": True,
+        "box_zoom_amount": 0.22, "sfx_cuts": True, "sfx_words": True, "cold_open": True, "ai_director": True,
     },
     # Polished: tight cuts, gentle occasional zooms, hook card, no SFX
     "clean": {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": False, "word_pop": True, "loudnorm": True,
         "max_gap": 0.5, "zoom_amount": 0.07, "zoom_every": 8.0, "hook_snap": False,
-        "box_zoom_amount": 0.12, "sfx_cuts": False, "sfx_words": False, "cold_open": False,
+        "box_zoom_amount": 0.12, "sfx_cuts": False, "sfx_words": False, "cold_open": False, "ai_director": True,
     },
     # Just trims dead air + loudness
     "minimal": {
@@ -818,6 +818,10 @@ async def auto_edit_clip(
         punches = pick_punches(tight_words, t_energy, tight_dur, cfg, hook_end=2.2 * speed)
         local = ep.build_plan(cfg, tight_words, tight_dur, punches, moment_scores(tight_words, t_energy),
                               cut_times, target, hook_text, _is_hype_word)
+        if director is None and cfg.get("ai_director"):
+            from src.intelligence import edit_director
+            if await edit_director.enabled():
+                director = edit_director.direct
         if director is not None:
             try:
                 local = await director(local, tight_words, tight_dur, t_energy, cfg, hook_text) or local

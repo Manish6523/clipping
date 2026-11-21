@@ -1151,6 +1151,7 @@ class WebUIServer:
         auto_edit_enabled = (db_settings.get("auto_edit_enabled", {}).get("value") or str(getattr(s, "AUTO_EDIT_ENABLED", False))).lower() in ("true", "1", "yes")
         auto_edit_style = db_settings.get("auto_edit_style", {}).get("value") or getattr(s, "AUTO_EDIT_STYLE", "punchy")
         auto_edit_hook = (db_settings.get("auto_edit_hook_card", {}).get("value") or str(getattr(s, "AUTO_EDIT_HOOK_CARD", True))).lower() in ("true", "1", "yes")
+        auto_edit_ai = (db_settings.get("auto_edit_ai_director", {}).get("value") or "true").lower() in ("true", "1", "yes")
 
         enable_background_vod = (db_settings.get("enable_background_vod", {}).get("value") or str(getattr(s, "ENABLE_BACKGROUND_VOD", False))).lower() in ("true", "1", "yes")
 
@@ -1178,6 +1179,7 @@ class WebUIServer:
             "auto_edit_enabled": auto_edit_enabled,
             "auto_edit_style": auto_edit_style,
             "auto_edit_hook_card": auto_edit_hook,
+            "auto_edit_ai_director": auto_edit_ai,
         })
 
     async def handle_save_settings(self, request: web.Request) -> web.Response:
@@ -1305,6 +1307,10 @@ class WebUIServer:
             val_str = "true" if auto_edit_hk else "false"
             await set_system_setting("auto_edit_hook_card", val_str, category="compositor", description="Enable pop-in title hook card on auto edited clips")
             s.AUTO_EDIT_HOOK_CARD = bool(auto_edit_hk)
+
+        if data.get("auto_edit_ai_director") is not None:
+            await set_system_setting("auto_edit_ai_director", "true" if data["auto_edit_ai_director"] else "false", category="compositor",
+                                     description="Gemini decides each auto-edited clip's zooms, key words, sounds, cold open and hook")
 
         return web.json_response({"success": True, "message": "Settings updated and applied immediately."})
 
