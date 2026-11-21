@@ -26,9 +26,13 @@ def build_filter_graph(
     contrast: float = 1.0,
     saturation: float = 1.0,
     motion: Optional[Dict[str, Any]] = None,
+    layer_zoom: Optional[Dict[str, Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """
     Builds the complete FFmpeg filter_complex string for a Schema v2 layout.
+
+    ``layer_zoom`` {layer_id: {"z": zoompan z-expression of `it` (input seconds), "fps": float}}
+    punches into ONE box (e.g. the facecam) while every other layer stays still.
     Returns:
       {
         "filter_complex": str,
@@ -101,6 +105,16 @@ def build_filter_graph(
         if fit == "cover" and "inner_crop" in geo:
             ic = geo["inner_crop"]
             pipe_steps.append(f"crop={ic['w']}:{ic['h']}:{ic['x']}:{ic['y']}")
+
+        # Auto-edit punch zoom on this box only (centre of the box; the crop already follows the face)
+        zoom = (layer_zoom or {}).get(layer.get("id", f"l_{idx}"))
+        if zoom and zoom.get("z"):
+            if fit == "cover" and "inner_crop" in geo:
+                zw, zh = geo["inner_crop"]["w"], geo["inner_crop"]["h"]
+            else:
+                zw, zh = scale_sz["w"], scale_sz["h"]
+            pipe_steps.append(f"zoompan=z='{zoom['z']}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:"
+                              f"s={int(zw)}x{int(zh)}:fps={float(zoom.get('fps') or 30):.3f}")
 
         # Mirror (horizontal flip)
         if mirror:

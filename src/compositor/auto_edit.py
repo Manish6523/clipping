@@ -41,12 +41,14 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": True, "word_pop": True, "loudnorm": True,
         "max_gap": 0.32, "zoom_amount": 0.14, "zoom_every": 4.5, "hook_snap": True,
+        "box_zoom_amount": 0.22, "sfx_cuts": True, "sfx_words": True,
     },
     # Polished: tight cuts, gentle occasional zooms, hook card, no SFX
     "clean": {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": False, "word_pop": True, "loudnorm": True,
         "max_gap": 0.5, "zoom_amount": 0.07, "zoom_every": 8.0, "hook_snap": False,
+        "box_zoom_amount": 0.12, "sfx_cuts": False, "sfx_words": False,
     },
     # Just trims dead air + loudness
     "minimal": {
@@ -573,6 +575,100 @@ def add_hook_card(ass_path: str | Path, text: str, font: str, caption_y: float, 
     p.write_text("\n".join(lines_out) + "\n", encoding="utf-8")
 
 
+async def _duration(path: str | Path) -> float:
+    proc = await asyncio.create_subprocess_exec(
+        "ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "default=nw=1:nk=1", str(path),
+        stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.DEVNULL)
+    out, _ = await proc.communicate()
+    try:
+        return float(out.decode().strip())
+    except ValueError:
+        return 0.0
+
+
+def _layout_layers(template: Dict[str, Any]) -> List[Dict[str, Any]]:
+    layout = (template or {}).get("layout") or {}
+    if not (layout.get("schema") == 2 or "layers" in layout):
+        return []                                      # legacy layouts: whole-frame zoom
+    return [l for l in layout.get("layers", []) if l.get("visible", True) and l.get("src")]
+
+
+async def pick_zoom_layer(template: Dict[str, Any], source: str | Path) -> Optional[Tuple[str, str]]:
+    """The box that punches in: a layer that follows the face, else the (smallest) layer whose
+    source area shows the face, else the only layer. (layer id, name) or None = zoom the frame."""
+    layers = _layout_layers(template)
+    if not layers:
+        return None
+    area = lambda l: float(l["src"].get("w", 1)) * float(l["src"].get("h", 1))
+    named = lambda l: (l.get("id") or f"l_{layers.index(l)}", l.get("name") or l.get("id") or "box")
+    following = [l for l in layers if (l.get("tracking") or {}).get("mode") == "face"]
+    if following:
+        return named(min(following, key=area))
+    center = None
+    try:                                   # YuNet over the clip (same reader as auto template), then Haar
+        from src.compositor.quick_layout import find_face
+        from src.compositor import auto_template as _at
+        dur = await _duration(source)
+        face = await find_face(str(source), dur, n=10) if dur else None
+        if face:
+            center = (face["cx"] / _at.LW, face["cy"] / _at.LH)
+    except Exception as e:                 # noqa: BLE001 - optional enhancement
+        logger.info("Face finder for box zoom unavailable (%s).", e)
+    center = center or await face_center(source)
+    if center:
+        fx, fy = center
+        hits = [l for l in layers if l["src"].get("x", 0) <= fx <= l["src"].get("x", 0) + l["src"].get("w", 1)
+                and l["src"].get("y", 0) <= fy <= l["src"].get("y", 0) + l["src"].get("h", 1)]
+        if hits:
+            return named(min(hits, key=area))
+    if len(layers) == 1:
+        return named(layers[0])
+    return None
+
+
+# Sound effects: SFX_DIR/<category>/*.wav|mp3 (your own sounds, one picked per use so clips don't
+# all sound the same), falling back to the bundled file for that category.
+SFX_FALLBACK = {"whoosh": "whoosh.wav", "swish": "whoosh.wav", "hit": "boom.wav", "pop": "pop.wav", "ding": "boop.wav"}
+
+
+def sfx_file(category: str, seed: int = 0) -> Optional[Path]:
+    folder = SFX_DIR / category
+    if folder.is_dir():
+        files = sorted(f for f in folder.iterdir() if f.suffix.lower() in (".wav", ".mp3", ".ogg", ".m4a"))
+        if files:
+            return files[seed % len(files)]
+    fb = SFX_FALLBACK.get(category)
+    return SFX_DIR / fb if fb and (SFX_DIR / fb).is_file() else None
+
+
+def plan_sfx(punches: Sequence[float], cfg: Dict[str, Any], hook_card: bool, cut_times: Sequence[float] = (),
+             words: Sequence[Dict[str, Any]] = (), dur: float = 0.0, seed: int = 0) -> List[Tuple[Path, float, float]]:
+    """(file, at seconds, volume) for every sound effect of a clip, all in output time."""
+    if not cfg.get("sfx"):
+        return []
+    out: List[Tuple[Path, float, float]] = []
+    taken: List[float] = []
+
+    def add(cat, at, vol, gap=0.5, i=0):
+        f = sfx_file(cat, seed + i)
+        if f and at >= 0 and (not dur or at < dur - 0.2) and all(abs(at - t) >= gap for t in taken):
+            out.append((f, round(at, 3), vol))
+            taken.append(at)
+
+    if hook_card:
+        add("whoosh", 0.0, 0.35)
+    for i, p in enumerate(punches):
+        add("hit" if i == 0 else "pop", max(0.0, p - 0.02), 0.45 if i == 0 else 0.3, i=i)
+    if cfg.get("sfx_cuts"):
+        for i, t in enumerate([t for t in cut_times if t > 0.4][:6]):
+            add("swish", max(0.0, t - 0.08), 0.16, gap=0.8, i=i)
+    if cfg.get("sfx_words"):
+        hype = [w for w in words if _is_hype_word(w) and not w.get("censored")]
+        for i, w in enumerate(hype[:3]):
+            add("ding", float(w["start"]), 0.22, gap=1.2, i=i)
+    return sorted(out, key=lambda x: x[1])
+
+
 async def probe_fps(path: str | Path) -> float:
     proc = await asyncio.create_subprocess_exec(
         "ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=r_frame_rate",
@@ -595,12 +691,15 @@ async def finish_clip(
     cfg: Dict[str, Any],
     hook_card: bool,
     zoom_center: Optional[Tuple[float, float]] = None,
+    frame_zoom: bool = True,
+    sfx: Optional[Sequence[Tuple[Path, float, float]]] = None,
 ) -> None:
-    """Zooms + captions/hook card + SFX + loudness on the rendered 1080x1920 base."""
+    """Zooms + captions/hook card + SFX + loudness on the rendered 1080x1920 base.
+    ``frame_zoom=False``: the punches were already applied to one box in the layout render."""
     fps = await probe_fps(base)
     audio = await has_audio(base)
     vf = []
-    z = zoom_expression(punches, cfg)
+    z = zoom_expression(punches, cfg) if frame_zoom else None
     if z:
         zx, zy = zoom_xy(zoom_center)
         vf.append(f"zoompan=z='{z}':x='{zx}':y='{zy}':d=1:s=1080x1920:fps={fps:.3f}")
@@ -613,17 +712,10 @@ async def finish_clip(
     if audio:
         mix = ["[0:a]aresample=48000,aformat=channel_layouts=stereo[a0]"]
         labels = ["[a0]"]
-        sfx = []
-        if cfg.get("sfx"):
-            if hook_card and (SFX_DIR / "whoosh.wav").is_file():
-                sfx.append(("whoosh.wav", 0.0, 0.35))
-            if punches and (SFX_DIR / "boom.wav").is_file():
-                sfx.append(("boom.wav", max(0.0, punches[0] - 0.02), 0.45))
-            for p in punches[1:]:
-                if (SFX_DIR / "pop.wav").is_file():
-                    sfx.append(("pop.wav", max(0.0, p - 0.02), 0.3))
-        for i, (name, at, vol) in enumerate(sfx, start=1):
-            inputs += ["-i", str(SFX_DIR / name)]
+        if sfx is None:
+            sfx = plan_sfx(punches, cfg, hook_card)
+        for i, (path, at, vol) in enumerate(sfx, start=1):
+            inputs += ["-i", str(path)]
             mix.append(
                 f"[{i}:a]aresample=48000,aformat=channel_layouts=stereo,volume={vol:.2f},"
                 f"adelay={int(at * 1000)}:all=1[s{i}]"
@@ -699,15 +791,32 @@ async def auto_edit_clip(
         tight_dur = sum(e - s for s, e in segments)
     removed = max(0.0, duration - tight_dur)
 
-    # 2. Layout render (no captions yet; bleeps + template + speed)
     anti = template.get("anti_shadowban", {}) or {}
     speed = float(anti.get("speed_multiplier", 1.02) or 1.0)
+
+    # 2. Zoom moments (tight-source time) and the box that punches in: only the facecam / face box
+    # zooms, the rest of the layout stays still. No box to match -> whole-frame zoom after render.
+    punches_src: List[float] = []
+    layer_zoom = None
+    zoom_box = None
+    if cfg.get("zooms"):
+        t_energy = src_energy if Path(tight_src) == Path(source) else await audio_energy(tight_src)
+        punches_src = pick_punches(tight_words, t_energy, tight_dur, cfg, hook_end=2.2 * speed)
+        if punches_src and cfg.get("zoom_mode", "box") == "box":
+            zoom_box = await pick_zoom_layer(template, tight_src)
+            if zoom_box:
+                box_cfg = {**cfg, "zoom_amount": cfg.get("box_zoom_amount", cfg.get("zoom_amount", 0.14))}
+                z = zoom_expression(punches_src, box_cfg)
+                if z:
+                    layer_zoom = {zoom_box[0]: {"z": z, "fps": await probe_fps(tight_src)}}
+
+    # 3. Layout render (no captions yet; bleeps + template + speed [+ the box zoom])
     base = work / f"{tag}_base.mp4"
     await renderer.render_clip(
         source_path=str(tight_src), start_time=0.0, end_time=tight_dur, output_path=str(base),
         template=template, ass_path=None, teaser_timestamp=None, include_teaser=False,
         censor_words=tight_words, censor_cfg=censor_cfg, words_time_offset=0.0, intermediate=True,
-        channel_name=channel_name, platform=platform,
+        channel_name=channel_name, platform=platform, layer_zoom=layer_zoom,
     )
 
     # 3. Finish (all times now in output time = tight time / speed)
@@ -736,10 +845,16 @@ async def auto_edit_clip(
             font_override=sub_cfg.get("font_name") or sub_cfg.get("font"),
         )
 
-    energy = await audio_energy(base)
-    punches = pick_punches(out_words, energy, out_dur, cfg)
-    center = await face_center(base) if punches else None
-    await finish_clip(base, out_path, ass_path, punches, cfg, hook_card=hook_used, zoom_center=center)
+    punches = [round(p / speed, 2) for p in punches_src]
+    center = await face_center(base) if punches and not layer_zoom else None
+    cut_times, acc = [], 0.0
+    for seg_s, seg_e in segments[:-1]:
+        acc += seg_e - seg_s
+        cut_times.append(round(acc / speed, 3))
+    seed = sum(ord(ch) for ch in str(tag))
+    sfx = plan_sfx(punches, cfg, hook_used, cut_times, out_words, out_dur, seed=seed)
+    await finish_clip(base, out_path, ass_path, punches, cfg, hook_card=hook_used, zoom_center=center,
+                      frame_zoom=not layer_zoom, sfx=sfx)
     await make_thumbnail(out_path, at=min(1.0, out_dur / 3))
     try:
         base.unlink(missing_ok=True)
@@ -752,7 +867,8 @@ async def auto_edit_clip(
         "removed_seconds": round(removed, 1),
         "zooms": len(punches),
         "zoom_times": list(punches),
-        "zoom_target": "face" if center else "centre",
+        "zoom_target": f"box: {zoom_box[1]}" if layer_zoom else ("face" if center else "centre"),
+        "sfx_count": len(sfx),
         "hook_card": hook_used,
         "hook_style": hook_style if hook_used else None,
         "sfx": bool(cfg.get("sfx")),

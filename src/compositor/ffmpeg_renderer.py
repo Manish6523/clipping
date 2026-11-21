@@ -132,6 +132,7 @@ class FFmpegRenderer:
         watermark_path: Optional[str] = None,
         src_size: Optional[tuple] = None,
         motion: Optional[Dict[str, Any]] = None,
+        layer_zoom: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> str:
         """
         Build the video filter_complex pipeline according to the template layout.
@@ -158,6 +159,7 @@ class FFmpegRenderer:
                 contrast=contrast,
                 saturation=saturation,
                 motion=motion,
+                layer_zoom=layer_zoom,
             )
             return graph_res["filter_complex"]
 
@@ -311,6 +313,7 @@ class FFmpegRenderer:
         intermediate: bool = False,
         channel_name: Optional[str] = None,
         platform: Optional[str] = None,
+        layer_zoom: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> str:
         """
         Execute full FFmpeg render pipeline for vertical clip.
@@ -354,6 +357,7 @@ class FFmpegRenderer:
             watermark_path=wm_path,
             src_size=src_size,
             motion=motion,
+            layer_zoom=layer_zoom,
         )
 
         # Audio filter: atempo to match video speed, plus optional silence removal
@@ -452,6 +456,10 @@ class FFmpegRenderer:
                     censor_words=censor_words,
                     censor_cfg=censor_cfg,
                     words_time_offset=words_time_offset,
+                    intermediate=intermediate,
+                    channel_name=channel_name,
+                    platform=platform,
+                    layer_zoom=layer_zoom,
                 )
             raise RuntimeError(f"FFmpeg failed with exit code {process.returncode}: {err_msg[:400]}")
 
