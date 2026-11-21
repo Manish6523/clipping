@@ -15,6 +15,9 @@ from src.compositor.caption_geometry import caption_geometry
 from src.compositor.profanity import annotate_words, display_word
 
 
+EMPH_SCALE = 122          # % size of emphasis (key) words in captions
+
+
 def seconds_to_ass_time(seconds: float) -> str:
     """Convert floating point seconds into ASS timestamp format: H:MM:SS.cc"""
     if seconds < 0:
@@ -94,6 +97,7 @@ def generate_ass_subtitles(
 
     primary_color = hex_to_ass_color(primary_raw, "&H00FFFFFF")
     highlight_color = hex_to_ass_color(highlight_raw, "&H0015CCFA")
+    emphasis_color = hex_to_ass_color(sub_cfg.get("emphasis_color") or "#FF3B5C", "&H005C3BFF")
     outline_color = hex_to_ass_color(outline_raw, "&H00000000")
     back_color = hex_to_ass_color(shadow_raw, "&H80000000")
 
@@ -166,6 +170,7 @@ def generate_ass_subtitles(
             "end": w_end if not max_duration else min(w_end, max_duration),
             "highlight": item.get("highlight", False),
             "color": item.get("color") or (censored_color if is_censored else None),
+            "emphasis": bool(item.get("emphasis")) and not is_censored,
         })
 
     # Group words into chunks of max_words_per_screen
@@ -247,6 +252,13 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             words_rendered = []
             for j, w in enumerate(chunk):
                 custom_word_color = hex_to_ass_color(w.get("color")) if w.get("color") else None
+                if w.get("emphasis"):
+                    # Key word: bigger + accent colour the whole time, extra pop while spoken
+                    big = f"\\fscx{EMPH_SCALE}\\fscy{EMPH_SCALE}"
+                    pop = (f"\\t(0,90,\\fscx{EMPH_SCALE + 22}\\fscy{EMPH_SCALE + 22})"
+                           f"\\t(90,220,\\fscx{EMPH_SCALE}\\fscy{EMPH_SCALE})") if i == j else ""
+                    words_rendered.append(f"{{\\c{emphasis_color}\\b1{big}{pop}}}{w['word']}{{\\r}}")
+                    continue
                 if i == j:
                     # Active word: animation + highlight color
                     hl_col = custom_word_color or highlight_color

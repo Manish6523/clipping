@@ -745,6 +745,110 @@ async def _restyle(request: web.Request, kind: str) -> web.Response:
                               "video_url": f"/api/clips/{clip_id}/video?v={v}"})
 
 
+# ---------------------------------------------------------------------------- auto-edit plan
+def _plan_of(clip: Dict[str, Any]):
+    try:
+        p = json.loads(clip.get("edit_plan") or "null")
+        return p if isinstance(p, dict) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _sfx_library() -> Dict[str, list]:
+    from src.compositor.auto_edit import SFX_DIR, SFX_FALLBACK
+    from src.compositor.edit_plan import SFX_CATEGORIES
+    lib = {}
+    for cat in SFX_CATEGORIES:
+        folder = SFX_DIR / cat
+        files = sorted(f"{cat}/{f.name}" for f in folder.iterdir()
+                       if f.suffix.lower() in (".wav", ".mp3", ".ogg", ".m4a")) if folder.is_dir() else []
+        fb = SFX_FALLBACK.get(cat)
+        if not files and fb and (SFX_DIR / fb).is_file():
+            files = [fb]
+        lib[cat] = files
+    return lib
+
+
+async def get_edit_plan(request: web.Request) -> web.Response:
+    """The clip's auto-edit plan + what the editor needs to change it."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    from src.bot.trimmer import load_template
+    from src.compositor.auto_edit import _layout_layers
+    try:
+        layers = [{"id": l.get("id"), "name": l.get("name") or l.get("id")} for l in _layout_layers(load_template(clip.get("template_name") or ""))]
+    except Exception:
+        layers = []
+    return web.json_response({
+        "clip_id": clip_id, "auto_edited": _is_auto_edited(clip), "plan": _plan_of(clip),
+        "start": clip.get("adjusted_start") or 0.0, "end": clip.get("adjusted_end") or 0.0,
+        "speed": 1.02, "layers": layers, "sfx_library": _sfx_library(),
+        "source_available": bool(clip.get("source_video_path") and Path(clip["source_video_path"]).exists()),
+    })
+
+
+async def _rerender_with_plan(clip: Dict[str, Any], plan) -> web.Response:
+    clip_id = clip["id"]
+    from src.database import set_clip_edit_plan
+    previous_plan, previous_flags = clip.get("edit_plan"), clip.get("flags")
+    if not _is_auto_edited(clip):            # turn auto edit on for this clip
+        flags = json.loads(clip.get("flags") or "[]") if clip.get("flags") else []
+        flags.append({"type": "auto_edited", "severity": "low", "note": "Auto edit (editor)", "style": (plan or {}).get("style") or "punchy"})
+        async with get_db_connection() as db:
+            await db.execute("UPDATE clips SET flags = ? WHERE id = ?", (json.dumps(flags), clip_id))
+            await db.commit()
+    await set_clip_edit_plan(clip_id, plan)
+    edl = await get_clip_edl(clip_id)
+    from src.bot.trimmer import ClipTrimmer
+    try:
+        updated = await ClipTrimmer().trim_and_rerender(clip_id=clip_id, delta_start=0.0, delta_end=0.0,
+                                                        words_override=(edl or {}).get("words") or None)
+    except Exception as e:
+        updated, err = None, e
+    else:
+        err = None
+    if not updated:
+        async with get_db_connection() as db:              # put everything back
+            await db.execute("UPDATE clips SET edit_plan = ?, flags = ? WHERE id = ?", (previous_plan, previous_flags, clip_id))
+            await db.commit()
+        logger.error("Edit-plan render of clip %d failed: %s", clip_id, err)
+        return make_json_error("RENDER_FAILED", f"Render failed: {str(err)[:200]}" if err else "Source video for this clip is missing", status=409 if not err else 500)
+    fresh = await get_clip(clip_id)
+    v = (fresh or {}).get("render_version") or 1
+    return web.json_response({"success": True, "clip_id": clip_id, "plan": _plan_of(fresh or {}),
+                              "video_url": f"/api/clips/{clip_id}/video?v={v}"})
+
+
+async def put_edit_plan(request: web.Request) -> web.Response:
+    """Save an edited plan (toggled / moved / added items) and re-render the clip with it."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    if not (clip.get("source_video_path") and Path(clip["source_video_path"]).exists()):
+        return make_json_error("SOURCE_MISSING", "The source footage of this clip was deleted, so it can't be re-rendered.", status=409)
+    try:
+        body = await request.json()
+        from src.compositor.edit_plan import validate
+        plan = validate(body.get("plan") if isinstance(body, dict) and "plan" in body else body)
+    except (ValueError, TypeError) as e:
+        return make_json_error("BAD_PLAN", str(e))
+    return await _rerender_with_plan(clip, plan)
+
+
+async def regenerate_edit_plan(request: web.Request) -> web.Response:
+    """Drop the stored plan and let auto edit decide again (all user changes are lost)."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    if not (clip.get("source_video_path") and Path(clip["source_video_path"]).exists()):
+        return make_json_error("SOURCE_MISSING", "The source footage of this clip was deleted, so it can't be re-rendered.", status=409)
+    return await _rerender_with_plan(clip, None)
+
+
 async def caption_style_clip(request: web.Request) -> web.Response:
     return await _restyle(request, "caption")
 
@@ -1042,6 +1146,9 @@ def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips", get_clips_list)
     app.router.add_get("/api/clips/feed", get_clips_feed)          # before /api/clips/{id}
     app.router.add_get("/api/clips/{id}/download", download_clip)
+    app.router.add_get("/api/clips/{id}/edit-plan", get_edit_plan)
+    app.router.add_put("/api/clips/{id}/edit-plan", put_edit_plan)
+    app.router.add_post("/api/clips/{id}/edit-plan/regenerate", regenerate_edit_plan)
     app.router.add_get("/api/clips/{id}", get_clip_by_id)
     app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)

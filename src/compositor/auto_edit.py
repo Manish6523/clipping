@@ -41,14 +41,14 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": True, "word_pop": True, "loudnorm": True,
         "max_gap": 0.32, "zoom_amount": 0.14, "zoom_every": 4.5, "hook_snap": True,
-        "box_zoom_amount": 0.22, "sfx_cuts": True, "sfx_words": True,
+        "box_zoom_amount": 0.22, "sfx_cuts": True, "sfx_words": True, "cold_open": True,
     },
     # Polished: tight cuts, gentle occasional zooms, hook card, no SFX
     "clean": {
         "tighten": True, "jump_cuts": True, "remove_fillers": True, "hook_card": True, "zooms": True,
         "sfx": False, "word_pop": True, "loudnorm": True,
         "max_gap": 0.5, "zoom_amount": 0.07, "zoom_every": 8.0, "hook_snap": False,
-        "box_zoom_amount": 0.12, "sfx_cuts": False, "sfx_words": False,
+        "box_zoom_amount": 0.12, "sfx_cuts": False, "sfx_words": False, "cold_open": False,
     },
     # Just trims dead air + loudness
     "minimal": {
@@ -57,7 +57,7 @@ STYLES: Dict[str, Dict[str, Any]] = {
         "max_gap": 0.85, "zoom_amount": 0.0, "zoom_every": 99.0, "hook_snap": False,
     },
 }
-FEATURE_KEYS = ("tighten", "jump_cuts", "remove_fillers", "hook_card", "zooms", "sfx", "word_pop", "loudnorm")
+FEATURE_KEYS = ("tighten", "jump_cuts", "remove_fillers", "hook_card", "zooms", "sfx", "word_pop", "loudnorm", "cold_open", "ai_director")
 
 
 def resolve_config(opts: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -410,20 +410,9 @@ def _is_hype_word(w: Dict[str, Any]) -> bool:
     return ("!" in raw) or (len(letters) >= 3 and letters.isupper()) or tok in HYPE_WORDS
 
 
-def pick_punches(
-    words: Sequence[Dict[str, Any]],
-    energy: Sequence[Tuple[float, float]],
-    dur: float,
-    cfg: Dict[str, Any],
-    hook_end: float = 2.2,
-) -> List[float]:
-    """Choose zoom punch-in times (output seconds) at the loudest / most hype moments."""
-    if not cfg.get("zooms") or dur < 4:
-        return []
-    every = float(cfg.get("zoom_every", 6.0))
-    max_n = max(1, int(dur / every))
+def moment_scores(words: Sequence[Dict[str, Any]], energy: Sequence[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    """(time, strength) of punchy moments: sudden loudness rises and hype words."""
     scored: List[Tuple[float, float]] = []
-
     if energy:
         levels = [v for _, v in energy if v > -80]
         if levels:
@@ -436,6 +425,23 @@ def pick_punches(
     for w in words or []:
         if _is_hype_word(w):
             scored.append((float(w["start"]), 7.0 + (4.0 if "!" in (w.get("word") or "") else 0.0)))
+    return scored
+
+
+def pick_punches(
+    words: Sequence[Dict[str, Any]],
+    energy: Sequence[Tuple[float, float]],
+    dur: float,
+    cfg: Dict[str, Any],
+    hook_end: float = 2.2,
+) -> List[float]:
+    """Choose zoom punch-in times (output seconds) at the loudest / most hype moments."""
+    if not cfg.get("zooms") or dur < 4:
+        return []
+    every = float(cfg.get("zoom_every", 6.0))
+    max_n = max(1, int(dur / every))
+    scored = moment_scores(words, energy)
+
 
     scored.sort(key=lambda x: x[1], reverse=True)
     chosen: List[float] = []
@@ -505,17 +511,10 @@ def zoom_xy(center: Optional[Tuple[float, float]]) -> Tuple[str, str]:
 
 
 def zoom_expression(punches: Sequence[float], cfg: Dict[str, Any]) -> Optional[str]:
-    """zoompan z(t): eased punch-ins (0.10s in, 0.55s hold, 0.35s out) + optional opening snap."""
+    """zoompan z(t) for whole-frame zooms: the same smooth punch as box zooms."""
+    from src.compositor.edit_plan import zoom_expression as smooth
     amt = float(cfg.get("zoom_amount", 0.1))
-    terms = []
-    for a in punches:
-        b = a + 0.10 + 0.55 + 0.35
-        terms.append(f"{amt:.3f}*clip((it-{a:.2f})/0.10,0,1)*clip(({b:.2f}-it)/0.35,0,1)")
-    if cfg.get("hook_snap"):
-        terms.append("0.07*clip((0.6-it)/0.6,0,1)")
-    if not terms:
-        return None
-    return "1+" + "+".join(terms)
+    return smooth([{"t": a, "amount": amt} for a in punches], hook_snap=bool(cfg.get("hook_snap")))
 
 
 def _ass_escape(text: str) -> str:
@@ -768,114 +767,204 @@ async def auto_edit_clip(
     hook_text: Optional[str] = None,
     channel_name: Optional[str] = None,
     platform: Optional[str] = None,
+    plan: Optional[Dict[str, Any]] = None,
+    plan_offset: float = 0.0,
+    director: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Edit one clip. ``words`` are annotated (censor) and in ``source`` time (0..duration).
 
-    Returns {"video", "source", "words", "duration", "summary"} where source/words describe the
-    tightened source so the editor & re-renders keep working.
+    Without ``plan``: tighten, then decide every edit (the automatic plan, or ``director``'s - the
+    AI edit director - when given) and render it. With ``plan`` (a stored edit plan, times in the
+    clip's source timeline; ``plan_offset`` = where ``source`` starts in it): no re-guessing, the
+    render repeats exactly that plan - this is how undo / the editor / re-renders stay faithful.
+
+    Returns {"video", "source", "words", "duration", "summary", "plan"}; ``plan`` is in the clip's
+    source timeline (the tightened source when this call tightened).
     """
+    from src.compositor import edit_plan as ep
     from src.compositor.ass_generator import generate_ass_subtitles
 
     work = Path(work_dir)
     work.mkdir(parents=True, exist_ok=True)
+    anti = template.get("anti_shadowban", {}) or {}
+    speed = float(anti.get("speed_multiplier", 1.02) or 1.0)
 
     # 1. Tighten (only quiet gaps are cut, judged from the source's measured loudness)
     src_energy = await audio_energy(source)
-    segments = plan_segments(words, duration, cfg, energy=src_energy)
+    segments = plan_segments(words, duration, cfg, energy=src_energy) if plan is None else [(0.0, round(duration, 3))]
     if segments == [(0.0, round(duration, 3))]:
         tight_src, tight_words, tight_dur = Path(source), list(words), duration
+        t_energy = src_energy
     else:
         tight_src = work / f"{tag}_tight.mp4"
         await cut_segments(source, segments, tight_src)
         tight_words = remap_words(words, segments)
         tight_dur = sum(e - s for s, e in segments)
+        t_energy = await audio_energy(tight_src)
     removed = max(0.0, duration - tight_dur)
+    cut_times, acc = [], 0.0
+    for seg_s, seg_e in segments[:-1]:
+        acc += seg_e - seg_s
+        cut_times.append(round(acc, 3))
 
-    anti = template.get("anti_shadowban", {}) or {}
-    speed = float(anti.get("speed_multiplier", 1.02) or 1.0)
+    # 2. The plan (local = this render's timeline, 0..tight_dur)
+    layers = _layout_layers(template)
+    layer_ids = {(l.get("id") or f"l_{i}") for i, l in enumerate(layers)}
+    if plan is None:
+        target = None
+        if cfg.get("zooms") and cfg.get("zoom_mode", "box") == "box":
+            box = await pick_zoom_layer(template, tight_src)
+            target = {"layer": box[0], "name": box[1]} if box else None
+        punches = pick_punches(tight_words, t_energy, tight_dur, cfg, hook_end=2.2 * speed)
+        local = ep.build_plan(cfg, tight_words, tight_dur, punches, moment_scores(tight_words, t_energy),
+                              cut_times, target, hook_text, _is_hype_word)
+        if director is not None:
+            try:
+                local = await director(local, tight_words, tight_dur, t_energy, cfg, hook_text) or local
+            except Exception as e:                       # noqa: BLE001 - the automatic plan still works
+                logger.warning("AI edit director failed for %s (%s); using the automatic plan.", tag, e)
+        plan_abs = ep.shift(local, plan_offset)
+    else:
+        plan_abs = plan
+        local = ep.window(plan, plan_offset, plan_offset + tight_dur)
+    # the template may have changed since: keep a valid zoom box
+    tgt = local.get("zoom_target") or None
+    if tgt and tgt.get("layer") not in layer_ids:
+        box = await pick_zoom_layer(template, tight_src)
+        tgt = {"layer": box[0], "name": box[1]} if box else None
+        local["zoom_target"] = plan_abs["zoom_target"] = tgt
 
-    # 2. Zoom moments (tight-source time) and the box that punches in: only the facecam / face box
-    # zooms, the rest of the layout stays still. No box to match -> whole-frame zoom after render.
-    punches_src: List[float] = []
+    # 3. Cold open: the payoff plays first, then the clip from the start
+    co = local.get("cold_open") or {}
+    lead = 0.0
+    render_src, render_words, render_dur = tight_src, list(tight_words), tight_dur
+    if co.get("on"):
+        a_, b_ = float(co["start"]), float(co["end"])
+        lead = b_ - a_
+        render_src = work / f"{tag}_cold.mp4"
+        await cut_segments(tight_src, [(a_, b_), (0.0, tight_dur)], render_src)
+        teaser = [{**w, "start": round(float(w["start"]) - a_, 3), "end": round(float(w["end"]) - a_, 3)}
+                  for w in tight_words if float(w["end"]) > a_ and float(w["start"]) < b_]
+        render_words = teaser + [{**w, "start": round(float(w["start"]) + lead, 3), "end": round(float(w["end"]) + lead, 3)}
+                                 for w in tight_words]
+        render_dur = tight_dur + lead
+    at = lambda t: float(t) + lead                         # local -> render-input time
+
+    # 4. Layout render with the smooth zoom on one box (or none -> whole-frame zoom below)
+    zooms = [{**z, "t": at(z["t"])} for z in local.get("zooms") or [] if z.get("on", True)]
     layer_zoom = None
-    zoom_box = None
-    if cfg.get("zooms"):
-        t_energy = src_energy if Path(tight_src) == Path(source) else await audio_energy(tight_src)
-        punches_src = pick_punches(tight_words, t_energy, tight_dur, cfg, hook_end=2.2 * speed)
-        if punches_src and cfg.get("zoom_mode", "box") == "box":
-            zoom_box = await pick_zoom_layer(template, tight_src)
-            if zoom_box:
-                box_cfg = {**cfg, "zoom_amount": cfg.get("box_zoom_amount", cfg.get("zoom_amount", 0.14))}
-                z = zoom_expression(punches_src, box_cfg)
-                if z:
-                    layer_zoom = {zoom_box[0]: {"z": z, "fps": await probe_fps(tight_src)}}
-
-    # 3. Layout render (no captions yet; bleeps + template + speed [+ the box zoom])
+    if zooms and tgt:
+        z = ep.zoom_expression(zooms, hook_snap=bool(cfg.get("hook_snap")))
+        if z:
+            layer_zoom = {tgt["layer"]: {"z": z, "fps": await probe_fps(render_src)}}
     base = work / f"{tag}_base.mp4"
     await renderer.render_clip(
-        source_path=str(tight_src), start_time=0.0, end_time=tight_dur, output_path=str(base),
+        source_path=str(render_src), start_time=0.0, end_time=render_dur, output_path=str(base),
         template=template, ass_path=None, teaser_timestamp=None, include_teaser=False,
-        censor_words=tight_words, censor_cfg=censor_cfg, words_time_offset=0.0, intermediate=True,
+        censor_words=render_words, censor_cfg=censor_cfg, words_time_offset=0.0, intermediate=True,
         channel_name=channel_name, platform=platform, layer_zoom=layer_zoom,
     )
 
-    # 3. Finish (all times now in output time = tight time / speed)
-    out_dur = tight_dur / speed
+    # 5. Captions (emphasis words bigger + coloured), hook card - all in output time
+    out_dur = render_dur / speed
+    emph = [at(e["t"]) for e in local.get("emphasis") or [] if e.get("on", True)]
     out_words = []
-    for w in tight_words:
+    for w in render_words:
         ow = {**w, "start": round(w["start"] / speed, 3), "end": round(w["end"] / speed, 3)}
-        if cfg.get("word_pop") and not ow.get("censored") and _is_hype_word(ow):
-            ow["color"] = ow.get("color") or "#FF4D6D"
+        if not ow.get("censored") and any(abs(float(w["start"]) - t) < 0.06 for t in emph):
+            ow["emphasis"] = True
         out_words.append(ow)
-
     ass_path = work / f"{tag}_auto.ass"
     sub_cfg = template.get("subtitles") or template.get("captions") or {}
     generate_ass_subtitles(
         word_timestamps=out_words, output_path=ass_path, template_config=template,
         time_offset=0.0, max_duration=out_dur, censor_cfg=censor_cfg,
     )
-    hook_used = bool(cfg.get("hook_card") and hook_text and hook_text.strip())
+    hook = local.get("hook") or {}
+    hook_line = (hook.get("text") or "").strip() if hook.get("on") else ""
+    hook_used = bool(hook_line)
     hook_style = template.get("hook_style") or "classic"
     if hook_used:
         from src.compositor.profanity import censor_text
         from src.compositor.hook_styles import render_hook_card
         hook_used = render_hook_card(
-            ass_path, censor_text(hook_text, censor_cfg) if censor_cfg else hook_text, hook_style,
+            ass_path, censor_text(hook_line, censor_cfg) if censor_cfg else hook_line, hook_style,
             caption_y=float((sub_cfg.get("position") or {}).get("y", 0.76)),
             font_override=sub_cfg.get("font_name") or sub_cfg.get("font"),
         )
 
-    punches = [round(p / speed, 2) for p in punches_src]
-    center = await face_center(base) if punches and not layer_zoom else None
-    cut_times, acc = [], 0.0
-    for seg_s, seg_e in segments[:-1]:
-        acc += seg_e - seg_s
-        cut_times.append(round(acc / speed, 3))
+    # 6. Sound effects from the plan (+ hook whoosh, cold-open rewind / riser)
     seed = sum(ord(ch) for ch in str(tag))
-    sfx = plan_sfx(punches, cfg, hook_used, cut_times, out_words, out_dur, seed=seed)
-    await finish_clip(base, out_path, ass_path, punches, cfg, hook_card=hook_used, zoom_center=center,
+    sfx: List[Tuple[Path, float, float]] = []
+    if cfg.get("sfx") or any(x.get("by") == "user" for x in local.get("sfx") or []):
+        if hook_used and (f := sfx_file("whoosh", seed)):
+            sfx.append((f, 0.0, 0.35))
+        if lead and (f := sfx_file("rewind", seed) or sfx_file("whoosh", seed + 1)):
+            sfx.append((f, max(0.0, (lead - 0.25) / speed), 0.4))
+        if lead and (f := sfx_file("riser", seed)) and float(co["start"]) > 1.6:
+            sfx.append((f, at(float(co["start"]) - 1.4) / speed, 0.3))
+        for i, it in enumerate(local.get("sfx") or []):
+            if not it.get("on", True):
+                continue
+            f = (SFX_DIR / it["file"]) if it.get("file") and (SFX_DIR / it["file"]).is_file() else sfx_file(it["cat"], seed + i)
+            if f:
+                sfx.append((f, round(at(it["t"]) / speed, 3), float(it.get("vol", 0.3))))
+                for orig in plan_abs.get("sfx") or []:        # remember the exact sound for faithful re-renders
+                    if orig.get("id") == it.get("id") and not orig.get("file"):
+                        orig["file"] = str(f.relative_to(SFX_DIR)) if f.is_relative_to(SFX_DIR) else f.name
+    sfx.sort(key=lambda x: x[1])
+
+    punches_out = [round(z["t"] / speed, 2) for z in zooms]
+    center = await face_center(base) if punches_out and not layer_zoom else None
+    frame_cfg = {**cfg, "zoom_amount": (zooms[0].get("amount") if zooms else cfg.get("zoom_amount", 0.14))}
+    await finish_clip(base, out_path, ass_path, punches_out, frame_cfg, hook_card=hook_used, zoom_center=center,
                       frame_zoom=not layer_zoom, sfx=sfx)
     await make_thumbnail(out_path, at=min(1.0, out_dur / 3))
-    try:
-        base.unlink(missing_ok=True)
-    except Exception:
-        pass
+    for tmp in (base, work / f"{tag}_cold.mp4"):
+        try:
+            tmp.unlink(missing_ok=True)
+        except Exception:
+            pass
 
+    counts = ep.summary(local)
     summary = {
         "style": cfg.get("style"),
         "cuts": max(0, len(segments) - 1),
         "removed_seconds": round(removed, 1),
-        "zooms": len(punches),
-        "zoom_times": list(punches),
-        "zoom_target": f"box: {zoom_box[1]}" if layer_zoom else ("face" if center else "centre"),
+        "zooms": len(zooms),
+        "zoom_times": punches_out,
+        "zoom_target": f"box: {tgt['name']}" if layer_zoom else ("face" if center else "centre"),
+        "emphasis": counts["emphasis"],
         "sfx_count": len(sfx),
+        "cold_open": bool(lead),
         "hook_card": hook_used,
         "hook_style": hook_style if hook_used else None,
-        "sfx": bool(cfg.get("sfx")),
+        "sfx": bool(sfx),
+        "plan_by": plan_abs.get("by"),
     }
     logger.info("Auto-edited %s: %s", tag, summary)
+    # The same plan on the input's own timeline (callers that keep the UNtightened source, e.g. live)
+    plan_input = plan_abs
+    if plan is None and len(segments) > 1:
+        def back(t: float) -> float:
+            acc2 = 0.0
+            for s0, e0 in segments:
+                if t <= acc2 + (e0 - s0) + 1e-6:
+                    return round(s0 + (t - acc2), 3)
+                acc2 += e0 - s0
+            return round(segments[-1][1], 3)
+        plan_input = ep.shift(local, 0.0)
+        for key in ("zooms", "emphasis", "sfx"):
+            for it in plan_input.get(key) or []:
+                it["t"] = round(back(it["t"]) + plan_offset, 3)
+        co_in = plan_input.get("cold_open") or {}
+        if co_in.get("start") is not None:
+            co_in["start"], co_in["end"] = round(back(co_in["start"]) + plan_offset, 3), round(back(co_in["end"]) + plan_offset, 3)
+        for orig, mapped in zip(plan_abs.get("sfx") or [], plan_input.get("sfx") or []):
+            if orig.get("file"):
+                mapped["file"] = orig["file"]
     return {"video": str(out_path), "source": str(tight_src), "words": tight_words,
-            "duration": tight_dur, "summary": summary}
+            "duration": tight_dur, "summary": summary, "plan": plan_abs, "plan_input": plan_input}
 
 
 def summary_flag(summary: Dict[str, Any]) -> Dict[str, Any]:

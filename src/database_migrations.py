@@ -810,6 +810,14 @@ async def migration_v24(db):
             await db.execute("UPDATE clips SET hashtags = ? WHERE id = ?", (fixed, cid))
 
 
+@migration(25, "Auto-edit plan per clip")
+async def migration_v25(db):
+    cur = await db.execute("PRAGMA table_info(clips)")
+    cols = {r[1] for r in await cur.fetchall()}
+    if "edit_plan" not in cols:
+        await db.execute("ALTER TABLE clips ADD COLUMN edit_plan TEXT")
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

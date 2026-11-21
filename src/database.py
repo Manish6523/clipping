@@ -294,6 +294,7 @@ async def create_clip(
     tokens_out: Optional[int] = None,
     trigger_json: Optional[str] = None,
     formula_version: Optional[str] = None,
+    edit_plan: Optional[Any] = None,
 ) -> int:
     """Insert a newly detected candidate clip."""
     now = datetime.now(timezone.utc).isoformat()
@@ -354,6 +355,10 @@ async def create_clip(
         )
         await db.commit()
         new_clip_id = cursor.lastrowid or 0
+        if edit_plan and new_clip_id:
+            await db.execute("UPDATE clips SET edit_plan = ? WHERE id = ?",
+                             (edit_plan if isinstance(edit_plan, str) else json.dumps(edit_plan), new_clip_id))
+            await db.commit()
 
         # Per-channel auto-approve (off / trial / on). One queue row per approving channel,
         # placed in that channel's own posting slots. Never let bookkeeping break clip creation.
@@ -364,6 +369,12 @@ async def create_clip(
             logger.warning("Auto-approve evaluation failed for clip %s: %s", new_clip_id, auto_err)
 
         return new_clip_id
+
+
+async def set_clip_edit_plan(clip_id: int, plan: Optional[Dict[str, Any]]) -> None:
+    async with get_db_connection() as db:
+        await db.execute("UPDATE clips SET edit_plan = ? WHERE id = ?", (json.dumps(plan) if plan else None, clip_id))
+        await db.commit()
 
 
 async def get_clip(clip_id: int) -> Optional[Dict[str, Any]]:

@@ -113,6 +113,8 @@ def build_filter_graph(
                 zw, zh = geo["inner_crop"]["w"], geo["inner_crop"]["h"]
             else:
                 zw, zh = scale_sz["w"], scale_sz["h"]
+            # 2x first: zoompan positions are whole pixels, so on a small box a slow zoom would shimmer
+            pipe_steps.append("scale=iw*2:ih*2:flags=bicubic")
             pipe_steps.append(f"zoompan=z='{zoom['z']}':x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:"
                               f"s={int(zw)}x{int(zh)}:fps={float(zoom.get('fps') or 30):.3f}")
 

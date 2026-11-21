@@ -335,6 +335,7 @@ class AutoClipEngine:
                     source_video_path=clip_source,
                     rendered_video_path=rendered_mp4,
                     subtitle_path=ass_path,
+                    edit_plan=edited.get("plan") if auto_cfg else None,
                 )
                 if (options or {}).get("caption_style") or (options or {}).get("hook_style"):
                     await set_clip_styles(clip_id, (options or {}).get("caption_style"), (options or {}).get("hook_style"))
@@ -852,6 +853,7 @@ class AutoClipEngine:
                     auto_cfg = resolve_auto_edit({"enabled": True, "style": auto_style_db, "hook_card": auto_hook_db})
                     work_dir = Path(RENDER_DIR) / f"work_{timestamp_id}"
                     hook_txt = suggested_title if auto_hook_db else None
+                    live_edited = None
                     try:
                         ae_source, ae_words = permanent_source_path, words
                         window_file = None
@@ -867,6 +869,7 @@ class AutoClipEngine:
                             edited = await auto_edit_clip(
                                 self.renderer, ae_source, ae_words, clip_dur, template, auto_cfg,
                                 censor_cfg, rendered_mp4, work_dir, f"live_{channel_id}_{timestamp_id}", hook_text=hook_txt,
+                                plan_offset=clip_start if window_file else 0.0,
                                 channel_name=channel_id,
                                 platform=(channel_record.get("platform") if channel_record else "twitch") or "twitch",
                             )
@@ -874,6 +877,7 @@ class AutoClipEngine:
                             if window_file:
                                 window_file.unlink(missing_ok=True)
                         flags_json = add_flag(flags_json, summary_flag(edited["summary"]))
+                        live_edited = edited
                         logger.info("Live clip #%s auto-edited (%s): %s", timestamp_id, auto_style_db, edited["summary"])
                     except Exception as ae_err:
                         logger.warning("Auto-edit failed on live clip, falling back to standard render: %s", ae_err)
@@ -920,6 +924,7 @@ class AutoClipEngine:
                     subtitle_path=ass_path,
                     trigger_json=json.dumps(trigger_ctx) if trigger_ctx else None,
                     model=model_used,
+                    edit_plan=(live_edited or {}).get("plan_input") if do_auto_edit else None,
                 )
 
                 # Record narrative storyline link if matched
@@ -1261,6 +1266,7 @@ class AutoClipEngine:
             subtitle_path=ass_path,
             trigger_json=json.dumps({"type": "vod_heatmap", "vod_start": clip_start, "vod_end": clip_end, "rank": idx}),
             model=cand["model"],
+            edit_plan=edited.get("plan") if auto_cfg else None,
         )
         if clip_styles and any(clip_styles):
             await set_clip_styles(clip_id, *clip_styles)
