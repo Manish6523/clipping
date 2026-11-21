@@ -2,7 +2,7 @@ import { Film, Zap, Activity, Calendar, Radio, Palette, Share2, Flame, Terminal,
 
 /** Every destination in the app. `phoneTab` ones sit in the bottom bar, the rest live under "More". */
 export const NAV = [
-  { to: '/', label: 'Review', icon: Film, end: true, badge: true, phoneTab: true },
+  { to: '/', label: 'Clips', icon: Film, end: true, badge: true, phoneTab: true },
   { to: '/quickclip', label: 'Quick Clip', short: 'Clip', icon: Zap, phoneTab: true },
   { to: '/telemetry', label: 'Live Pulse', short: 'Pulse', icon: Activity, phoneTab: true },
   { to: '/queue', label: 'Queue', icon: Calendar, phoneTab: true },

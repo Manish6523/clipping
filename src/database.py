@@ -297,6 +297,8 @@ async def create_clip(
 ) -> int:
     """Insert a newly detected candidate clip."""
     now = datetime.now(timezone.utc).isoformat()
+    from src.hashtags import normalize_hashtags
+    hashtags = normalize_hashtags(hashtags)
     if not thumbnail_path and rendered_video_path:
         t_cand = Path(rendered_video_path).parent / f"{Path(rendered_video_path).stem}_thumb.jpg"
         if t_cand.exists():
@@ -413,6 +415,9 @@ async def toggle_clip_teaser(clip_id: int) -> Optional[Dict[str, Any]]:
 async def update_clip_caption(clip_id: int, title: str, description: Optional[str] = None, hashtags: Optional[str] = None) -> None:
     """Update title, description, and hashtags for a clip."""
     now = datetime.now(timezone.utc).isoformat()
+    if hashtags is not None:
+        from src.hashtags import normalize_hashtags
+        hashtags = normalize_hashtags(hashtags)
     async with get_db_connection() as db:
         if description is not None and hashtags is not None:
             await db.execute(

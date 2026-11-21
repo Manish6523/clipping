@@ -2,14 +2,12 @@ import React, { useState, useEffect, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, Outlet, useParams, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import Navbar from './components/Navbar';
-import ReviewStation from './components/ReviewStation';
 import PinLockScreen from './components/PinLockScreen';
 import { getStatus, getPipelineStatus, getAuthConfig } from './api';
 import { eventStream } from './services/eventStream';
 import HypeMomentToasts from './components/HypeMomentToasts';
 import MobileTabBar from './components/MobileTabBar';
-import { Spinner, Button } from './components/ui';
-import SwipeReview from './components/SwipeReview';
+import { Spinner } from './components/ui';
 import { useLayoutMode } from './hooks/useLayoutMode';
 import { notifyClipReady } from './services/pwa';
 
@@ -20,7 +18,7 @@ const ChannelManager = lazy(() => import('./components/ChannelManager'));
 const DistributionPage = lazy(() => import('./components/distribution/DistributionPage'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
-const Overview = lazy(() => import('./components/Overview'));
+const ClipsPage = lazy(() => import('./components/clips/ClipsPage'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
 const PipelineMonitor = lazy(() => import('./components/PipelineMonitor'));
 const Settings = lazy(() => import('./components/Settings'));
@@ -143,40 +141,6 @@ function AppLayout() {
   );
 }
 
-const REVIEW_MODE_KEY = 'autoclip_review_mode';
-const REVIEW_MODES = ['overview', 'review', 'swipe'];
-
-function ReviewStationWrapper() {
-  const { isPhone } = useLayoutMode();
-  const [mode, setMode] = useState(() => {
-    try {
-      const v = localStorage.getItem(REVIEW_MODE_KEY);
-      if (v === 'classic') return 'review';            // legacy value
-      return REVIEW_MODES.includes(v) ? v : 'overview';
-    } catch { return 'overview'; }
-  });
-  const switchTo = (m) => {
-    setMode(m);
-    try { localStorage.setItem(REVIEW_MODE_KEY, m); } catch { /* storage unavailable */ }
-  };
-
-  if (mode === 'swipe' && isPhone) {
-    return <SwipeReview onSwitchClassic={() => switchTo('review')} onOverview={() => switchTo('overview')} />;
-  }
-  if (mode === 'overview') {
-    return <Overview onOpenReview={() => switchTo(isPhone ? 'swipe' : 'review')} />;
-  }
-  return (
-    <>
-      <div className="px-3 pt-2 flex justify-end gap-2">
-        <Button size="sm" onClick={() => switchTo('overview')}>Overview</Button>
-        {isPhone && <Button size="sm" variant="primary" onClick={() => switchTo('swipe')}>Swipe mode</Button>}
-      </div>
-      <ReviewStation />
-    </>
-  );
-}
-
 export default function App() {
   const [authRequired, setAuthRequired] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
@@ -221,7 +185,7 @@ export default function App() {
     <Routes>
       {/* Root Layout for Main Dashboard Navigation */}
       <Route path="/" element={<AppLayout />}>
-        <Route index element={<ReviewStationWrapper />} />
+        <Route index element={<ClipsPage />} />
         <Route path="templates" element={<TemplateGallery />} />
         <Route path="templates/:name" element={<TemplateStudioEditor />} />
         <Route path="presets" element={<Navigate to="/templates" replace />} />

@@ -799,6 +799,17 @@ async def migration_v23(db):
     if "tt_account_key" not in cols:
         await db.execute("ALTER TABLE scheduled_queue ADD COLUMN tt_account_key TEXT")
 
+@migration(24, "Hashtags always '#'-prefixed")
+async def migration_v24(db):
+    from src.hashtags import normalize_hashtags
+    cur = await db.execute("SELECT id, hashtags FROM clips WHERE hashtags IS NOT NULL AND hashtags != ''")
+    for row in await cur.fetchall():
+        cid, tags = row[0], row[1]
+        fixed = normalize_hashtags(tags)
+        if fixed != tags:
+            await db.execute("UPDATE clips SET hashtags = ? WHERE id = ?", (fixed, cid))
+
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

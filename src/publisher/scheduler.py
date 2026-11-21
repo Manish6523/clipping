@@ -105,7 +105,8 @@ class DripScheduler:
         video_path = item.get("rendered_video_path")
         title = item.get("title", "Stream Highlight")
         description = item.get("description", "")
-        hashtags = [h.strip() for h in (item.get("hashtags") or "").split() if h.strip()]
+        from src.hashtags import hashtag_list
+        hashtags = hashtag_list(item.get("hashtags"))
         attempts = int(item.get("attempts") or 0)
 
         destinations = load_template_destinations(template_name)

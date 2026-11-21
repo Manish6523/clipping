@@ -264,6 +264,121 @@ async def get_clips_list(request: web.Request) -> web.Response:
         })
 
 
+# ---------------------------------------------------------------------------- Clips page feed
+FEED_STATUSES = ("pending_approval", "approved", "queued", "published", "rejected")
+FEED_SORTS = {
+    "new": "c.id DESC",
+    "old": "c.id ASC",
+    "score": "COALESCE(c.final_score, c.virality_score) DESC, c.id DESC",
+}
+
+
+def _feed_filters(q: Dict[str, str], with_status: bool):
+    where, params = [], []
+    status = (q.get("status") or "pending_approval").strip()
+    if with_status and status != "all":
+        where.append("c.status = ?")
+        params.append(status)
+    channel = (q.get("channel") or "").strip()
+    if channel and channel != "all":
+        where.append("c.channel_id = ?")
+        params.append(channel)
+    try:
+        min_score = float(q.get("min_score") or 0)
+    except ValueError:
+        min_score = 0
+    if min_score > 0:
+        where.append("COALESCE(c.final_score, c.virality_score, 0) >= ?")
+        params.append(min_score)
+    text = (q.get("q") or "").strip()
+    if text:
+        like = f"%{text.lower()}%"
+        where.append("(LOWER(c.title) LIKE ? OR LOWER(COALESCE(c.description,'')) LIKE ? OR LOWER(COALESCE(c.hashtags,'')) LIKE ?"
+                     " OR LOWER(COALESCE(c.channel_id,'')) LIKE ? OR CAST(c.id AS TEXT) = ?)")
+        params += [like, like, like, like, text.lstrip("#")]
+    return where, params
+
+
+async def get_clips_feed(request: web.Request) -> web.Response:
+    """Everything the Clips page (grid + reels) shows, with filters, sort, paging and per-status counts.
+
+    Query: status (pending_approval|approved|queued|published|rejected|all), channel, min_score,
+    q (search title/description/hashtags/streamer/#id), sort (new|old|score), limit, cursor (offset).
+    """
+    q = request.query
+    try:
+        limit = min(100, max(1, int(q.get("limit", "30"))))
+        offset = max(0, int(q.get("cursor") or 0))
+    except ValueError:
+        return make_json_error("BAD_REQUEST", "limit and cursor must be numbers", status=400)
+    order = FEED_SORTS.get(q.get("sort", "new"), FEED_SORTS["new"])
+    where, params = _feed_filters(q, with_status=True)
+    sql = """
+        SELECT c.id, c.channel_id, c.source_type, c.source_id, c.virality_score, c.final_score, c.title, c.description,
+               c.hashtags, c.template_name, c.caption_style, c.hook_style, c.raw_start, c.raw_end, c.ai_start, c.ai_end,
+               c.score_breakdown, c.flags, c.render_version, c.status, c.thumbnail_path, c.rendered_video_path,
+               c.source_video_path, c.created_at, c.updated_at, c.published_at, c.stitched, c.last_render_error,
+               (SELECT json_extract(f.payload_json, '$.reason') FROM clip_feedback_events f
+                 WHERE f.clip_id = c.id AND f.event IN ('rejected', 'reason_tagged')
+                   AND json_extract(f.payload_json, '$.reason') IS NOT NULL ORDER BY f.id DESC LIMIT 1) AS rejection_reason,
+               (SELECT MIN(s.scheduled_for) FROM scheduled_queue s WHERE s.clip_id = c.id AND s.yt_status = 'pending') AS scheduled_for
+        FROM clips c
+    """ + (" WHERE " + " AND ".join(where) if where else "") + f" ORDER BY {order} LIMIT ? OFFSET ?"
+    cwhere, cparams = _feed_filters(q, with_status=False)
+    async with get_db_connection() as db:
+        rows = await (await db.execute(sql, (*params, limit + 1, offset))).fetchall()
+        counts_rows = await (await db.execute(
+            "SELECT c.status, COUNT(*) FROM clips c" + (" WHERE " + " AND ".join(cwhere) if cwhere else "") + " GROUP BY c.status",
+            tuple(cparams))).fetchall()
+        channel_rows = await (await db.execute(
+            "SELECT channel_id, COUNT(*) FROM clips WHERE channel_id IS NOT NULL AND channel_id != '' GROUP BY channel_id ORDER BY COUNT(*) DESC"
+        )).fetchall()
+    clips = []
+    for r in rows[:limit]:
+        d = dict(r)
+        d["thumbnail_url"] = thumbnail_for(d)
+        rvp = d.get("rendered_video_path")
+        has_video = bool(rvp and Path(rvp).exists())
+        d["video_url"] = f"/api/clips/{d['id']}/video?v={d.get('render_version') or 1}" if has_video else None
+        d["download_url"] = f"/api/clips/{d['id']}/download" if has_video else None
+        svp = d.get("source_video_path")
+        d["has_raw_video"] = bool(svp and Path(svp).exists())
+        for k in ("source_video_path", "thumbnail_path", "rendered_video_path"):
+            d.pop(k, None)
+        clips.append(d)
+    counts = {s: 0 for s in FEED_STATUSES}
+    for st, n in counts_rows:
+        counts[st] = n
+    counts["all"] = sum(n for _, n in counts_rows)
+    return web.json_response({
+        "clips": clips,
+        "next_cursor": offset + limit if len(rows) > limit else None,
+        "counts": counts,
+        "channels": [{"id": c, "count": n} for c, n in channel_rows],
+    })
+
+
+def _download_name(clip: dict, ext: str) -> str:
+    import re as _re
+    base = _re.sub(r"[^A-Za-z0-9 _-]+", "", clip.get("title") or "").strip()
+    base = _re.sub(r"\s+", "_", base)[:60] or "clip"
+    return f"{base}_{clip['id']}{ext}"
+
+
+async def download_clip(request: web.Request) -> web.StreamResponse:
+    """The rendered clip as a file download (named after its title)."""
+    clip_id = int(request.match_info["id"])
+    clip = await get_clip(clip_id)
+    if not clip:
+        return make_json_error("NOT_FOUND", f"Clip #{clip_id} not found", status=404)
+    rvp = clip.get("rendered_video_path")
+    if not rvp or not Path(rvp).exists():
+        return make_json_error("VIDEO_NOT_FOUND", f"Rendered video for clip #{clip_id} is not present on disk", status=404)
+    name = _download_name(clip, Path(rvp).suffix or ".mp4")
+    return web.FileResponse(Path(rvp), headers={"Content-Disposition": f'attachment; filename="{name}"',
+                                                 "Cache-Control": "no-cache"})
+
+
 async def get_clip_by_id(request: web.Request) -> web.Response:
     """Detailed clip payload loaded only on demand."""
     clip_id = int(request.match_info["id"])
@@ -925,6 +1040,8 @@ async def get_clip_explanation(request: web.Request) -> web.Response:
 
 def register_clips_routes(app: web.Application):
     app.router.add_get("/api/clips", get_clips_list)
+    app.router.add_get("/api/clips/feed", get_clips_feed)          # before /api/clips/{id}
+    app.router.add_get("/api/clips/{id}/download", download_clip)
     app.router.add_get("/api/clips/{id}", get_clip_by_id)
     app.router.add_get("/api/clips/{id}/explain", get_clip_explanation)
     app.router.add_get("/api/clips/{id}/video", serve_clip_video)

@@ -1,4 +1,4 @@
-"""Publish sheet (phone swipe + desktop review) and the TikTok accounts tab.
+"""Publish sheet (Clips page: phone reels + desktop grid) and the TikTok accounts tab.
 Publish endpoints are mocked and every other write is blocked, so nothing is really posted or changed.
 Run: uvx --with playwright==1.49.1 python tests/e2e_publish_sheet.py   (server on :8080)"""
 import json
@@ -46,14 +46,14 @@ def install_mocks(pg, seen):
 with sync_playwright() as p:
     b = p.chromium.launch()
 
-    # ---------------- phone: swipe review -> Publish -> post now
+    # ---------------- phone: Clips reels -> Publish -> post now
     ctx = b.new_context(viewport={"width": 360, "height": 740}, has_touch=True, is_mobile=True)
     pg = ctx.new_page(); errs = []; seen = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     install_mocks(pg, seen)
-    ctx.add_init_script("localStorage.setItem('autoclip_review_mode', 'swipe')")
+    ctx.add_init_script("localStorage.setItem('autoclip_clips_view', 'reels')")
     pg.goto(BASE + "/", wait_until="load"); pg.wait_for_timeout(2500)
-    pg.click("[aria-label='Publish']"); pg.wait_for_selector("[data-testid=publish-sheet]")
+    pg.locator("[data-testid=reel] [data-action=publish]").first.click(); pg.wait_for_selector("[data-testid=publish-sheet]")
     pg.wait_for_selector("[data-testid=platform-youtube]")
     assert pg.locator("[data-testid=platform-instagram] input").is_disabled()
     assert pg.locator("[data-testid=platform-youtube] input").is_checked() and pg.locator("[data-testid=platform-tiktok] input").is_checked()
@@ -67,15 +67,14 @@ with sync_playwright() as p:
     assert over <= 0 and not errs
     ctx.close()
 
-    # ---------------- desktop: review station -> Publish -> pick a time, TikTok only
+    # ---------------- desktop: Clips grid side panel -> Publish -> pick a time, TikTok only
     ctx = b.new_context(viewport={"width": 1440, "height": 900})
     pg = ctx.new_page(); errs = []; seen = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
     install_mocks(pg, seen)
-    ctx.add_init_script("localStorage.setItem('autoclip_review_mode', 'review')")
+    ctx.add_init_script("localStorage.setItem('autoclip_clips_view', 'grid')")
     pg.goto(BASE + "/", wait_until="load"); pg.wait_for_timeout(3000)
-    btn = pg.get_by_role("button", name="Publish", exact=True)
-    btn.first.click(); pg.wait_for_selector("[data-testid=platform-youtube]")
+    pg.locator("[data-testid=clip-panel] [data-action=publish]").click(); pg.wait_for_selector("[data-testid=platform-youtube]")
     pg.locator("[data-testid=platform-youtube] input").uncheck()
     pg.click("[data-testid=when-pick]")
     assert pg.locator("input[type=datetime-local]").count() == 1
