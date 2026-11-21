@@ -878,24 +878,37 @@ async def auto_edit_clip(
         if not ow.get("censored") and any(abs(float(w["start"]) - t) < 0.06 for t in emph):
             ow["emphasis"] = True
         out_words.append(ow)
-    ass_path = work / f"{tag}_auto.ass"
-    sub_cfg = template.get("subtitles") or template.get("captions") or {}
-    generate_ass_subtitles(
-        word_timestamps=out_words, output_path=ass_path, template_config=template,
-        time_offset=0.0, max_duration=out_dur, censor_cfg=censor_cfg,
-    )
     hook = local.get("hook") or {}
     hook_line = (hook.get("text") or "").strip() if hook.get("on") else ""
-    hook_used = bool(hook_line)
     hook_style = template.get("hook_style") or "classic"
-    if hook_used:
-        from src.compositor.profanity import censor_text
-        from src.compositor.hook_styles import render_hook_card
-        hook_used = render_hook_card(
-            ass_path, censor_text(hook_line, censor_cfg) if censor_cfg else hook_line, hook_style,
-            caption_y=float((sub_cfg.get("position") or {}).get("y", 0.76)),
-            font_override=sub_cfg.get("font_name") or sub_cfg.get("font"),
-        )
+
+    def caption_template(y: Optional[float]) -> Dict[str, Any]:
+        if y is None:
+            return template
+        import copy as _copy
+        t2 = _copy.deepcopy(template)
+        key = "subtitles" if "subtitles" in t2 or "captions" not in t2 else "captions"
+        t2.setdefault(key, {}).setdefault("position", {})
+        t2[key]["position"] = {**(t2[key].get("position") or {}), "y": y}
+        return t2
+
+    def make_captions(y: Optional[float], name: str) -> Tuple[Path, bool, float]:
+        tpl = caption_template(y)
+        sub = tpl.get("subtitles") or tpl.get("captions") or {}
+        cy = float((sub.get("position") or {}).get("y", 0.76))
+        path = work / name
+        generate_ass_subtitles(word_timestamps=out_words, output_path=path, template_config=tpl,
+                               time_offset=0.0, max_duration=out_dur, censor_cfg=censor_cfg)
+        used = bool(hook_line)
+        if used:
+            from src.compositor.profanity import censor_text
+            from src.compositor.hook_styles import render_hook_card
+            used = render_hook_card(path, censor_text(hook_line, censor_cfg) if censor_cfg else hook_line, hook_style,
+                                    caption_y=cy, font_override=sub.get("font_name") or sub.get("font"))
+        return path, used, cy
+
+    caption_y_override = local.get("caption_y")
+    ass_path, hook_used, caption_y = make_captions(caption_y_override, f"{tag}_auto.ass")
 
     # 6. Sound effects from the plan (+ hook whoosh, cold-open rewind / riser)
     seed = sum(ord(ch) for ch in str(tag))
@@ -923,6 +936,24 @@ async def auto_edit_clip(
     frame_cfg = {**cfg, "zoom_amount": (zooms[0].get("amount") if zooms else cfg.get("zoom_amount", 0.14))}
     await finish_clip(base, out_path, ass_path, punches_out, frame_cfg, hook_card=hook_used, zoom_center=center,
                       frame_zoom=not layer_zoom, sfx=sfx)
+
+    # 7. Quality check; captions over the face / clipped audio are fixed with one quick re-finish
+    quality = None
+    if cfg.get("quality_check", True):
+        from src.compositor import quality_check as qcm
+        qc = await qcm.check(out_path, caption_y, [w["start"] for w in out_words if not w.get("deleted")], out_dur)
+        fixed: List[str] = []
+        if qc.get("caption_y") is not None and caption_y_override is None and not local.get("caption_fix_off"):
+            ass_path, hook_used, caption_y = make_captions(qc["caption_y"], f"{tag}_auto_fix.ass")
+            plan_abs["caption_y"] = qc["caption_y"]
+            fixed.append("captions_over_face")
+        if any(i["code"] == "audio_clipping" for i in qc["issues"]) and sfx:
+            sfx = [(f, t, round(v * 0.55, 3)) for f, t, v in sfx]
+            fixed.append("audio_clipping")
+        if fixed:
+            await finish_clip(base, out_path, ass_path, punches_out, frame_cfg, hook_card=hook_used, zoom_center=center,
+                              frame_zoom=not layer_zoom, sfx=sfx)
+        quality = qcm.summarize(qc, fixed)
     await make_thumbnail(out_path, at=min(1.0, out_dur / 3))
     for tmp in (base, work / f"{tag}_cold.mp4"):
         try:
@@ -945,6 +976,7 @@ async def auto_edit_clip(
         "hook_style": hook_style if hook_used else None,
         "sfx": bool(sfx),
         "plan_by": plan_abs.get("by"),
+        "quality": quality,
     }
     logger.info("Auto-edited %s: %s", tag, summary)
     # The same plan on the input's own timeline (callers that keep the UNtightened source, e.g. live)
@@ -978,10 +1010,25 @@ def summary_flag(summary: Dict[str, Any]) -> Dict[str, Any]:
     if summary.get("cuts"):
         bits.append(f"{summary['cuts']} cuts")
     if summary.get("zooms"):
-        bits.append(f"{summary['zooms']} zooms")
+        bits.append(f"{summary['zooms']} zooms" + (f" on {summary['zoom_target'][5:]}" if str(summary.get("zoom_target", "")).startswith("box: ") else ""))
+    if summary.get("emphasis"):
+        bits.append(f"{summary['emphasis']} key words")
+    if summary.get("sfx_count"):
+        bits.append(f"{summary['sfx_count']} sounds")
+    if summary.get("cold_open"):
+        bits.append("cold open")
     if summary.get("hook_card"):
         bits.append("hook card")
-    return {"type": "auto_edited", "severity": "low", "note": f"Auto edit ({summary.get('style')}): " + ", ".join(bits or ["polish"]), **summary}
+    if summary.get("plan_by") == "ai":
+        bits.append("AI director")
+    note = f"Auto edit ({summary.get('style')}): " + ", ".join(bits or ["polish"])
+    q = summary.get("quality") or {}
+    if q.get("notes"):
+        note += " · Fixed: " + "; ".join(q["notes"])
+    if q.get("issues"):
+        note += " · Check: " + "; ".join(i["note"] for i in q["issues"])
+    severity = "medium" if any(i.get("severity") == "medium" for i in q.get("issues") or []) else "low"
+    return {"type": "auto_edited", "severity": severity, "note": note, **summary}
 
 
 def pick_hook_text(words: Sequence[Dict[str, Any]], max_words: int = 9) -> Optional[str]:

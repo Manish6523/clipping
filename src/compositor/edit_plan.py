@@ -78,7 +78,7 @@ def pick_emphasis(words: Sequence[Dict[str, Any]], dur: float, is_hype, min_gap:
             continue
         sc = emphasis_score(w, is_hype)
         if sc >= 2:
-            cands.append((sc, float(w["start"]), (w.get("word") or "").strip()))
+            cands.append((sc, float(w["start"]), (w.get("word") or "").strip().strip(".,;:")))
     cands.sort(key=lambda c: (-c[0], c[1]))
     chosen: List[Tuple[float, str]] = []
     cap = max(1, int(dur / 4))
@@ -230,6 +230,14 @@ def validate(plan: Any, dur: Optional[float] = None) -> Dict[str, Any]:
         out["cold_open"] = {"on": False}
     hook = plan.get("hook") or {}
     out["hook"] = {"on": bool(hook.get("on")), "text": str(hook.get("text") or "")[:120]}
+    if plan.get("caption_fix_off"):
+        out["caption_fix_off"] = True              # user chose the template height: don't move captions again
+    try:
+        cy = plan.get("caption_y")
+        if cy is not None and 0.15 <= float(cy) <= 0.92:
+            out["caption_y"] = round(float(cy), 3)
+    except (TypeError, ValueError):
+        pass
     return out
 
 

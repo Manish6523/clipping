@@ -168,6 +168,13 @@ export default function EditPlanPanel({ clipId, getTime, seek, onRendered, compa
         </div>
       </Section>
 
+      {plan.caption_y != null && (
+        <div className="flex items-center gap-2 rounded-lg bg-white/[0.03] px-2 py-1.5 text-[11.5px]">
+          <span className="text-muted flex-1">Captions moved to {Math.round(plan.caption_y * 100)}% height so they don't cover the face.</span>
+          <Button size="sm" variant="ghost" onClick={() => change((p) => { delete p.caption_y; p.caption_fix_off = true; })}>Use template height</Button>
+        </div>
+      )}
+
       <Section icon={Rewind} title="Cold open" action={
         <Toggle checked={!!co.on} onChange={(v) => change((p) => {
           const t = playhead();

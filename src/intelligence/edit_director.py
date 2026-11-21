@@ -114,7 +114,7 @@ def _apply(auto: Dict[str, Any], ai: DirectorPlan, words: Sequence[Dict[str, Any
         t = round(float(w["start"]), 3)
         if any(abs(t - e["t"]) < 1.0 for e in emph):
             continue
-        emph.append({"id": f"e{len(emph) + 1}", "t": t, "word": word, "on": True, "by": "ai"})
+        emph.append({"id": f"e{len(emph) + 1}", "t": t, "word": word.strip(".,;:"), "on": True, "by": "ai"})
         if len(emph) >= max(1, int(dur / 4)):
             break
     plan["emphasis"] = emph if (emph or not cfg.get("word_pop")) else (auto.get("emphasis") or [])
