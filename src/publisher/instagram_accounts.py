@@ -242,11 +242,18 @@ def _sync_import_session(
     client = Client()
     client.delay_range = [1, 3]
 
-    # Handle if session_data is either { "settings": { ... } } or raw settings dict
-    settings = session_data.get("settings") if isinstance(session_data.get("settings"), dict) else session_data
-    client.set_settings(settings)
-
     clean_username = (username or session_data.get("username") or account_key).strip().lstrip("@")
+
+    # Support simple {"sessionid": "..."} format from browser devtools
+    if isinstance(session_data, dict) and "sessionid" in session_data and len(session_data) == 1:
+        sid = str(session_data["sessionid"]).strip().strip('"').strip("'")
+        logger.info("Logging in to Instagram via sessionid for '%s'...", clean_username)
+        client.login_by_sessionid(sid)
+    else:
+        # Handle if session_data is either { "settings": { ... } } or raw settings dict
+        settings = session_data.get("settings") if isinstance(session_data.get("settings"), dict) else session_data
+        client.set_settings(settings)
+
     try:
         user_info = client.user_info_by_username(clean_username)
         user_dict = {
