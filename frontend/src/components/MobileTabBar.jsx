@@ -66,6 +66,11 @@ export default function MobileTabBar({ pendingCount = 0 }) {
           {notifPerm === 'default' && <Button block icon={Bell} onClick={enableNotifications}>Notify me when clips are ready</Button>}
           {notifPerm === 'denied' && <p className="flex items-center gap-2 text-[11px] text-faint justify-center"><BellOff size={13} /> Notifications are blocked in browser settings</p>}
           {!window.isSecureContext && <p className="text-[11px] text-faint text-center leading-snug">Install &amp; notifications need HTTPS - open the dashboard through an https:// address.</p>}
+          <div className="pt-2 border-t border-line flex items-center justify-center gap-4 text-[11px] text-muted">
+            <NavLink to="/privacy" onClick={() => setMoreOpen(false)} className="hover:text-white underline">Privacy Policy</NavLink>
+            <span>•</span>
+            <NavLink to="/terms" onClick={() => setMoreOpen(false)} className="hover:text-white underline">Terms of Service</NavLink>
+          </div>
         </div>
       </Sheet>
 

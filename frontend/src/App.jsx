@@ -25,6 +25,8 @@ const Settings = lazy(() => import('./components/Settings'));
 const ClipLab = lazy(() => import('./pages/ClipLab'));
 const ClipEditorPage = lazy(() => import('./pages/ClipEditorPage'));
 const StreamerTelemetryHub = lazy(() => import('./components/StreamerTelemetryHub'));
+const PrivacyPolicy = lazy(() => import('./pages/PrivacyPolicy'));
+const TermsOfService = lazy(() => import('./pages/TermsOfService'));
 
 // Old /clips/:id/edit links -> /clips/:id/editor (Navigate does not substitute params by itself)
 function LegacyEditRedirect() {
@@ -198,6 +200,8 @@ export default function App() {
         <Route path="logs" element={<LogStreamer />} />
         <Route path="quickclip" element={<QuickClip />} />
         <Route path="lab" element={<ClipLab />} />
+        <Route path="privacy" element={<PrivacyPolicy />} />
+        <Route path="terms" element={<TermsOfService />} />
       </Route>
 
       {/* Dedicated Full-Screen Clip Editor Route */}
