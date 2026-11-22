@@ -49,14 +49,14 @@ function StatusPill({ status, pipes }) {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog"
-        className="flex items-center gap-2 h-9 pl-2.5 pr-2 rounded-full bg-white/[0.05] hover:bg-white/[0.08] border border-line text-[11.5px] text-ink transition-colors max-w-[200px] sm:max-w-none">
+        className="flex items-center gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-[11.5px] sm:text-xs text-ink transition-all shadow-sm active:scale-95 max-w-[180px] sm:max-w-none">
         {running ? <Loader2 size={13} className="animate-spin text-warn shrink-0" /> : <Dot tone={tone} live />}
-        <span className="truncate">
+        <span className="truncate font-medium">
           {running ? `@${primary?.channel_id || 'clip'}` : pending > 0 ? `${pending} to review` : 'Daemon active'}
         </span>
         {running && <span className="text-warn tabular-nums text-[10.5px] hidden sm:inline">{Math.min(STEPS, primary?.current_step || 1)}/{STEPS}</span>}
-        {running && pipes.length > 1 && <span className="text-[10px] rounded-full bg-warn/20 text-warn px-1.5">+{pipes.length - 1}</span>}
-        <ChevronDown size={12} className={`text-muted transition-transform ${open ? 'rotate-180' : ''}`} />
+        {running && pipes.length > 1 && <span className="text-[10px] rounded-full bg-warn/20 text-warn px-1.5 font-bold">+{pipes.length - 1}</span>}
+        <ChevronDown size={12} className={`text-muted transition-transform shrink-0 ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
         <div role="dialog" className="ds-fade absolute right-0 top-full mt-2 w-[min(340px,calc(100vw-24px))] z-50 rounded-2xl bg-surface border border-line-strong shadow-2xl p-3 space-y-3">
