@@ -4,7 +4,7 @@ import {
   getYouTubeAppConfig, saveYouTubeAppConfig, getYouTubeAuthUrl, getYouTubeAccounts, patchYouTubeAccountConfig,
   deleteYouTubeAccount, importYouTubeAccount, getYouTubeMappings, setYouTubeMappings, getChannels,
   getTikTokAppConfig, saveTikTokAppConfig, getTikTokAuthUrl, getTikTokAccounts, patchTikTokAccount, deleteTikTokAccount,
-  getInstagramAccounts, connectInstagramAccount, patchInstagramAccount, deleteInstagramAccount,
+  getInstagramAccounts, connectInstagramAccount, importInstagramAccount, patchInstagramAccount, deleteInstagramAccount,
 } from '../../api';
 import { Page, Panel, Button, Notice, Stat, Skeleton, Dot } from '../ui';
 import { DestinationCard, PLATFORM, YoutubeIcon } from './parts';
@@ -171,6 +171,16 @@ export default function DistributionPage() {
     return res;
   };
 
+  const importInstagram = async (data) => {
+    const res = await importInstagramAccount(data);
+    if (res.success) {
+      setConnectOpen(false);
+      say(`Instagram account @${res.account.username || res.account.key} session imported!`);
+      load();
+    }
+    return res;
+  };
+
   return (
     <Page title="Distribution" icon={Send}
       subtitle="Connect where clips get posted, then choose which streamer goes where."
@@ -241,7 +251,7 @@ export default function DistributionPage() {
 
       <ConnectSheet open={connectOpen} onClose={() => setConnectOpen(false)} yt={yt} tt={tt}
         onYouTube={startYouTube} onYouTubeImport={importYouTube} onTikTok={startTikTok}
-        onInstagram={connectInstagram}
+        onInstagram={connectInstagram} onInstagramImport={importInstagram}
         onSetup={(w) => { setConnectOpen(false); setSetup(w); }} />
       <DestinationSheet dest={openDest} channels={channels} routes={routes} pending={pending} onToggle={toggle}
         onUpdate={(changes) => updateDest(openDest, changes)} onDisconnect={() => disconnect(openDest)}

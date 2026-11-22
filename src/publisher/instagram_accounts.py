@@ -228,3 +228,69 @@ async def authenticate_account(
         verification_code,
         proxy,
     )
+
+
+def _sync_import_session(
+    account_key: str,
+    username: str,
+    session_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Import and validate session settings or cookies dictionary."""
+    if not HAS_INSTAGRAPI or Client is None:
+        raise ImportError("instagrapi is not installed on this system.")
+
+    client = Client()
+    client.delay_range = [1, 3]
+
+    # Handle if session_data is either { "settings": { ... } } or raw settings dict
+    settings = session_data.get("settings") if isinstance(session_data.get("settings"), dict) else session_data
+    client.set_settings(settings)
+
+    clean_username = (username or session_data.get("username") or account_key).strip().lstrip("@")
+    try:
+        user_info = client.user_info_by_username(clean_username)
+        user_dict = {
+            "pk": str(user_info.pk),
+            "username": user_info.username,
+            "full_name": user_info.full_name,
+            "profile_pic_url": str(user_info.profile_pic_url),
+        }
+    except Exception as e:
+        logger.warning("Could not fetch user profile for imported session '%s': %s", clean_username, e)
+        user_dict = {
+            "pk": str(session_data.get("user_id") or ""),
+            "username": clean_username,
+            "full_name": clean_username,
+            "profile_pic_url": None,
+        }
+
+    save_token(
+        account_key,
+        {
+            "username": clean_username,
+            "settings": client.get_settings(),
+            "user_id": user_dict["pk"],
+        },
+    )
+
+    return {
+        "success": True,
+        "status": "connected",
+        "user": user_dict,
+    }
+
+
+async def import_session(
+    account_key: str,
+    username: str,
+    session_data: Dict[str, Any],
+) -> Dict[str, Any]:
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(
+        None,
+        _sync_import_session,
+        account_key,
+        username,
+        session_data,
+    )
+

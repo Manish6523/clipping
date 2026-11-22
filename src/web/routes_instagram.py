@@ -70,6 +70,52 @@ async def ig_connect_account(request: web.Request) -> web.Response:
     return web.json_response(res, status=400 if res.get("status") in ("bad_password", "rate_limited", "error") else 200)
 
 
+async def ig_import_account(request: web.Request) -> web.Response:
+    try:
+        data = await request.json()
+    except Exception:
+        return web.json_response({"error": "Invalid JSON body"}, status=400)
+
+    username = (data.get("username") or "").strip().lstrip("@")
+    session_data = data.get("session_data") or {}
+    account_key = (data.get("account_key") or username).strip().lower()
+    account_key = "".join(ch for ch in account_key if ch.isalnum() or ch in "_-")[:40]
+
+    if not username:
+        return web.json_response({"error": "Username is required"}, status=400)
+    if not session_data:
+        return web.json_response({"error": "Session JSON data is required"}, status=400)
+
+    res = await instagram_accounts.import_session(
+        account_key=account_key,
+        username=username,
+        session_data=session_data,
+    )
+
+    if res.get("success"):
+        user = res.get("user") or {}
+        await instagram_accounts.upsert_account({
+            "key": account_key,
+            "username": user.get("username") or username,
+            "display_name": user.get("full_name") or username,
+            "avatar": user.get("profile_pic_url"),
+            "user_id": user.get("pk"),
+            "connected": True,
+        })
+        return web.json_response({
+            "success": True,
+            "account": {
+                "key": account_key,
+                "username": user.get("username") or username,
+                "display_name": user.get("full_name") or username,
+                "avatar": user.get("profile_pic_url"),
+                "connected": True,
+            },
+        })
+
+    return web.json_response(res, status=400)
+
+
 async def ig_patch_account(request: web.Request) -> web.Response:
     key = request.match_info["key"]
     try:
@@ -102,5 +148,6 @@ async def ig_delete_account(request: web.Request) -> web.Response:
 def register_instagram_routes(app: web.Application) -> None:
     app.router.add_get("/api/instagram/accounts", ig_list_accounts)
     app.router.add_post("/api/instagram/accounts/connect", ig_connect_account)
+    app.router.add_post("/api/instagram/accounts/import", ig_import_account)
     app.router.add_patch("/api/instagram/accounts/{key}", ig_patch_account)
     app.router.add_delete("/api/instagram/accounts/{key}", ig_delete_account)

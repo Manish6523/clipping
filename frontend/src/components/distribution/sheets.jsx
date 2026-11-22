@@ -26,7 +26,7 @@ function CopyBox({ value }) {
 
 /* ------------------------------------------------------------- connect */
 
-export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport, onTikTok, onInstagram, onSetup }) {
+export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport, onTikTok, onInstagram, onInstagramImport, onSetup }) {
   const [platform, setPlatform] = useState(null);
   const [name, setName] = useState('');
   const [ttMode, setTtMode] = useState('inbox');
@@ -38,10 +38,13 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
   const [ig2FA, setIg2FA] = useState('');
   const [igError, setIgError] = useState('');
   const [igNeeds2FA, setIgNeeds2FA] = useState(false);
+  const [igImporting, setIgImporting] = useState(false);
+  const [igSessionJson, setIgSessionJson] = useState('');
   useEffect(() => {
     if (open) {
       setPlatform(null); setName(''); setImporting(false); setToken(''); setBusy(false);
       setIgUser(''); setIgPass(''); setIg2FA(''); setIgError(''); setIgNeeds2FA(false);
+      setIgImporting(false); setIgSessionJson('');
     }
   }, [open]);
 
@@ -67,6 +70,31 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
       }
     } catch (e) {
       setIgError(e?.response?.data?.message || e?.message || 'Login failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitInstagramImport = async () => {
+    setIgError('');
+    let parsed;
+    try {
+      parsed = JSON.parse(igSessionJson);
+    } catch {
+      setIgError('Invalid JSON format. Please paste valid settings or session JSON.');
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await onInstagramImport({
+        username: igUser.trim(),
+        session_data: parsed,
+      });
+      if (res && !res.success) {
+        setIgError(res.message || 'Import failed.');
+      }
+    } catch (e) {
+      setIgError(e?.response?.data?.message || e?.message || 'Import failed');
     } finally {
       setBusy(false);
     }
@@ -150,7 +178,7 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
         </div>
       )}
 
-      {platform === 'instagram' && (
+      {platform === 'instagram' && !igImporting && (
         <div className="space-y-3">
           {igError && (
             <Notice tone={igNeeds2FA ? 'warn' : 'bad'} icon={AlertTriangle}>
@@ -163,13 +191,13 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
               autoFocus
               value={igUser}
               onChange={(e) => setIgUser(e.target.value)}
-              placeholder="e.g. clipempire_reels"
+              placeholder="e.g. streamclipcookie"
               disabled={busy || igNeeds2FA}
             />
           </Field>
 
           {!igNeeds2FA ? (
-            <Field label="Instagram Password" hint="Session will be saved securely on your VPS.">
+            <Field label="Instagram Password" hint="Session will be saved securely on your server.">
               <Input
                 type="password"
                 value={igPass}
@@ -204,9 +232,64 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
             {igNeeds2FA ? 'Verify 2FA Code' : 'Connect Instagram'}
           </Button>
 
-          <p className="text-[11px] text-muted text-center leading-normal">
-            Uses your private session token on your VPS to automatically publish vertical Reels.
-          </p>
+          <Divider />
+          <button
+            type="button"
+            onClick={() => { setIgImporting(true); setIgError(''); }}
+            className="w-full text-[12px] text-muted hover:text-ink inline-flex items-center justify-center gap-1.5"
+          >
+            <FileJson size={13} /> Import session settings JSON instead
+          </button>
+        </div>
+      )}
+
+      {platform === 'instagram' && igImporting && (
+        <div className="space-y-3">
+          {igError && (
+            <Notice tone="bad" icon={AlertTriangle}>
+              {igError}
+            </Notice>
+          )}
+
+          <Field label="Instagram Username">
+            <Input
+              autoFocus
+              value={igUser}
+              onChange={(e) => setIgUser(e.target.value)}
+              placeholder="e.g. streamclipcookie"
+              disabled={busy}
+            />
+          </Field>
+
+          <Field label="Session JSON" hint="Dump of instagrapi client.get_settings() from local PC.">
+            <Textarea
+              rows={6}
+              className="font-mono !text-xs"
+              value={igSessionJson}
+              onChange={(e) => setIgSessionJson(e.target.value)}
+              placeholder='{"uuids": {...}, "cookies": {...}, "authorization_data": {...}}'
+              disabled={busy}
+            />
+          </Field>
+
+          <Button
+            block
+            variant="primary"
+            className="!bg-[#e1306c] hover:!bg-[#c13584]"
+            loading={busy}
+            disabled={!igUser.trim() || !igSessionJson.trim()}
+            onClick={submitInstagramImport}
+          >
+            Import Session
+          </Button>
+
+          <button
+            type="button"
+            onClick={() => { setIgImporting(false); setIgError(''); }}
+            className="w-full text-[12px] text-muted hover:text-ink inline-flex items-center justify-center gap-1.5"
+          >
+            Back to Password Login
+          </button>
         </div>
       )}
     </Sheet>
