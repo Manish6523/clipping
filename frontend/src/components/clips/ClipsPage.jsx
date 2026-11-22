@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { LayoutGrid, Clapperboard, Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
+import { LayoutGrid, Clapperboard, Search, SlidersHorizontal, X } from 'lucide-react';
 import { Input, Select, Sheet, Button, Field } from '../ui';
 import { useLayoutMode } from '../../hooks/useLayoutMode';
 import PublishSheet from '../PublishSheet';
@@ -49,7 +49,6 @@ function Filters({ feed, group, setGroup, view, stacked = false }) {
   );
 }
 
-/** Home: every clip, unified sleek Option-A header for both Grid & Reels across mobile & desktop. */
 export default function ClipsPage() {
   const { isPhone, width } = useLayoutMode();
   const isWide = (width || window.innerWidth) >= 1024;
@@ -78,18 +77,18 @@ export default function ClipsPage() {
   // - Streamlined inline filters
   // - Rounded View Toggle [Grid | Reels]
   const unifiedHeader = (
-    <div className={`shrink-0 z-30 flex items-center justify-between gap-2.5 ${
-      reels && isPhone ? 'absolute top-2 inset-x-3 pointer-events-none' : 'w-full pb-1'
+    <div className={`shrink-0 z-30 flex items-center justify-between gap-2 ${
+      reels && isPhone ? 'absolute top-3 inset-x-3 pointer-events-none' : 'w-full pb-1'
     }`}>
       {/* Left: Category Dropdown & Clips Title */}
-      <div className="flex items-center gap-2.5 pointer-events-auto min-w-0">
+      <div className="flex items-center gap-2 pointer-events-auto min-w-0">
         {!isPhone && <h1 className="text-[17px] font-bold text-ink shrink-0 mr-1">Clips</h1>}
         
         <div className="relative inline-flex items-center">
           <select
             value={filters.status}
             onChange={(e) => setFilters({ status: e.target.value })}
-            className="h-8.5 pl-3.5 pr-8 rounded-full bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 text-[12px] font-semibold text-white shadow-sm appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+            className="h-8.5 pl-3.5 pr-8 rounded-full bg-black/60 sm:bg-white/[0.08] hover:bg-black/75 backdrop-blur-md border border-white/20 text-[12px] font-semibold text-white shadow-lg appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
               backgroundRepeat: 'no-repeat',
@@ -132,7 +131,7 @@ export default function ClipsPage() {
       </div>
 
       {/* Right: Filters & View Switcher */}
-      <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+      <div className="flex items-center gap-1.5 pointer-events-auto shrink-0">
         {!isPhone && <Filters feed={feed} group={group} setGroup={setGroup} view={view} />}
 
         {isPhone && (
@@ -140,16 +139,16 @@ export default function ClipsPage() {
             type="button"
             onClick={() => setFiltersOpen(true)}
             aria-label="Open Filters"
-            className={`h-8.5 px-3 rounded-full backdrop-blur-md border flex items-center gap-1.5 text-[11.5px] font-semibold shadow-sm transition-all active:scale-95 ${
+            className={`h-8.5 w-8.5 rounded-full backdrop-blur-md border flex items-center justify-center text-white/90 shadow-lg transition-all active:scale-95 relative ${
               activeFilters
                 ? 'bg-accent text-white border-accent'
-                : 'bg-white/[0.08] hover:bg-white/[0.12] text-white/90 border-white/15'
+                : 'bg-black/60 hover:bg-black/75 border-white/20'
             }`}
+            title="Filters"
           >
-            <SlidersHorizontal size={13} />
-            <span>Filters</span>
+            <SlidersHorizontal size={14} />
             {activeFilters > 0 && (
-              <span className="w-4 h-4 rounded-full bg-white text-accent text-[10px] font-bold flex items-center justify-center">
+              <span className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-accent text-white text-[9.5px] font-bold flex items-center justify-center border border-black">
                 {activeFilters}
               </span>
             )}
@@ -157,17 +156,17 @@ export default function ClipsPage() {
         )}
 
         {/* Unified View Toggle Pill [Grid | Reels] */}
-        <div className="bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 rounded-full p-0.5 shadow-sm flex items-center">
+        <div className="bg-black/60 sm:bg-white/[0.08] backdrop-blur-md border border-white/20 rounded-full p-0.5 shadow-lg flex items-center">
           <button
             type="button"
             onClick={() => setView('grid')}
             title="Grid view"
             aria-label="Switch to Grid view"
-            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold transition-all ${
-              view === 'grid' ? 'bg-white/20 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            className={`w-7.5 h-7.5 sm:w-auto sm:px-2.5 sm:h-7 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold transition-all ${
+              view === 'grid' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white'
             }`}
           >
-            <LayoutGrid size={13} />
+            <LayoutGrid size={14} />
             <span className="hidden sm:inline">Grid</span>
           </button>
           <button
@@ -175,11 +174,11 @@ export default function ClipsPage() {
             onClick={() => setView('reels')}
             title="Reels view"
             aria-label="Switch to Reels view"
-            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold transition-all ${
-              view === 'reels' ? 'bg-white/20 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            className={`w-7.5 h-7.5 sm:w-auto sm:px-2.5 sm:h-7 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold transition-all ${
+              view === 'reels' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white'
             }`}
           >
-            <Clapperboard size={13} />
+            <Clapperboard size={14} />
             <span className="hidden sm:inline">Reels</span>
           </button>
         </div>
