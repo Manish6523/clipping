@@ -11,7 +11,6 @@ import { clipActions } from './ClipActionBar';
 import { statusMeta, scoreOf, scoreTone, clipLength } from './model';
 
 const TONE_TXT = { good: 'text-good', warn: 'text-warn', bad: 'text-bad', accent: 'text-accent', idle: 'text-muted' };
-const RAIL_TONE = { good: 'text-good', bad: 'text-bad', accent: 'text-accent' };
 
 function ReelItem({
   clip,
@@ -33,7 +32,6 @@ function ReelItem({
   const [paused, setPaused] = useState(false);
   const [more, setMore] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [tapPlayAnimation, setTapPlayAnimation] = useState(false);
 
   const score = scoreOf(clip);
   const m = statusMeta(clip.status);
@@ -61,29 +59,14 @@ function ReelItem({
     if (v.paused) {
       v.play().catch(() => {});
       setPaused(false);
-      setTapPlayAnimation(false);
     } else {
       v.pause();
       setPaused(true);
-      setTapPlayAnimation(true);
-      setTimeout(() => setTapPlayAnimation(false), 800);
     }
   };
 
   const reviewable = ['pending_approval', 'approved'].includes(clip.status);
   const tags = String(clip.hashtags || '').split(/\s+/).filter(Boolean);
-
-  // Full desktop rail vs Streamlined mobile rail
-  const desktopRail = clipActions(clip, {
-    actions,
-    navigate,
-    rail: true,
-    onPublish,
-    onStyle,
-    onEdits,
-    onSkip: onNext,
-    onDetails: (c) => onOpenDetails(c),
-  });
 
   return (
     <section
@@ -120,13 +103,13 @@ function ReelItem({
         )
       )}
 
-      {/* Play/Pause momentary animation indicator */}
+      {/* Play indicator when actively paused */}
       {active && paused && (
         <button
           type="button"
           onClick={togglePlay}
           aria-label="Play video"
-          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white pointer-events-auto transition-transform active:scale-90 shadow-2xl"
+          className="absolute inset-0 m-auto w-16 h-16 rounded-full bg-black/60 backdrop-blur-sm flex items-center justify-center text-white pointer-events-auto transition-transform active:scale-90 shadow-2xl z-20"
         >
           <Play size={28} className="text-white ml-1 fill-white" />
         </button>
@@ -144,114 +127,83 @@ function ReelItem({
         type="button"
         onClick={onToggleMute}
         aria-label={muted ? 'Unmute' : 'Mute'}
-        className="absolute top-4 right-4 z-20 w-10 h-10 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white transition-all active:scale-95 shadow-md"
+        className="absolute top-3 right-3 z-20 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center text-white transition-all active:scale-95 shadow-md"
       >
-        {muted ? <VolumeX size={17} /> : <Volume2 size={17} />}
+        {muted ? <VolumeX size={16} /> : <Volume2 size={16} />}
       </button>
 
-      {/* RIGHT ACTION RAIL */}
-      {isPhone ? (
-        /* Mobile: Streamlined, TikTok-style 5 primary actions */
-        <div
-          className="absolute right-2 bottom-6 z-20 flex flex-col items-center gap-2.5"
-          data-testid="reel-rail"
+      {/* RIGHT ACTION RAIL (Uniform, clean 5 actions for both PC & Mobile) */}
+      <div
+        className="absolute right-2 bottom-5 sm:bottom-6 z-20 flex flex-col items-center gap-2 sm:gap-2.5"
+        data-testid="reel-rail"
+      >
+        {reviewable && (
+          <button
+            type="button"
+            onClick={() => actions.approve(clip)}
+            aria-label="Approve clip"
+            className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
+          >
+            <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-good/20 text-good border border-good/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-good/30">
+              <Check size={19} strokeWidth={2.5} />
+            </span>
+            <span className="text-[10px] font-semibold tracking-tight drop-shadow">Approve</span>
+          </button>
+        )}
+
+        <button
+          type="button"
+          onClick={() => actions.reject(clip)}
+          aria-label={reviewable ? 'Reject clip' : 'Delete clip'}
+          className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
         >
-          {reviewable && (
-            <button
-              type="button"
-              onClick={() => actions.approve(clip)}
-              aria-label="Approve clip"
-              className="group flex flex-col items-center gap-1 text-white active:scale-95 transition-transform"
-            >
-              <span className="w-11 h-11 rounded-full bg-good/20 text-good border border-good/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-good/30">
-                <Check size={20} strokeWidth={2.5} />
-              </span>
-              <span className="text-[10px] font-semibold tracking-tight drop-shadow">Approve</span>
-            </button>
-          )}
+          <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-bad/20 text-bad border border-bad/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-bad/30">
+            {reviewable ? <X size={19} strokeWidth={2.5} /> : <Trash2 size={17} />}
+          </span>
+          <span className="text-[10px] font-semibold tracking-tight drop-shadow">
+            {reviewable ? 'Reject' : 'Delete'}
+          </span>
+        </button>
 
+        {clip.status !== 'published' && (
           <button
             type="button"
-            onClick={() => actions.reject(clip)}
-            aria-label={reviewable ? 'Reject clip' : 'Delete clip'}
-            className="group flex flex-col items-center gap-1 text-white active:scale-95 transition-transform"
+            onClick={() => onPublish(clip)}
+            aria-label="Publish clip"
+            className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
           >
-            <span className="w-11 h-11 rounded-full bg-bad/20 text-bad border border-bad/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-bad/30">
-              {reviewable ? <X size={20} strokeWidth={2.5} /> : <Trash2 size={18} />}
+            <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-accent/20 text-accent border border-accent/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-accent/30">
+              <Send size={17} />
             </span>
-            <span className="text-[10px] font-semibold tracking-tight drop-shadow">
-              {reviewable ? 'Reject' : 'Delete'}
-            </span>
+            <span className="text-[10px] font-semibold tracking-tight drop-shadow">Publish</span>
           </button>
+        )}
 
-          {clip.status !== 'published' && (
-            <button
-              type="button"
-              onClick={() => onPublish(clip)}
-              aria-label="Publish clip"
-              className="group flex flex-col items-center gap-1 text-white active:scale-95 transition-transform"
-            >
-              <span className="w-11 h-11 rounded-full bg-accent/20 text-accent border border-accent/40 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-accent/30">
-                <Send size={18} />
-              </span>
-              <span className="text-[10px] font-semibold tracking-tight drop-shadow">Publish</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => navigate(`/clips/${clip.id}/editor`)}
-            aria-label="Edit clip layout & captions"
-            className="group flex flex-col items-center gap-1 text-white active:scale-95 transition-transform"
-          >
-            <span className="w-11 h-11 rounded-full bg-black/50 text-white border border-white/15 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-black/70">
-              <Scissors size={18} />
-            </span>
-            <span className="text-[10px] font-semibold tracking-tight drop-shadow">Edit</span>
-          </button>
-
-          {/* More options menu sheet */}
-          <button
-            type="button"
-            onClick={() => setMenuOpen(true)}
-            aria-label="More options"
-            className="group flex flex-col items-center gap-1 text-white active:scale-95 transition-transform"
-          >
-            <span className="w-11 h-11 rounded-full bg-black/50 text-white/90 border border-white/15 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-black/70">
-              <MoreVertical size={18} />
-            </span>
-            <span className="text-[10px] font-semibold tracking-tight drop-shadow">More</span>
-          </button>
-        </div>
-      ) : (
-        /* Desktop: Standard expanded rail */
-        <div
-          className="absolute right-2 bottom-5 z-20 flex flex-col items-center gap-1"
-          data-testid="reel-rail"
+        <button
+          type="button"
+          onClick={() => navigate(`/clips/${clip.id}/editor`)}
+          aria-label="Edit clip layout & captions"
+          className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
         >
-          {desktopRail.map((a) => (
-            <button
-              key={a.id}
-              type="button"
-              onClick={a.run}
-              disabled={a.disabled}
-              data-action={a.id}
-              title={a.key ? `${a.label} (${a.key})` : a.label}
-              aria-label={a.label}
-              className="w-14 flex flex-col items-center gap-0.5 py-1 text-white disabled:opacity-40 transition-transform active:scale-95"
-            >
-              <span
-                className={`w-11 h-11 rounded-full bg-black/50 backdrop-blur-md border border-white/10 flex items-center justify-center ${
-                  RAIL_TONE[a.tone] || ''
-                }`}
-              >
-                <a.icon size={19} />
-              </span>
-              <span className="text-[10.5px] font-semibold leading-none drop-shadow">{a.label}</span>
-            </button>
-          ))}
-        </div>
-      )}
+          <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/50 text-white border border-white/15 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-black/70">
+            <Scissors size={17} />
+          </span>
+          <span className="text-[10px] font-semibold tracking-tight drop-shadow">Edit</span>
+        </button>
+
+        {/* More options menu sheet (on mobile) or popup (on pc) */}
+        <button
+          type="button"
+          onClick={() => setMenuOpen(true)}
+          aria-label="More options"
+          className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
+        >
+          <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/50 text-white/90 border border-white/15 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-black/70">
+            <MoreVertical size={17} />
+          </span>
+          <span className="text-[10px] font-semibold tracking-tight drop-shadow">More</span>
+        </button>
+      </div>
 
       {/* BOTTOM INFO OVERLAY */}
       <div className="absolute inset-x-0 bottom-0 pr-18 sm:pr-20 pl-4 pb-4 pt-16 bg-gradient-to-t from-black/95 via-black/60 to-transparent pointer-events-auto">
@@ -293,60 +245,58 @@ function ReelItem({
         )}
       </div>
 
-      {/* Mobile More Sheet for secondary actions */}
-      {isPhone && (
-        <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Clip Options">
-          <div className="grid grid-cols-2 gap-2 pb-3">
+      {/* More Options Sheet */}
+      <Sheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Clip Options">
+        <div className="grid grid-cols-2 gap-2 pb-3">
+          <Button
+            variant="secondary"
+            icon={Palette}
+            onClick={() => {
+              setMenuOpen(false);
+              onStyle(clip);
+            }}
+            className="justify-start py-3"
+          >
+            Style & Fonts
+          </Button>
+          {onEdits && (
             <Button
               variant="secondary"
-              icon={Palette}
+              icon={Wand2}
               onClick={() => {
                 setMenuOpen(false);
-                onStyle(clip);
+                onEdits(clip);
               }}
               className="justify-start py-3"
             >
-              Style & Fonts
+              Auto-Edits
             </Button>
-            {onEdits && (
-              <Button
-                variant="secondary"
-                icon={Wand2}
-                onClick={() => {
-                  setMenuOpen(false);
-                  onEdits(clip);
-                }}
-                className="justify-start py-3"
-              >
-                Auto-Edits
-              </Button>
-            )}
-            <Button
-              variant="secondary"
-              icon={Download}
-              disabled={!clip.download_url}
-              onClick={() => {
-                setMenuOpen(false);
-                actions.download(clip);
-              }}
-              className="justify-start py-3"
-            >
-              Download
-            </Button>
-            <Button
-              variant="secondary"
-              icon={Info}
-              onClick={() => {
-                setMenuOpen(false);
-                onOpenDetails(clip);
-              }}
-              className="justify-start py-3"
-            >
-              Clip Details
-            </Button>
-          </div>
-        </Sheet>
-      )}
+          )}
+          <Button
+            variant="secondary"
+            icon={Download}
+            disabled={!clip.download_url}
+            onClick={() => {
+              setMenuOpen(false);
+              actions.download(clip);
+            }}
+            className="justify-start py-3"
+          >
+            Download
+          </Button>
+          <Button
+            variant="secondary"
+            icon={Info}
+            onClick={() => {
+              setMenuOpen(false);
+              onOpenDetails(clip);
+            }}
+            className="justify-start py-3"
+          >
+            Clip Details
+          </Button>
+        </div>
+      </Sheet>
     </section>
   );
 }
@@ -535,22 +485,27 @@ export default function ClipReels({ feed, clips, actions, onPublish, onStyle, on
     );
   }
 
+  // Modern PC / Desktop Reels layout
   return (
-    <div className={`${height} flex gap-4 justify-center py-3`}>
-      <div className="h-full aspect-[9/16] max-w-[min(56vw,520px)] rounded-2xl overflow-hidden border border-line relative shrink-0">
+    <div className="h-full flex items-center justify-center gap-6 py-2 select-none">
+      {/* 9:16 Video Stage with floating overlay & action rail */}
+      <div className="h-full max-h-[820px] aspect-[9/16] rounded-2xl overflow-hidden border border-white/10 shadow-2xl relative shrink-0 bg-black">
         {reel}
       </div>
-      <div className="flex flex-col justify-center gap-2 shrink-0">
+
+      {/* Up/Down Floating Nav Buttons */}
+      <div className="flex flex-col justify-center items-center gap-2.5 shrink-0">
         <button
           type="button"
           onClick={() => go(-1)}
           disabled={activeIdx === 0}
+          title="Previous clip (Up arrow / K)"
           aria-label="Previous clip (↑)"
-          className="w-11 h-11 rounded-full bg-white/[0.07] hover:bg-white/[0.12] flex items-center justify-center disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 flex items-center justify-center disabled:opacity-20 transition-all text-white shadow-md active:scale-95"
         >
-          <ChevronUp size={20} />
+          <ChevronUp size={18} />
         </button>
-        <span className="text-[11px] text-muted text-center tabular-nums">
+        <span className="text-[11.5px] font-semibold text-muted text-center tabular-nums px-2 py-0.5 rounded-full bg-white/[0.05]">
           {activeIdx + 1}/{clips.length}
           {feed.hasNextPage ? '+' : ''}
         </span>
@@ -558,20 +513,26 @@ export default function ClipReels({ feed, clips, actions, onPublish, onStyle, on
           type="button"
           onClick={() => go(1)}
           disabled={activeIdx >= clips.length - 1}
+          title="Next clip (Down arrow / J)"
           aria-label="Next clip (↓)"
-          className="w-11 h-11 rounded-full bg-white/[0.07] hover:bg-white/[0.12] flex items-center justify-center disabled:opacity-30"
+          className="w-10 h-10 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 flex items-center justify-center disabled:opacity-20 transition-all text-white shadow-md active:scale-95"
         >
-          <ChevronDown size={20} />
+          <ChevronDown size={18} />
         </button>
       </div>
+
+      {/* Clean Right Details Card */}
       <aside
-        className="w-[380px] shrink-0 h-full overflow-y-auto rounded-2xl bg-surface border border-line p-3"
+        className="w-[380px] max-w-[420px] shrink-0 h-full max-h-[820px] overflow-y-auto rounded-2xl bg-surface border border-white/10 p-4 shadow-xl flex flex-col justify-between"
         data-testid="reel-details"
       >
-        {active && <ClipDetails clip={active} actions={actions} />}
-        <p className="mt-4 text-[11px] text-muted leading-relaxed">
-          Keys: ↑ ↓ move · A approve · R reject · S skip · P publish · E edit · M mute · Space pause
-        </p>
+        <div className="space-y-3">
+          {active && <ClipDetails clip={active} actions={actions} />}
+        </div>
+        <div className="pt-3 border-t border-white/10 text-[11px] text-muted flex items-center justify-between">
+          <span>Shortcuts: <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">↑</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">↓</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">A</kbd> <kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">R</kbd></span>
+          <span><kbd className="px-1.5 py-0.5 bg-white/10 rounded text-[10px]">Space</kbd> pause</span>
+        </div>
       </aside>
     </div>
   );

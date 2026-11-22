@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { LayoutGrid, Clapperboard, Search, SlidersHorizontal, X } from 'lucide-react';
-import { Segmented, Input, Select, Sheet, Button, Field } from '../ui';
+import { LayoutGrid, Clapperboard, Search, SlidersHorizontal, X, ChevronDown } from 'lucide-react';
+import { Input, Select, Sheet, Button, Field } from '../ui';
 import { useLayoutMode } from '../../hooks/useLayoutMode';
 import PublishSheet from '../PublishSheet';
 import { useClipFeed } from './useClipFeed';
@@ -18,7 +18,7 @@ const SCORES = [0, 60, 70, 80, 90];
 
 function Filters({ feed, group, setGroup, view, stacked = false }) {
   const { filters, setFilters, channels } = feed;
-  const cls = stacked ? 'w-full' : '!h-9 !w-auto !text-xs';
+  const cls = stacked ? 'w-full' : '!h-8 !w-auto !text-xs !bg-white/[0.05] !border-white/10 !rounded-full !px-3';
   const wrap = (label, el) => (stacked ? <Field label={label}>{el}</Field> : el);
   return (
     <>
@@ -49,7 +49,7 @@ function Filters({ feed, group, setGroup, view, stacked = false }) {
   );
 }
 
-/** Home: every clip, as a grid or as reels, with the same details and actions in both. */
+/** Home: every clip, unified sleek Option-A header for both Grid & Reels across mobile & desktop. */
 export default function ClipsPage() {
   const { isPhone, width } = useLayoutMode();
   const isWide = (width || window.innerWidth) >= 1024;
@@ -72,93 +72,117 @@ export default function ClipsPage() {
 
   const reels = view === 'reels';
 
-  // Desktop / Grid toolbar
-  const standardToolbar = (
-    <div className="shrink-0 space-y-2">
-      <div className="flex items-center gap-2">
-        <h1 className="text-[17px] font-bold text-ink mr-auto">Clips</h1>
-        <Segmented value={view} onChange={setView} ariaLabel="View" size="sm"
-          options={[{ value: 'grid', label: 'Grid', icon: LayoutGrid }, { value: 'reels', label: 'Reels', icon: Clapperboard }]} />
-        {isPhone && (
-          <Button size="sm" variant={activeFilters ? 'primary' : 'secondary'} icon={SlidersHorizontal} onClick={() => setFiltersOpen(true)} aria-label="Filters">
-            {activeFilters || ''}
-          </Button>
+  // Unified sleek header for Option A:
+  // - Category dropdown pill with counts (e.g. "To review 50 ▾")
+  // - Fast search bar (on desktop or in grid)
+  // - Streamlined inline filters
+  // - Rounded View Toggle [Grid | Reels]
+  const unifiedHeader = (
+    <div className={`shrink-0 z-30 flex items-center justify-between gap-2.5 ${
+      reels && isPhone ? 'absolute top-2 inset-x-3 pointer-events-none' : 'w-full pb-1'
+    }`}>
+      {/* Left: Category Dropdown & Clips Title */}
+      <div className="flex items-center gap-2.5 pointer-events-auto min-w-0">
+        {!isPhone && <h1 className="text-[17px] font-bold text-ink shrink-0 mr-1">Clips</h1>}
+        
+        <div className="relative inline-flex items-center">
+          <select
+            value={filters.status}
+            onChange={(e) => setFilters({ status: e.target.value })}
+            className="h-8.5 pl-3.5 pr-8 rounded-full bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 text-[12px] font-semibold text-white shadow-sm appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
+              backgroundRepeat: 'no-repeat',
+              backgroundPosition: 'right 0.65rem center',
+              backgroundSize: '0.8em',
+            }}
+          >
+            {tabs.map((t) => (
+              <option key={t.value} value={t.value} className="bg-surface text-ink">
+                {t.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Search input on desktop */}
+        {!isPhone && (
+          <div className="relative w-64 max-w-xs ml-2">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
+            <Input
+              value={filters.q}
+              onChange={(e) => setFilters({ q: e.target.value })}
+              placeholder="Search clips, #tag, @streamer…"
+              className="!h-8.5 !pl-8.5 !text-[12px] !rounded-full !bg-white/[0.05] !border-white/10"
+              aria-label="Search clips"
+              onKeyDown={(e) => e.stopPropagation()}
+            />
+            {filters.q && (
+              <button
+                type="button"
+                onClick={() => setFilters({ q: '' })}
+                aria-label="Clear search"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-7 h-7 flex items-center justify-center text-muted hover:text-white"
+              >
+                <X size={13} />
+              </button>
+            )}
+          </div>
         )}
       </div>
-      <Segmented value={filters.status} onChange={(v) => setFilters({ status: v })} options={tabs} ariaLabel="Status" size="sm" className="max-w-full" />
-      {(!isPhone || !reels) && (
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative flex-1 min-w-[180px]">
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted pointer-events-none" />
-            <Input value={filters.q} onChange={(e) => setFilters({ q: e.target.value })} placeholder="Search title, description, #tag, @streamer, id"
-              className="!h-9 !pl-8 !text-[13px]" aria-label="Search clips" onKeyDown={(e) => e.stopPropagation()} />
-            {filters.q && <button type="button" onClick={() => setFilters({ q: '' })} aria-label="Clear search"
-              className="absolute right-1 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-muted"><X size={14} /></button>}
-          </div>
-          {!isPhone && <Filters feed={feed} group={group} setGroup={setGroup} view={view} />}
-        </div>
-      )}
-    </div>
-  );
 
-  // Modern Floating Glass Header for Mobile Reels (like TikTok / IG Reels)
-  const mobileReelsHeader = (
-    <div className="absolute top-2 inset-x-3 z-30 flex items-center justify-between pointer-events-none">
-      {/* Category Status Dropdown / Pill */}
-      <div className="pointer-events-auto">
-        <select
-          value={filters.status}
-          onChange={(e) => setFilters({ status: e.target.value })}
-          className="h-8 pl-3 pr-7 rounded-full bg-black/50 backdrop-blur-md border border-white/15 text-[11.5px] font-semibold text-white shadow-lg appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
-            backgroundRepeat: 'no-repeat',
-            backgroundPosition: 'right 0.5rem center',
-            backgroundSize: '0.85em',
-          }}
-        >
-          {tabs.map((t) => (
-            <option key={t.value} value={t.value} className="bg-surface text-ink">
-              {t.label}
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Right: Filters & View Switcher */}
+      <div className="flex items-center gap-2 pointer-events-auto shrink-0">
+        {!isPhone && <Filters feed={feed} group={group} setGroup={setGroup} view={view} />}
 
-      {/* View Switcher & Filter Button */}
-      <div className="flex items-center gap-1.5 pointer-events-auto">
-        <div className="bg-black/50 backdrop-blur-md border border-white/15 rounded-full p-0.5 shadow-lg flex items-center">
+        {isPhone && (
+          <button
+            type="button"
+            onClick={() => setFiltersOpen(true)}
+            aria-label="Open Filters"
+            className={`h-8.5 px-3 rounded-full backdrop-blur-md border flex items-center gap-1.5 text-[11.5px] font-semibold shadow-sm transition-all active:scale-95 ${
+              activeFilters
+                ? 'bg-accent text-white border-accent'
+                : 'bg-white/[0.08] hover:bg-white/[0.12] text-white/90 border-white/15'
+            }`}
+          >
+            <SlidersHorizontal size={13} />
+            <span>Filters</span>
+            {activeFilters > 0 && (
+              <span className="w-4 h-4 rounded-full bg-white text-accent text-[10px] font-bold flex items-center justify-center">
+                {activeFilters}
+              </span>
+            )}
+          </button>
+        )}
+
+        {/* Unified View Toggle Pill [Grid | Reels] */}
+        <div className="bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 rounded-full p-0.5 shadow-sm flex items-center">
           <button
             type="button"
             onClick={() => setView('grid')}
+            title="Grid view"
             aria-label="Switch to Grid view"
-            className="w-7 h-7 rounded-full flex items-center justify-center text-white/70 hover:text-white"
+            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold transition-all ${
+              view === 'grid' ? 'bg-white/20 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            }`}
           >
-            <LayoutGrid size={14} />
+            <LayoutGrid size={13} />
+            <span className="hidden sm:inline">Grid</span>
           </button>
           <button
             type="button"
             onClick={() => setView('reels')}
-            aria-label="Reels view active"
-            className="w-7 h-7 rounded-full bg-white/20 flex items-center justify-center text-white"
+            title="Reels view"
+            aria-label="Switch to Reels view"
+            className={`flex items-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-semibold transition-all ${
+              view === 'reels' ? 'bg-white/20 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            }`}
           >
-            <Clapperboard size={14} />
+            <Clapperboard size={13} />
+            <span className="hidden sm:inline">Reels</span>
           </button>
         </div>
-
-        <button
-          type="button"
-          onClick={() => setFiltersOpen(true)}
-          aria-label="Open Filters"
-          className={`h-8 px-2.5 rounded-full backdrop-blur-md border flex items-center gap-1 text-[11.5px] font-semibold shadow-lg ${
-            activeFilters
-              ? 'bg-accent text-white border-accent'
-              : 'bg-black/50 text-white/90 border-white/15'
-          }`}
-        >
-          <SlidersHorizontal size={13} />
-          {activeFilters > 0 && <span>{activeFilters}</span>}
-        </button>
       </div>
     </div>
   );
@@ -169,16 +193,15 @@ export default function ClipsPage() {
         reels
           ? isPhone
             ? 'relative h-[calc(100dvh-56px-64px-env(safe-area-inset-bottom))] w-full overflow-hidden'
-            : 'flex flex-col px-4 pt-3 max-w-[1600px] mx-auto md:h-[calc(100dvh-56px)]'
-          : 'px-3 md:px-4 pt-3 pb-24 md:pb-8 max-w-[1600px] mx-auto space-y-3'
+            : 'flex flex-col px-4 pt-2.5 max-w-[1600px] mx-auto h-[calc(100dvh-56px)] select-none'
+          : 'px-3 sm:px-5 pt-3 pb-24 md:pb-8 max-w-[1600px] mx-auto space-y-3'
       }
       data-testid="clips-page"
     >
-      {/* If mobile reels, show floating overlay; otherwise show standard toolbar */}
-      {reels && isPhone ? mobileReelsHeader : standardToolbar}
+      {unifiedHeader}
 
       {reels ? (
-        <div className="flex-1 min-h-0 h-full">
+        <div className="flex-1 min-h-0 h-full overflow-hidden">
           <ClipReels
             feed={feed}
             clips={clips}
@@ -205,29 +228,28 @@ export default function ClipsPage() {
       <Sheet
         open={filtersOpen}
         onClose={() => setFiltersOpen(false)}
-        title="Filters"
-        footer={<Button block variant="primary" onClick={() => setFiltersOpen(false)}>Show clips</Button>}
+        title="Filters & Search"
+        footer={<Button block variant="primary" onClick={() => setFiltersOpen(false)}>Apply</Button>}
       >
         <div className="space-y-3">
-          {reels && (
-            <Field label="Search">
-              <Input
-                value={filters.q}
-                onChange={(e) => setFilters({ q: e.target.value })}
-                placeholder="Title, description, #tag, @streamer"
-              />
-            </Field>
-          )}
+          <Field label="Search">
+            <Input
+              value={filters.q}
+              onChange={(e) => setFilters({ q: e.target.value })}
+              placeholder="Title, description, #tag, @streamer…"
+            />
+          </Field>
           <Filters feed={feed} group={group} setGroup={setGroup} view={view} stacked />
           <Button
             block
             variant="ghost"
             onClick={() => setFilters({ channel: 'all', min_score: 0, sort: 'new', q: '' })}
           >
-            Reset filters
+            Reset all filters
           </Button>
         </div>
       </Sheet>
+
       <PublishSheet
         open={!!publishing}
         clip={publishing}
