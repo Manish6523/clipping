@@ -6,6 +6,9 @@ All imports placed at the top of the file according to standards.
 import json
 import logging
 import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
@@ -94,14 +97,34 @@ class InstagramReelsPublisher:
         caption = censor_text(caption, await load_censor_config())
         full_caption = f"{caption}\n.\n.\n{tags_str}"
 
+        thumb_path = None
         try:
             client = self._get_client()
             logger.info("Uploading Reel to Instagram account '%s'...", self.account_key)
 
-            media = client.clip_upload(
-                path=str(v_path),
-                caption=full_caption,
-            )
+            # Generate thumbnail with ffmpeg so instagrapi doesn't require moviepy
+            try:
+                ffmpeg_bin = shutil.which("ffmpeg") or "ffmpeg"
+                tf = tempfile.NamedTemporaryFile(suffix=".jpg", delete=False)
+                thumb_path = tf.name
+                tf.close()
+                cmd = [
+                    ffmpeg_bin, "-y", "-ss", "0.5", "-i", str(v_path),
+                    "-vframes", "1", "-q:v", "2", thumb_path,
+                ]
+                subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True, timeout=30)
+            except Exception as te:
+                logger.warning("Could not pre-generate ffmpeg thumbnail: %s", te)
+                thumb_path = None
+
+            upload_kwargs = {
+                "path": str(v_path),
+                "caption": full_caption,
+            }
+            if thumb_path and Path(thumb_path).exists() and Path(thumb_path).stat().st_size > 0:
+                upload_kwargs["thumbnail"] = Path(thumb_path)
+
+            media = client.clip_upload(**upload_kwargs)
 
             media_id = str(getattr(media, "pk", getattr(media, "id", "")))
             code = getattr(media, "code", "")
@@ -122,3 +145,9 @@ class InstagramReelsPublisher:
                 "error": str(e),
                 "account_key": self.account_key,
             }
+        finally:
+            if thumb_path:
+                try:
+                    Path(thumb_path).unlink(missing_ok=True)
+                except Exception:
+                    pass
