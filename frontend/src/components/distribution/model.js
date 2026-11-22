@@ -1,9 +1,9 @@
-/** Distribution data: YouTube channels and TikTok accounts as one list of "destinations",
- * and routing (which streamer posts where) with one toggle for both platforms. */
+/** Distribution data: YouTube channels, TikTok accounts, and Instagram accounts as one list of "destinations",
+ * and routing (which streamer posts where) with one toggle for all platforms. */
 
 export const norm = (h) => String(h || '').trim().toLowerCase().replace(/^@/, '');
 
-export function toDestinations(ytAccounts = [], ttAccounts = []) {
+export function toDestinations(ytAccounts = [], ttAccounts = [], igAccounts = []) {
   const yt = ytAccounts.map((a) => ({
     id: `yt:${a.account_key}`,
     platform: 'youtube',
@@ -26,14 +26,26 @@ export function toDestinations(ytAccounts = [], ttAccounts = []) {
     mode: a.mode || 'inbox',
     raw: a,
   }));
-  return [...yt, ...tt];
+  const ig = igAccounts.map((a) => ({
+    id: `ig:${a.key}`,
+    platform: 'instagram',
+    key: a.key,
+    title: a.display_name || a.username || a.key,
+    handle: a.username ? `@${a.username}` : `@${a.key}`,
+    avatar: a.avatar,
+    ok: !!a.connected,
+    mode: 'reels',
+    raw: a,
+  }));
+  return [...yt, ...tt, ...ig];
 }
 
 /** Set of `${destId}|${streamer}` pairs that are switched on. */
-export function routeSet(ytMappings = [], ttAccounts = []) {
+export function routeSet(ytMappings = [], ttAccounts = [], igAccounts = []) {
   const s = new Set();
   ytMappings.forEach((m) => s.add(`yt:${m.account_key}|${norm(m.streamer_handle)}`));
   ttAccounts.forEach((a) => (a.streamers || []).forEach((h) => s.add(`tt:${a.key}|${norm(h)}`)));
+  igAccounts.forEach((a) => (a.streamers || []).forEach((h) => s.add(`ig:${a.key}|${norm(h)}`)));
   return s;
 }
 
@@ -51,7 +63,12 @@ export function ttStreamersFor(routes, dest, channels) {
   return channels.map((c) => c.channel_id_or_handle).filter((h) => routes.has(routeKey(dest, h)));
 }
 
+/** Streamers an Instagram account posts (its PATCH takes the whole list). */
+export function igStreamersFor(routes, dest, channels) {
+  return channels.map((c) => c.channel_id_or_handle).filter((h) => routes.has(routeKey(dest, h)));
+}
+
 export const MODE_LABEL = {
   off: 'Manual approval', trial: 'Trial', on: 'Auto-posting',
-  inbox: 'Sends to drafts', direct: 'Posts directly',
+  inbox: 'Sends to drafts', direct: 'Posts directly', reels: 'Instagram Reels',
 };

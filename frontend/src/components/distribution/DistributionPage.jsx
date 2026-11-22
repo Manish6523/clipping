@@ -4,12 +4,13 @@ import {
   getYouTubeAppConfig, saveYouTubeAppConfig, getYouTubeAuthUrl, getYouTubeAccounts, patchYouTubeAccountConfig,
   deleteYouTubeAccount, importYouTubeAccount, getYouTubeMappings, setYouTubeMappings, getChannels,
   getTikTokAppConfig, saveTikTokAppConfig, getTikTokAuthUrl, getTikTokAccounts, patchTikTokAccount, deleteTikTokAccount,
+  getInstagramAccounts, connectInstagramAccount, patchInstagramAccount, deleteInstagramAccount,
 } from '../../api';
 import { Page, Panel, Button, Notice, Stat, Skeleton, Dot } from '../ui';
 import { DestinationCard, PLATFORM, YoutubeIcon } from './parts';
 import RoutingBoard from './RoutingBoard';
 import { ConnectSheet, DestinationSheet, AppSetupSheet } from './sheets';
-import { toDestinations, routeSet, routeKey, ytKeysFor, ttStreamersFor } from './model';
+import { toDestinations, routeSet, routeKey, ytKeysFor, ttStreamersFor, igStreamersFor } from './model';
 
 const errText = (e) => e?.response?.data?.error || e?.message || String(e);
 
@@ -25,6 +26,7 @@ export default function DistributionPage() {
   const [tt, setTt] = useState({ client_key: '', has_secret: false, redirect_uri: '' });
   const [ytAccounts, setYtAccounts] = useState([]);
   const [ttAccounts, setTtAccounts] = useState([]);
+  const [igAccounts, setIgAccounts] = useState([]);
   const [mappings, setMappings] = useState([]);
   const [channels, setChannels] = useState([]);
   const [routes, setRoutes] = useState(new Set());
@@ -40,17 +42,18 @@ export default function DistributionPage() {
   }, []);
 
   const load = useCallback(async () => {
-    const [cfgY, cfgT, accY, accT, maps, chs] = await Promise.allSettled([
-      getYouTubeAppConfig(), getTikTokAppConfig(), getYouTubeAccounts(), getTikTokAccounts(), getYouTubeMappings(), getChannels(),
+    const [cfgY, cfgT, accY, accT, accI, maps, chs] = await Promise.allSettled([
+      getYouTubeAppConfig(), getTikTokAppConfig(), getYouTubeAccounts(), getTikTokAccounts(), getInstagramAccounts(), getYouTubeMappings(), getChannels(),
     ]);
     const v = (r, d) => (r.status === 'fulfilled' ? r.value : d);
     setYt(v(cfgY, { client_id: '', has_secret: false }));
     setTt(v(cfgT, { client_key: '', has_secret: false }));
-    const ya = v(accY, []); const ta = v(accT, { accounts: [] }).accounts || []; const mp = v(maps, []);
-    setYtAccounts(ya); setTtAccounts(ta); setMappings(mp); setChannels(v(chs, []));
-    setRoutes(routeSet(mp, ta));
+    const ya = v(accY, []); const ta = v(accT, { accounts: [] }).accounts || [];
+    const ia = v(accI, { accounts: [] }).accounts || []; const mp = v(maps, []);
+    setYtAccounts(ya); setTtAccounts(ta); setIgAccounts(ia); setMappings(mp); setChannels(v(chs, []));
+    setRoutes(routeSet(mp, ta, ia));
     setLoaded(true);
-    const failed = [accY, accT, chs].find((r) => r.status === 'rejected');
+    const failed = [accY, accT, accI, chs].find((r) => r.status === 'rejected');
     if (failed) say(`Some data didn't load: ${errText(failed.reason)}`, 'bad');
   }, [say]);
 
@@ -64,7 +67,7 @@ export default function DistributionPage() {
     }
   }, [load, say]);
 
-  const destinations = useMemo(() => toDestinations(ytAccounts, ttAccounts), [ytAccounts, ttAccounts]);
+  const destinations = useMemo(() => toDestinations(ytAccounts, ttAccounts, igAccounts), [ytAccounts, ttAccounts, igAccounts]);
   const openDest = destinations.find((d) => d.id === openId) || null;
   const streamersOf = (d) => channels.filter((c) => routes.has(routeKey(d, c.channel_id_or_handle))).length;
 
@@ -80,9 +83,12 @@ export default function DistributionPage() {
       if (dest.platform === 'youtube') {
         await setYouTubeMappings({ streamer_handle: handle, account_keys: ytKeysFor(next, handle, destinations) });
         setMappings(await getYouTubeMappings());
-      } else {
+      } else if (dest.platform === 'tiktok') {
         await patchTikTokAccount(dest.key, { streamers: ttStreamersFor(next, dest, channels) });
         setTtAccounts((list) => list.map((a) => (a.key === dest.key ? { ...a, streamers: ttStreamersFor(next, dest, channels) } : a)));
+      } else if (dest.platform === 'instagram') {
+        await patchInstagramAccount(dest.key, { streamers: igStreamersFor(next, dest, channels) });
+        setIgAccounts((list) => list.map((a) => (a.key === dest.key ? { ...a, streamers: igStreamersFor(next, dest, channels) } : a)));
       }
     } catch (e) {
       setRoutes((cur) => { const r = new Set(cur); if (r.has(k)) r.delete(k); else r.add(k); return r; });
@@ -98,16 +104,21 @@ export default function DistributionPage() {
       if (dest.platform === 'youtube') {
         await patchYouTubeAccountConfig(dest.key, changes);
         setYtAccounts(await getYouTubeAccounts());
-      } else {
+      } else if (dest.platform === 'tiktok') {
         await patchTikTokAccount(dest.key, changes);
         setTtAccounts((await getTikTokAccounts()).accounts || []);
+      } else if (dest.platform === 'instagram') {
+        await patchInstagramAccount(dest.key, changes);
+        setIgAccounts((await getInstagramAccounts()).accounts || []);
       }
     } catch (e) { say(`Couldn't save: ${errText(e)}`, 'bad'); }
   };
 
   const disconnect = async (dest) => {
     try {
-      if (dest.platform === 'youtube') await deleteYouTubeAccount(dest.key); else await deleteTikTokAccount(dest.key);
+      if (dest.platform === 'youtube') await deleteYouTubeAccount(dest.key);
+      else if (dest.platform === 'tiktok') await deleteTikTokAccount(dest.key);
+      else if (dest.platform === 'instagram') await deleteInstagramAccount(dest.key);
       setOpenId(null);
       say(`${dest.title} disconnected.`);
       load();
@@ -147,7 +158,18 @@ export default function DistributionPage() {
   })();
   const broken = destinations.filter((d) => !d.ok);
   const nYt = destinations.filter((d) => d.platform === 'youtube').length;
-  const nTt = destinations.length - nYt;
+  const nTt = destinations.filter((d) => d.platform === 'tiktok').length;
+  const nIg = destinations.filter((d) => d.platform === 'instagram').length;
+
+  const connectInstagram = async (creds) => {
+    const res = await connectInstagramAccount(creds);
+    if (res.success) {
+      setConnectOpen(false);
+      say(`Instagram account @${res.account.username || res.account.key} connected!`);
+      load();
+    }
+    return res;
+  };
 
   return (
     <Page title="Distribution" icon={Send}
@@ -164,7 +186,7 @@ export default function DistributionPage() {
       )}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2" data-testid="dist-summary">
-        <Stat icon={Send} label="Destinations" value={loaded ? destinations.length : '–'} sub={`${nYt} YouTube · ${nTt} TikTok`} />
+        <Stat icon={Send} label="Destinations" value={loaded ? destinations.length : '–'} sub={`${nYt} YouTube · ${nTt} TikTok · ${nIg} Instagram`} />
         <Stat icon={Users} label="Streamers posting" value={loaded ? `${routed}/${channels.length}` : '–'}
           sub={channels.length - routed ? `${channels.length - routed} not posting anywhere` : 'All routed'} tone={loaded && channels.length - routed ? 'warn' : undefined} />
         <Stat icon={Zap} label="Auto-posting" value={loaded ? autoCount : '–'} sub={autoCount ? 'post without asking' : 'you approve every clip'} />
@@ -219,10 +241,11 @@ export default function DistributionPage() {
 
       <ConnectSheet open={connectOpen} onClose={() => setConnectOpen(false)} yt={yt} tt={tt}
         onYouTube={startYouTube} onYouTubeImport={importYouTube} onTikTok={startTikTok}
+        onInstagram={connectInstagram}
         onSetup={(w) => { setConnectOpen(false); setSetup(w); }} />
       <DestinationSheet dest={openDest} channels={channels} routes={routes} pending={pending} onToggle={toggle}
         onUpdate={(changes) => updateDest(openDest, changes)} onDisconnect={() => disconnect(openDest)}
-        onReconnect={() => (openDest.platform === 'youtube' ? startYouTube(openDest.key) : startTikTok(openDest.raw.mode || 'inbox'))}
+        onReconnect={() => (openDest.platform === 'youtube' ? startYouTube(openDest.key) : openDest.platform === 'tiktok' ? startTikTok(openDest.raw.mode || 'inbox') : setConnectOpen(true))}
         onClose={() => setOpenId(null)} />
       <AppSetupSheet which={setup} yt={yt} tt={tt} onSave={saveApp} onClose={() => setSetup(null)} />
     </Page>

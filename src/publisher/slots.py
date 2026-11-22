@@ -215,8 +215,12 @@ async def schedule_clip(
         tt_taken = any(r["tt_status"] in ("pending", "uploaded") for r in existing)
 
         tt_key = await account_for_streamer(channel) if "tiktok" in chosen else None
-        want_ig = "instagram" in chosen and not ig_taken
+        from src.publisher.instagram_accounts import account_for_streamer as ig_account_for_streamer
+        ig_key = await ig_account_for_streamer(channel) if "instagram" in chosen else None
+        want_ig = bool(ig_key) and not ig_taken
         want_tt = bool(tt_key) and not tt_taken
+        if platforms is not None and "instagram" in chosen and not ig_key:
+            raise ValueError("No Instagram account is connected for this streamer")
         if platforms is not None and "tiktok" in chosen and not tt_key:
             raise ValueError("No TikTok account is connected for this streamer")
 

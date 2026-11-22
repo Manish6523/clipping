@@ -123,6 +123,9 @@ class DripScheduler:
             if not yt_keys and destinations.get("youtube_account_key"):
                 yt_keys = [destinations["youtube_account_key"]]
         ig_key = destinations.get("instagram_account_key")
+        if not ig_key:
+            from src.publisher.instagram_accounts import account_for_streamer as ig_account_for_streamer
+            ig_key = await ig_account_for_streamer(channel_id)
         tt_key = item.get("tt_account_key") or destinations.get("tiktok_account_key")
         if not tt_key and item.get("tt_status") == "pending":
             from src.publisher.tiktok import account_for_streamer

@@ -51,6 +51,7 @@ from src.web.routes_health import register_health_routes
 from src.web.routes_presets import register_presets_routes
 from src.web.routes_youtube import register_youtube_routes
 from src.web.routes_publish import register_publish_routes
+from src.web.routes_instagram import register_instagram_routes
 from src.web.routes_lab import register_lab_routes
 from src.maintenance import execute_database_reset
 from src.compositor.render_swap import SafeRenderManager, compute_edl_hash, drain_pending_deletes
@@ -135,6 +136,7 @@ class WebUIServer:
         register_presets_routes(self.app)
         register_youtube_routes(self.app)
         register_publish_routes(self.app)
+        register_instagram_routes(self.app)
         register_lab_routes(self.app)
 
         self.app.router.add_post("/api/admin/reset", self.handle_admin_reset)

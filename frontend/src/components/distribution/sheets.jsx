@@ -26,23 +26,55 @@ function CopyBox({ value }) {
 
 /* ------------------------------------------------------------- connect */
 
-export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport, onTikTok, onSetup }) {
+export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport, onTikTok, onInstagram, onSetup }) {
   const [platform, setPlatform] = useState(null);
   const [name, setName] = useState('');
   const [ttMode, setTtMode] = useState('inbox');
   const [importing, setImporting] = useState(false);
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { if (open) { setPlatform(null); setName(''); setImporting(false); setToken(''); setBusy(false); } }, [open]);
+  const [igUser, setIgUser] = useState('');
+  const [igPass, setIgPass] = useState('');
+  const [ig2FA, setIg2FA] = useState('');
+  const [igError, setIgError] = useState('');
+  const [igNeeds2FA, setIgNeeds2FA] = useState(false);
+  useEffect(() => {
+    if (open) {
+      setPlatform(null); setName(''); setImporting(false); setToken(''); setBusy(false);
+      setIgUser(''); setIgPass(''); setIg2FA(''); setIgError(''); setIgNeeds2FA(false);
+    }
+  }, [open]);
 
   const key = name.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
   const ytReady = yt.client_id && yt.has_secret;
   const ttReady = tt.client_key && tt.has_secret;
   const run = async (fn) => { setBusy(true); try { await fn(); } finally { setBusy(false); } };
 
+  const submitInstagram = async () => {
+    setIgError('');
+    setBusy(true);
+    try {
+      const res = await onInstagram({
+        username: igUser.trim(),
+        password: igPass,
+        verification_code: ig2FA.trim() || undefined,
+      });
+      if (res && res.status === 'two_factor_required') {
+        setIgNeeds2FA(true);
+        setIgError(res.message || 'Please enter the 6-digit 2FA code from your authenticator app.');
+      } else if (res && !res.success) {
+        setIgError(res.message || 'Instagram connection failed. Please check your credentials.');
+      }
+    } catch (e) {
+      setIgError(e?.response?.data?.message || e?.message || 'Login failed');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const title = platform ? (
     <span className="flex items-center gap-1.5">
-      <button type="button" onClick={() => setPlatform(null)} aria-label="Back" className="w-7 h-7 -ml-1 rounded-lg hover:bg-white/10 flex items-center justify-center"><ChevronLeft size={16} /></button>
+      <button type="button" onClick={() => { setPlatform(null); setIgError(''); setIgNeeds2FA(false); }} aria-label="Back" className="w-7 h-7 -ml-1 rounded-lg hover:bg-white/10 flex items-center justify-center"><ChevronLeft size={16} /></button>
       Connect {PLATFORM[platform].label}
     </span>
   ) : 'Connect an account';
@@ -50,17 +82,19 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
   return (
     <Sheet open={open} onClose={onClose} title={title}>
       {!platform && (
-        <div className="grid grid-cols-2 gap-2.5" data-testid="connect-choose">
-          {['youtube', 'tiktok'].map((p) => {
+        <div className="grid grid-cols-3 gap-2.5" data-testid="connect-choose">
+          {['youtube', 'tiktok', 'instagram'].map((p) => {
             const P = PLATFORM[p];
             return (
               <button key={p} type="button" onClick={() => setPlatform(p)}
-                className="rounded-2xl border border-line-strong bg-canvas hover:bg-raised p-4 flex flex-col items-center gap-2 text-center">
+                className="rounded-2xl border border-line-strong bg-canvas hover:bg-raised p-4 flex flex-col items-center gap-2 text-center transition-colors">
                 <span className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ color: P.color, background: `color-mix(in srgb, ${P.color} 14%, transparent)` }}>
                   <P.icon size={24} />
                 </span>
                 <span className="text-[13.5px] font-semibold text-ink">{P.label}</span>
-                <span className="text-[11px] text-muted leading-snug">{p === 'youtube' ? 'Upload Shorts to a channel' : 'Send to drafts or post'}</span>
+                <span className="text-[11px] text-muted leading-snug">
+                  {p === 'youtube' ? 'Upload Shorts' : p === 'tiktok' ? 'Drafts or post' : 'Post vertical Reels'}
+                </span>
               </button>
             );
           })}
@@ -113,6 +147,66 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
           <Button block size="lg" variant="primary" loading={busy} onClick={() => run(() => onTikTok(ttMode))}>
             <PLATFORM.tiktok.icon size={18} /> Sign in with TikTok
           </Button>
+        </div>
+      )}
+
+      {platform === 'instagram' && (
+        <div className="space-y-3">
+          {igError && (
+            <Notice tone={igNeeds2FA ? 'warn' : 'bad'} icon={AlertTriangle}>
+              {igError}
+            </Notice>
+          )}
+
+          <Field label="Instagram Username">
+            <Input
+              autoFocus
+              value={igUser}
+              onChange={(e) => setIgUser(e.target.value)}
+              placeholder="e.g. clipempire_reels"
+              disabled={busy || igNeeds2FA}
+            />
+          </Field>
+
+          {!igNeeds2FA ? (
+            <Field label="Instagram Password" hint="Session will be saved securely on your VPS.">
+              <Input
+                type="password"
+                value={igPass}
+                onChange={(e) => setIgPass(e.target.value)}
+                placeholder="••••••••••••"
+                disabled={busy}
+              />
+            </Field>
+          ) : (
+            <Field label="Two-Factor (2FA) Code" hint="Check your authenticator app or SMS.">
+              <Input
+                autoFocus
+                mono
+                value={ig2FA}
+                onChange={(e) => setIg2FA(e.target.value)}
+                placeholder="123456"
+                disabled={busy}
+              />
+            </Field>
+          )}
+
+          <Button
+            block
+            size="lg"
+            variant="primary"
+            className="!bg-[#e1306c] hover:!bg-[#c13584]"
+            loading={busy}
+            disabled={!igUser.trim() || (!igNeeds2FA && !igPass) || (igNeeds2FA && !ig2FA.trim())}
+            onClick={submitInstagram}
+          >
+            <PLATFORM.instagram.icon size={18} />
+            {igNeeds2FA ? 'Verify 2FA Code' : 'Connect Instagram'}
+          </Button>
+
+          <p className="text-[11px] text-muted text-center leading-normal">
+            Uses your private session token on your VPS to automatically publish vertical Reels.
+          </p>
         </div>
       )}
     </Sheet>
@@ -188,6 +282,20 @@ export function DestinationSheet({ dest, channels, routes, pending, onToggle, on
                 </Select>
               </Field>
             )}
+          </section>
+        )}
+
+        {dest.platform === 'instagram' && (
+          <section className="space-y-3 pt-3.5 border-t border-line">
+            <div className="rounded-xl border border-line bg-canvas p-3 flex items-center justify-between">
+              <div>
+                <div className="text-[13px] font-semibold text-ink">Instagram Reels</div>
+                <div className="text-[11.5px] text-muted">Clips from mapped streamers will automatically publish to this account's Reels.</div>
+              </div>
+              <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold text-[#e1306c] bg-[#e1306c]/10">
+                Active Reel Uploader
+              </span>
+            </div>
           </section>
         )}
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AudioLines, ChevronRight, Clock, Users, AlertTriangle } from 'lucide-react';
+import { AudioLines, Camera, ChevronRight, Clock, Users, AlertTriangle } from 'lucide-react';
 import { Progress } from '../ui';
 import { MODE_LABEL } from './model';
 
@@ -12,6 +12,7 @@ export const YoutubeIcon = ({ size = 16, className = '' }) => (
 export const PLATFORM = {
   youtube: { label: 'YouTube', icon: YoutubeIcon, color: '#ff3b3b' },
   tiktok: { label: 'TikTok', icon: AudioLines, color: '#25f4ee' },
+  instagram: { label: 'Instagram', icon: Camera, color: '#e1306c' },
   twitch: { label: 'Twitch', color: '#a970ff' },
   kick: { label: 'Kick', color: '#53fc18' },
 };

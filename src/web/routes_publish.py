@@ -105,7 +105,10 @@ async def targets_handler(request: web.Request) -> web.Response:
         yt_total = (await cur.fetchone())[0]
 
     dest = load_template_destinations((clip or {}).get("template_name") or "") if clip else {}
-    ig_key = dest.get("instagram_account_key")
+    from src.publisher import instagram_accounts
+    ig_accounts = await instagram_accounts.get_accounts()
+    ig_key = await instagram_accounts.account_for_streamer(channel) or dest.get("instagram_account_key")
+    ig_meta = next((a for a in ig_accounts if a["key"] == ig_key), None) if ig_key else None
     tt_accounts = await tiktok.get_accounts()
     tt_key = await tiktok.account_for_streamer(channel)
     tt_meta = next((a for a in tt_accounts if a["key"] == tt_key), None)
@@ -116,7 +119,8 @@ async def targets_handler(request: web.Request) -> web.Response:
         "youtube": {"ready": bool(yt), "accounts": yt,
                     "hint": None if yt else ("Map a YouTube account to this streamer in Accounts" if yt_total else "Connect a YouTube account in Accounts")},
         "instagram": {"ready": bool(ig_key), "account": ig_key,
-                      "hint": None if ig_key else "Set an Instagram account on this clip's template"},
+                      "meta": ig_meta and {"key": ig_meta["key"], "username": ig_meta.get("username") or ig_meta["key"]},
+                      "hint": None if ig_key else ("Connect Instagram in Accounts" if not ig_accounts else "Map an Instagram account to this streamer in Accounts")},
         "tiktok": {"ready": bool(tt_key), "account": tt_meta and {"key": tt_meta["key"], "name": tt_meta.get("display_name") or tt_meta["key"],
                                                                      "mode": tt_meta.get("mode", "inbox")},
                    "app_configured": bool(creds.get("client_key")),

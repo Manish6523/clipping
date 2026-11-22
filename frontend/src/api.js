@@ -128,5 +128,11 @@ export const importYouTubeAccount = (data) => api.post('/api/youtube/accounts/im
 export const getYouTubeMappings = () => api.get('/api/youtube/mappings').then(r => r.data);
 export const setYouTubeMappings = (data) => api.post('/api/youtube/mappings', data).then(r => r.data);
 
+// Instagram Accounts & Streamer Mappings
+export const getInstagramAccounts = () => api.get('/api/instagram/accounts').then(r => r.data);
+export const connectInstagramAccount = (data) => api.post('/api/instagram/accounts/connect', data).then(r => r.data);
+export const patchInstagramAccount = (key, data) => api.patch(`/api/instagram/accounts/${encodeURIComponent(key)}`, data).then(r => r.data);
+export const deleteInstagramAccount = (key) => api.delete(`/api/instagram/accounts/${encodeURIComponent(key)}`).then(r => r.data);
+
 export default api;
 
