@@ -71,7 +71,7 @@ export default function ClipsPage() {
 
   const reels = view === 'reels';
 
-  // Unified sleek header for Option A:
+  // Unified sleek header:
   // - Category dropdown pill with counts (e.g. "To review 50 ▾")
   // - Fast search bar (on desktop or in grid)
   // - Streamlined inline filters
@@ -88,7 +88,7 @@ export default function ClipsPage() {
           <select
             value={filters.status}
             onChange={(e) => setFilters({ status: e.target.value })}
-            className="h-8.5 pl-3.5 pr-8 rounded-full bg-black/60 sm:bg-white/[0.08] hover:bg-black/75 backdrop-blur-md border border-white/20 text-[12px] font-semibold text-white shadow-lg appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
+            className="h-8.5 pl-3.5 pr-8 rounded-full bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 text-[12px] font-semibold text-white shadow-sm appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
             style={{
               backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2.2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E")`,
               backgroundRepeat: 'no-repeat',
@@ -139,10 +139,10 @@ export default function ClipsPage() {
             type="button"
             onClick={() => setFiltersOpen(true)}
             aria-label="Open Filters"
-            className={`h-8.5 w-8.5 rounded-full backdrop-blur-md border flex items-center justify-center text-white/90 shadow-lg transition-all active:scale-95 relative ${
+            className={`h-8.5 w-8.5 rounded-full backdrop-blur-md border flex items-center justify-center text-white/90 shadow-sm transition-all active:scale-95 relative ${
               activeFilters
                 ? 'bg-accent text-white border-accent'
-                : 'bg-black/60 hover:bg-black/75 border-white/20'
+                : 'bg-white/[0.08] hover:bg-white/[0.14] border-white/15'
             }`}
             title="Filters"
           >
@@ -155,18 +155,18 @@ export default function ClipsPage() {
           </button>
         )}
 
-        {/* Unified View Toggle Pill [Grid | Reels] */}
-        <div className="bg-black/60 sm:bg-white/[0.08] backdrop-blur-md border border-white/20 rounded-full p-0.5 shadow-lg flex items-center">
+        {/* Unified View Toggle Pill [Grid | Reels] - Uniform with top navbar */}
+        <div className="bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 rounded-full p-0.5 shadow-sm flex items-center">
           <button
             type="button"
             onClick={() => setView('grid')}
             title="Grid view"
             aria-label="Switch to Grid view"
-            className={`w-7.5 h-7.5 sm:w-auto sm:px-2.5 sm:h-7 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold transition-all ${
-              view === 'grid' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            className={`flex items-center justify-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-medium transition-all ${
+              view === 'grid' ? 'bg-white/[0.16] text-white shadow-sm font-semibold' : 'text-white/60 hover:text-white'
             }`}
           >
-            <LayoutGrid size={14} />
+            <LayoutGrid size={13} />
             <span className="hidden sm:inline">Grid</span>
           </button>
           <button
@@ -174,11 +174,11 @@ export default function ClipsPage() {
             onClick={() => setView('reels')}
             title="Reels view"
             aria-label="Switch to Reels view"
-            className={`w-7.5 h-7.5 sm:w-auto sm:px-2.5 sm:h-7 rounded-full flex items-center justify-center gap-1.5 text-xs font-semibold transition-all ${
-              view === 'reels' ? 'bg-white/25 text-white shadow-sm' : 'text-white/60 hover:text-white'
+            className={`flex items-center justify-center gap-1.5 px-2.5 h-7 rounded-full text-xs font-medium transition-all ${
+              view === 'reels' ? 'bg-white/[0.16] text-white shadow-sm font-semibold' : 'text-white/60 hover:text-white'
             }`}
           >
-            <Clapperboard size={14} />
+            <Clapperboard size={13} />
             <span className="hidden sm:inline">Reels</span>
           </button>
         </div>
