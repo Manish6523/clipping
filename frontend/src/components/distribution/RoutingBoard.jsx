@@ -45,10 +45,10 @@ export default function RoutingBoard({ channels, destinations, routes, pending, 
   );
 
   if (!channels.length) {
-    return <Panel title="Who posts where" icon={Share2}><EmptyState icon={Radio} title="No streamers yet" text="Add streamers under Channels, then route their clips here." className="!py-6" /></Panel>;
+    return <Panel title="Who posts where" icon={Share2}><EmptyState icon={Radio} title="No streamers yet" text="Add streamers in the Streamers tab, then route their clips here." className="!py-6" /></Panel>;
   }
   if (!destinations.length) {
-    return <Panel title="Who posts where" icon={Share2}><EmptyState icon={Share2} title="Nowhere to post yet" text="Connect a YouTube channel or TikTok account first." className="!py-6" /></Panel>;
+    return <Panel title="Who posts where" icon={Share2}><EmptyState icon={Share2} title="Nowhere to post yet" text="Connect a YouTube channel, Instagram or TikTok account first." className="!py-6" /></Panel>;
   }
 
   return (

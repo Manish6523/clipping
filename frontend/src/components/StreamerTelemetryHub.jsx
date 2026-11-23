@@ -642,7 +642,7 @@ export default function StreamerTelemetryHub() {
               <div className="py-10 text-center space-y-2">
                 <Radio size={28} className="mx-auto text-muted" />
                 <p className="text-[13px] text-ink">No streamers are being watched.</p>
-                <p className="text-[12px] text-muted">Add a live streamer in <Link to="/channels" className="inline-flex min-h-[44px] items-center px-1 text-accent">Channels</Link> and it will show up here.</p>
+                <p className="text-[12px] text-muted">Add a live streamer in <Link to="/channels" className="inline-flex min-h-[44px] items-center px-1 text-accent">Streamers</Link> and it will show up here.</p>
               </div>
             </Panel>
           ) : (

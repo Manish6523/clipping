@@ -1,4 +1,4 @@
-"""Distribution page: destinations, routing board, settings sheet, connect + app setup sheets, desktop and phone.
+"""Streamers page, Accounts tab (formerly the Distribution page): destinations, routing board, settings sheet, connect + app setup sheets, desktop and phone.
 Every /api call this page makes is MOCKED (no account, mapping or credential is changed).
 Run: uvx --with playwright==1.49.1 python tests/e2e_distribution.py   (server on :8080)
 Optional: DIST_FIXTURES=<dir with youtube_accounts.json, youtube_mappings.json, channels.json, ...> to use real data."""
@@ -37,6 +37,9 @@ def fixtures():
     # a TikTok account so both platforms show
     data["tiktok/accounts"]["accounts"].append({"key": "tt_demo", "display_name": "Clips Daily", "username": "clipsdaily", "avatar": "",
                                                 "connected": True, "mode": "inbox", "streamers": []})
+    data.setdefault("instagram/accounts", {"accounts": []})
+    data.setdefault("streamers", {})
+    data.setdefault("templates", [{"name": "temp"}])
     return data
 
 
@@ -46,6 +49,8 @@ writes = []
 
 def handle(route, req):
     path = req.url.split("/api/", 1)[1].split("?")[0]
+    if req.method == "GET" and path == "auth/config":
+        return route.fulfill(json={"auth_lock_enabled": False})
     if req.method == "GET" and path in DATA:
         return route.fulfill(json=DATA[path])
     if req.method != "GET":
@@ -55,7 +60,7 @@ def handle(route, req):
 
 
 with sync_playwright() as p:
-    b = p.chromium.launch(executable_path="/usr/bin/google-chrome-stable")
+    b = p.chromium.launch()
     for name, kw in (("desktop", dict(viewport={"width": 1440, "height": 900})),
                      ("phone", dict(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True))):
         ctx = b.new_context(**kw)

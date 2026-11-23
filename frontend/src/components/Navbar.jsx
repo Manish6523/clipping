@@ -67,7 +67,7 @@ function StatusPill({ status, pipes }) {
           </div>
           {running ? <PipelineList pipes={pipes} /> : <p className="text-xs text-muted text-center py-1">Nothing is rendering right now.</p>}
           <div className="flex gap-2">
-            <NavLink to="/channels" className="flex-1 text-center py-2 rounded-xl bg-white/[0.06] text-xs font-semibold text-ink hover:bg-white/[0.1]">Channels ({status.channels_count || 0})</NavLink>
+            <NavLink to="/channels" className="flex-1 text-center py-2 rounded-xl bg-white/[0.06] text-xs font-semibold text-ink hover:bg-white/[0.1]">Streamers ({status.channels_count || 0})</NavLink>
             <NavLink to="/pipelines" className="flex-1 text-center py-2 rounded-xl bg-white/[0.06] text-xs font-semibold text-ink hover:bg-white/[0.1]">Pipelines →</NavLink>
           </div>
         </div>

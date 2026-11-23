@@ -14,8 +14,7 @@ import { notifyClipReady } from './services/pwa';
 // Code-split heavy routes with React.lazy
 const TemplateGallery = lazy(() => import('./components/TemplateGallery'));
 const TemplateStudioEditor = lazy(() => import('./components/TemplateStudioEditor'));
-const ChannelManager = lazy(() => import('./components/ChannelManager'));
-const DistributionPage = lazy(() => import('./components/distribution/DistributionPage'));
+const StreamersHub = lazy(() => import('./components/streamers/StreamersHub'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const ClipsPage = lazy(() => import('./components/clips/ClipsPage'));
@@ -191,9 +190,9 @@ export default function App() {
         <Route path="templates" element={<TemplateGallery />} />
         <Route path="templates/:name" element={<TemplateStudioEditor />} />
         <Route path="presets" element={<Navigate to="/templates" replace />} />
-        <Route path="channels" element={<ChannelManager />} />
+        <Route path="channels" element={<StreamersHub />} />
         <Route path="telemetry" element={<StreamerTelemetryHub />} />
-        <Route path="accounts" element={<DistributionPage />} />
+        <Route path="accounts" element={<StreamersHub />} />
         <Route path="queue" element={<QueueCalendar />} />
         <Route path="pipelines" element={<PipelineMonitor />} />
         <Route path="settings" element={<Settings />} />

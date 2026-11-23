@@ -330,7 +330,7 @@ export function DestinationSheet({ dest, channels, routes, pending, onToggle, on
 
         <section>
           <h4 className="text-[12px] font-semibold text-ink mb-2">Posts clips from</h4>
-          {channels.length === 0 ? <p className="text-[12px] text-muted">Add streamers under Channels first.</p> : (
+          {channels.length === 0 ? <p className="text-[12px] text-muted">Add streamers in the Streamers tab first.</p> : (
             <div className="flex flex-wrap gap-1.5">
               {channels.map((c) => {
                 const h = c.channel_id_or_handle;
