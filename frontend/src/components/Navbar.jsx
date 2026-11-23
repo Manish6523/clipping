@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { Loader2, ChevronDown } from 'lucide-react';
 import { NAV } from './nav';
-import { Dot, Progress, Stat } from './ui';
+import { Dot, Progress, Stat, PILL } from './ui';
 
 const STEPS = 5;
 
@@ -49,7 +49,7 @@ function StatusPill({ status, pipes }) {
   return (
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-haspopup="dialog"
-        className="flex items-center gap-1.5 sm:gap-2 h-8 sm:h-9 px-2 sm:px-2.5 rounded-full bg-white/[0.06] hover:bg-white/[0.1] border border-white/10 text-[11.5px] sm:text-xs text-ink transition-all shadow-sm active:scale-95 max-w-[180px] sm:max-w-none">
+        className={`${PILL} flex items-center gap-1.5 sm:gap-2 h-9 px-2.5 text-[11.5px] sm:text-xs max-w-[180px] sm:max-w-none`}>
         {running ? <Loader2 size={13} className="animate-spin text-warn shrink-0" /> : <Dot tone={tone} live />}
         <span className="truncate font-medium">
           {running ? `@${primary?.channel_id || 'clip'}` : pending > 0 ? `${pending} to review` : 'Daemon active'}

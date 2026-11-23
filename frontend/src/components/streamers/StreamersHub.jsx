@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Radio, Plus, Search, Send, Key, ChevronRight, AlertTriangle, CheckCircle2, X, Activity, Users, Gauge } from 'lucide-react';
-import { Page, Panel, Button, Input, Select, Notice, Skeleton, Dot, Sheet, Field, Checkbox, EmptyState } from '../ui';
+import { Page, Panel, Button, Input, Select, Notice, Skeleton, Dot, Sheet, Field, Checkbox, EmptyState, Chip } from '../ui';
 import { DestinationCard, PLATFORM, YoutubeIcon } from '../distribution/parts';
 import RoutingBoard from '../distribution/RoutingBoard';
 import { ConnectSheet, DestinationSheet, AppSetupSheet } from '../distribution/sheets';
@@ -175,24 +175,22 @@ export default function StreamersHub() {
           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
             <div className="flex gap-1 overflow-x-auto no-scrollbar" role="tablist" aria-label="Show">
               {VIEWS.map((v) => (
-                <button key={v.value} type="button" role="tab" aria-selected={view === v.value} onClick={() => setView(v.value)}
-                  className={`h-9 px-3 rounded-full text-[12px] font-semibold whitespace-nowrap border ${
-                    view === v.value ? 'bg-white/[0.12] border-white/15 text-ink' : 'border-line text-muted hover:text-ink'} ${
-                    v.value === 'unrouted' && counts.unrouted ? '!text-warn' : ''}`}>
-                  {v.label} <span className="tabular-nums opacity-80">{hub.loaded ? counts[v.value] : ''}</span>
-                </button>
+                <Chip key={v.value} role="tab" aria-selected={view === v.value} active={view === v.value} onClick={() => setView(v.value)}
+                  tone={v.value === 'unrouted' && counts.unrouted ? 'warn' : undefined} count={hub.loaded ? counts[v.value] : undefined}>
+                  {v.label}
+                </Chip>
               ))}
             </div>
             <div className="flex gap-2 sm:ml-auto">
               {groups.length > 1 && (
-                <Select value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Group" className="!h-9 !w-auto !text-[12px]">
+                <Select pill value={group} onChange={(e) => setGroup(e.target.value)} aria-label="Group" className="!w-auto">
                   <option value="all">All groups</option>
                   {groups.map(([g, n]) => <option key={g} value={g}>{g} ({n})</option>)}
                 </Select>
               )}
               <div className="relative flex-1 sm:w-56">
                 <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-faint pointer-events-none" />
-                <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find streamer" aria-label="Find streamer" className="!h-9 !pl-8 !text-[13px]" />
+                <Input pill value={q} onChange={(e) => setQ(e.target.value)} placeholder="Find streamer" aria-label="Find streamer" className="!pl-8" />
               </div>
             </div>
           </div>

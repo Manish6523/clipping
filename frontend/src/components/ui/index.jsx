@@ -139,15 +139,27 @@ const BTN = {
   danger: 'bg-bad/15 text-bad hover:bg-bad/25',
   good: 'bg-good/15 text-good hover:bg-good/25',
   warn: 'bg-warn/15 text-warn hover:bg-warn/25',
+  // frosted: top-bar / floating controls (status pill, Clips header, filter chips, over video)
+  glass: 'bg-white/[0.07] text-ink border border-white/[0.12] backdrop-blur-md shadow-sm hover:bg-white/[0.11] active:bg-white/[0.14]',
 };
 const BTN_SIZE = { sm: 'h-8 px-2.5 text-xs gap-1.5', md: 'h-10 px-3.5 text-[13px] gap-2', lg: 'h-12 px-5 text-sm gap-2' };
 
+/**
+ * Two shapes, one rule:
+ *   standard (default) - rounded-xl, for every button on a page, in sheets and forms
+ *   pill (pill / variant="glass") - fully round + frosted, ONLY for compact top-bar and floating
+ *   controls (navbar status, page headers over content, filter chips, controls over video)
+ */
+export const PILL = 'rounded-full border border-white/[0.12] bg-white/[0.07] backdrop-blur-md shadow-sm text-ink transition-colors hover:bg-white/[0.11]';
+const shape = (pill) => (pill ? 'rounded-full' : 'rounded-xl');
+
 export const Button = React.forwardRef(function Button(
-  { variant = 'secondary', size = 'md', icon: Icon, loading = false, block = false, className = '', children, disabled, type = 'button', ...rest }, ref,
+  { variant = 'secondary', size = 'md', icon: Icon, loading = false, block = false, pill = false, className = '', children, disabled, type = 'button', ...rest }, ref,
 ) {
+  const round = pill || variant === 'glass';
   return (
     <button ref={ref} type={type} disabled={disabled || loading}
-      className={cx('inline-flex items-center justify-center rounded-xl font-semibold transition-colors select-none disabled:opacity-45',
+      className={cx('inline-flex items-center justify-center font-semibold transition-colors select-none disabled:opacity-45', shape(round),
         BTN[variant], BTN_SIZE[size], block && 'w-full', className)} {...rest}>
       {loading ? <Loader2 size={size === 'sm' ? 13 : 15} className="animate-spin" /> : Icon ? <Icon size={size === 'sm' ? 13 : 15} /> : null}
       {children}
@@ -155,27 +167,28 @@ export const Button = React.forwardRef(function Button(
   );
 });
 
-export function IconButton({ icon: Icon, label, variant = 'ghost', size = 'md', className = '', ...rest }) {
+export function IconButton({ icon: Icon, label, variant = 'ghost', size = 'md', pill = false, className = '', ...rest }) {
   const dim = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
   return (
     <button type="button" aria-label={label} title={label}
-      className={cx('inline-flex items-center justify-center rounded-xl transition-colors disabled:opacity-45', dim, BTN[variant], className)} {...rest}>
+      className={cx('inline-flex items-center justify-center transition-colors disabled:opacity-45', shape(pill || variant === 'glass'), dim, BTN[variant], className)} {...rest}>
       <Icon size={size === 'sm' ? 15 : 17} />
     </button>
   );
 }
 
 /** Segmented control / filter tabs. options: [{ value, label, icon?, count? }] */
-export function Segmented({ value, onChange, options, size = 'md', className = '', ariaLabel, scroll = true }) {
+export function Segmented({ value, onChange, options, size = 'md', className = '', ariaLabel, scroll = true, pill = false }) {
   return (
     <div role="tablist" aria-label={ariaLabel}
-      className={cx('inline-flex rounded-xl bg-white/[0.05] p-0.5 max-w-full', scroll && 'overflow-x-auto no-scrollbar', className)}>
+      className={cx('inline-flex p-0.5 max-w-full', pill ? PILL : 'rounded-xl bg-white/[0.05]', scroll && 'overflow-x-auto no-scrollbar', className)}>
       {options.map((o) => {
         const on = o.value === value;
         const Icon = o.icon;
         return (
           <button key={String(o.value)} type="button" role="tab" aria-selected={on} onClick={() => onChange(o.value)}
-            className={cx('shrink-0 inline-flex items-center justify-center gap-1.5 rounded-[10px] font-semibold transition-colors whitespace-nowrap [@media(pointer:coarse)]:min-w-[44px]',
+            className={cx('shrink-0 inline-flex items-center justify-center gap-1.5 font-semibold transition-colors whitespace-nowrap [@media(pointer:coarse)]:min-w-[44px]',
+              pill ? 'rounded-full' : 'rounded-[10px]',
               size === 'sm' ? 'h-7 px-2.5 text-[11.5px]' : 'h-9 px-3 text-xs',
               on ? 'bg-white/[0.12] text-ink shadow-sm' : 'text-muted hover:text-ink')}>
             {Icon && <Icon size={13} />}
@@ -190,17 +203,33 @@ export function Segmented({ value, onChange, options, size = 'md', className = '
 
 const FIELD_BASE = 'w-full rounded-xl border border-line bg-canvas text-ink placeholder:text-faint px-3 transition-colors focus:border-accent/60 focus:outline-none disabled:opacity-50';
 
-export const Input = React.forwardRef(function Input({ className = '', mono = false, ...rest }, ref) {
-  return <input ref={ref} className={cx(FIELD_BASE, 'h-10', mono && 'font-mono', className)} {...rest} />;
+// pill fields: same frosted pill as PILL, for search / pickers living in a top bar
+const FIELD_PILL = 'w-full rounded-full border border-white/[0.12] bg-white/[0.07] backdrop-blur-md shadow-sm text-ink placeholder:text-faint px-3.5 text-[12.5px] transition-colors hover:bg-white/[0.1] focus:border-accent/60 focus:outline-none disabled:opacity-50';
+
+export const Input = React.forwardRef(function Input({ className = '', mono = false, pill = false, ...rest }, ref) {
+  return <input ref={ref} className={cx(pill ? FIELD_PILL : FIELD_BASE, pill ? 'h-9' : 'h-10', mono && 'font-mono', className)} {...rest} />;
 });
 
-export const Select = React.forwardRef(function Select({ className = '', children, ...rest }, ref) {
-  return <select ref={ref} className={cx(FIELD_BASE, 'h-10 pr-8 appearance-none bg-[url("data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%2712%27 height=%277%27 fill=%27none%27%3E%3Cpath d=%27M1 1l5 5 5-5%27 stroke=%27%239b9a92%27 stroke-width=%271.6%27/%3E%3C/svg%3E")] bg-no-repeat bg-[right_12px_center]', className)} {...rest}>{children}</select>;
+export const Select = React.forwardRef(function Select({ className = '', pill = false, children, ...rest }, ref) {
+  return <select ref={ref} className={cx(pill ? `${FIELD_PILL} h-9 font-semibold` : `${FIELD_BASE} h-10`, 'pr-8 appearance-none select-chevron', className)} {...rest}>{children}</select>;
 });
 
 export const Textarea = React.forwardRef(function Textarea({ className = '', ...rest }, ref) {
   return <textarea ref={ref} className={cx(FIELD_BASE, 'py-2.5 min-h-[88px] resize-y', className)} {...rest} />;
 });
+
+/** Filter chip (pill): one of several quick filters, e.g. All / Live / Paused. */
+export function Chip({ active = false, tone, count, children, className = '', ...rest }) {
+  return (
+    <button type="button" aria-pressed={active}
+      className={cx('shrink-0 inline-flex items-center gap-1.5 h-9 px-3 rounded-full border text-[12px] font-semibold whitespace-nowrap transition-colors',
+        active ? 'bg-white/[0.12] border-white/[0.18] text-ink shadow-sm' : 'border-white/[0.1] text-muted hover:text-ink hover:bg-white/[0.05]',
+        tone && !active && `text-${tone}`, className)} {...rest}>
+      {children}
+      {count != null && <span className="tabular-nums opacity-80">{count}</span>}
+    </button>
+  );
+}
 
 export function Field({ label, hint, error, children, className = '', right }) {
   const id = useId();

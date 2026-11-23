@@ -4,7 +4,7 @@ import {
   Volume2, VolumeX, Play, Loader2, PartyPopper, ChevronUp, ChevronDown,
   Film, MoreVertical, Check, X, Send, Scissors, Download, Palette, Info, Wand2, Trash2,
 } from 'lucide-react';
-import { Sheet, Button } from '../ui';
+import { Sheet, Button, PILL } from '../ui';
 import { withToken } from '../../api';
 import ClipDetails from './ClipDetails';
 import { clipActions } from './ClipActionBar';
@@ -501,7 +501,7 @@ export default function ClipReels({ feed, clips, actions, onPublish, onStyle, on
           disabled={activeIdx === 0}
           title="Previous clip (Up arrow / K)"
           aria-label="Previous clip (↑)"
-          className="w-10 h-10 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 flex items-center justify-center disabled:opacity-20 transition-all text-white shadow-md active:scale-95"
+          className={`${PILL} w-10 h-10 flex items-center justify-center disabled:opacity-25`}
         >
           <ChevronUp size={18} />
         </button>
@@ -515,7 +515,7 @@ export default function ClipReels({ feed, clips, actions, onPublish, onStyle, on
           disabled={activeIdx >= clips.length - 1}
           title="Next clip (Down arrow / J)"
           aria-label="Next clip (↓)"
-          className="w-10 h-10 rounded-full bg-white/[0.08] hover:bg-white/[0.14] border border-white/10 flex items-center justify-center disabled:opacity-20 transition-all text-white shadow-md active:scale-95"
+          className={`${PILL} w-10 h-10 flex items-center justify-center disabled:opacity-25`}
         >
           <ChevronDown size={18} />
         </button>
