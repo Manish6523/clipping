@@ -5,8 +5,11 @@ import { Avatar } from '../distribution/parts';
 
 const MAX_CHIPS = 4;
 
-export const streamUrl = (c) => ((c.platform || 'twitch').toLowerCase() === 'twitch'
-  ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`);
+export const streamUrl = (c) => {
+  const p = (c.platform || 'twitch').toLowerCase();
+  if (p === 'kick') return `https://kick.com/${c.channel_id_or_handle}`;
+  return p === 'twitch' ? `https://twitch.tv/${c.channel_id_or_handle}` : `https://youtube.com/@${c.channel_id_or_handle}`;
+};
 
 /** One streamer: who it is, whether it's live, and where its clips post - one tap to change any of it. */
 export default function StreamerCard({ c, info = {}, posts, onOpen, onPosting, onPauseToggle, onWatch }) {

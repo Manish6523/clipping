@@ -4,8 +4,12 @@ import {
   Calendar, Clock, Send, AlertTriangle, MonitorPlay, Camera, Scissors, Film,
   Play, Trash2, CalendarX, Eye, X, Check, ArrowRight, Video, Sparkles, Tag
 } from 'lucide-react';
-import { getQueue, postClipNow, rescheduleQueueItem, removeQueueItem, withToken } from '../api';
-import { Page, Panel, Pill, Button, IconButton, EmptyState, Skeleton, Stat, Confirm, Notice } from './ui';
+import { getQueue, postClipNow, rescheduleQueueItem, removeQueueItem, withToken, getPerformance } from '../api';
+import { Page, Panel, Pill, Button, IconButton, EmptyState, Skeleton, Stat, Confirm, Notice, Segmented } from './ui';
+import QueueWeek from './QueueWeek';
+
+const VIEW_KEY = 'autoclip_queue_view';
+const readView = () => { try { return localStorage.getItem(VIEW_KEY) || 'list'; } catch { return 'list'; } };
 
 function relTime(date, now) {
   const diff = Math.round((date - now) / 60000);
@@ -50,6 +54,25 @@ export default function QueueCalendar() {
   const [newScheduleTime, setNewScheduleTime] = useState('');
   const [removeItem, setRemoveItem] = useState(null);
   const [actionLoading, setActionLoading] = useState(false);
+
+  const [view, setViewState] = useState(readView);
+  const [bestHours, setBestHours] = useState([]);
+  const setView = (v) => { setViewState(v); try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ } };
+  useEffect(() => {
+    if (view !== 'week') return;
+    getPerformance(30).then((p) => setBestHours(p?.learning?.best_hours || [])).catch(() => {});
+  }, [view]);
+
+  const moveItem = async (item, when) => {
+    const iso = when.toISOString();
+    setQueue((q) => q.map((x) => (x.id === item.id ? { ...x, scheduled_for: iso } : x)));     // instant
+    try {
+      await rescheduleQueueItem(item.id, iso);
+    } catch (err) {
+      setError(err?.response?.data?.error?.message || err?.message || 'Reschedule failed');
+    }
+    fetchQueue();
+  };
 
   const fetchQueue = async () => {
     try {
@@ -137,7 +160,9 @@ export default function QueueCalendar() {
 
   return (
     <Page title="Scheduled Queue" icon={Calendar}
-      subtitle="Upcoming drip-feed publishing slots across all linked YouTube and Instagram channels.">
+      subtitle="Upcoming drip-feed publishing slots across all linked YouTube and Instagram channels."
+      actions={<Segmented size="sm" pill value={view} onChange={setView} ariaLabel="Queue view"
+        options={[{ value: 'list', label: 'List' }, { value: 'week', label: 'Week' }]} />}>
       
       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
         <Panel className="!p-3.5"><Stat label="Scheduled" value={queue.length} icon={Calendar} /></Panel>
@@ -163,7 +188,16 @@ export default function QueueCalendar() {
         </Panel>
       )}
 
-      <div className="space-y-6 max-w-4xl mx-auto">
+      {loaded && queue.length > 0 && view === 'week' && (
+        <QueueWeek items={queue} now={now} bestHours={bestHours} onMove={moveItem}
+          onOpen={(item) => setPreviewClip({
+            ...item,
+            videoUrl: item.rendered_video_path ? withToken(`/api/clips/${item.clip_id}/video`) : null,
+            thumbUrl: item.thumbnail_path ? withToken(`/api/clips/${item.clip_id}/thumbnail`) : null,
+          })} />
+      )}
+
+      <div className={`space-y-6 max-w-4xl mx-auto ${view === 'week' ? 'hidden' : ''}`}>
         {groups.map((g) => (
           <section key={g.label} aria-label={g.label}>
             <h2 className="text-[11px] uppercase tracking-wider font-semibold text-muted mb-2.5 px-1">{g.label}</h2>
@@ -294,7 +328,7 @@ export default function QueueCalendar() {
         ))}
       </div>
 
-      {queue.length > 0 && (
+      {queue.length > 0 && view === 'list' && (
         <p className="text-center text-[11px] text-faint flex items-center justify-center gap-1 mt-6">
           <Clock size={11} /> Times are shown in your local timezone · Tap any time to reschedule
         </p>

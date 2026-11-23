@@ -16,6 +16,7 @@ const TemplateGallery = lazy(() => import('./components/TemplateGallery'));
 const TemplateStudioEditor = lazy(() => import('./components/TemplateStudioEditor'));
 const StreamersHub = lazy(() => import('./components/streamers/StreamersHub'));
 const QueueCalendar = lazy(() => import('./components/QueueCalendar'));
+const PerformancePage = lazy(() => import('./components/PerformancePage'));
 const LogStreamer = lazy(() => import('./components/LogStreamer'));
 const ClipsPage = lazy(() => import('./components/clips/ClipsPage'));
 const QuickClip = lazy(() => import('./components/QuickClip'));
@@ -194,6 +195,7 @@ export default function App() {
         <Route path="telemetry" element={<StreamerTelemetryHub />} />
         <Route path="accounts" element={<StreamersHub />} />
         <Route path="queue" element={<QueueCalendar />} />
+        <Route path="performance" element={<PerformancePage />} />
         <Route path="pipelines" element={<PipelineMonitor />} />
         <Route path="settings" element={<Settings />} />
         <Route path="logs" element={<LogStreamer />} />

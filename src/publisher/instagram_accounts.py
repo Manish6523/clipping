@@ -230,29 +230,86 @@ async def authenticate_account(
     )
 
 
+def parse_session_input(raw: Any) -> Dict[str, Any]:
+    """What people paste: a settings/session JSON (dict or text), a bare sessionid value, or a
+    browser cookie line ("sessionid=...; csrftoken=..."). Returns a dict, or raises ValueError."""
+    if isinstance(raw, dict):
+        if not raw:
+            raise ValueError("The session is empty.")
+        return raw
+    text = str(raw or "").strip()
+    if not text:
+        raise ValueError("Paste your Instagram session first.")
+    if text.startswith("{"):
+        try:
+            data = json.loads(text)
+        except ValueError:
+            raise ValueError("That looks like JSON but it isn't valid - copy the whole file again.")
+        if not isinstance(data, dict) or not data:
+            raise ValueError("The session JSON is empty.")
+        return data
+    if "sessionid=" in text:                       # cookie header / document.cookie
+        for part in text.split(";"):
+            k, _, v = part.strip().partition("=")
+            if k.strip() == "sessionid" and v.strip():
+                return {"sessionid": v.strip().strip('"')}
+        raise ValueError("The cookie text has no sessionid value.")
+    token = text.strip('"').strip("'")
+    if " " in token or len(token) < 20:
+        raise ValueError("That doesn't look like an Instagram sessionid or session JSON.")
+    return {"sessionid": token}
+
+
+def _import_error(e: Exception) -> Dict[str, Any]:
+    """Plain-English result for a failed session import (never raises)."""
+    name = type(e).__name__
+    text = str(e) or name
+    low = text.lower()
+    if isinstance(e, ImportError):
+        return {"success": False, "status": "error", "message": "Instagram support isn't installed on the server (instagrapi missing)."}
+    if isinstance(e, ValueError) and name == "ValueError":
+        return {"success": False, "status": "invalid_session", "message": text}
+    if isinstance(e, ChallengeRequired) or "challenge" in low or "checkpoint" in low:
+        return {"success": False, "status": "challenge_required",
+                "message": "Instagram wants to verify this login. Open the Instagram app, approve the login, then copy a fresh session and try again."}
+    if isinstance(e, RateLimitError) or "wait a few minutes" in low or "please wait" in low or "429" in low:
+        return {"success": False, "status": "rate_limited", "message": "Instagram is rate-limiting this server. Wait a few minutes and try again."}
+    if name in ("LoginRequired", "ClientUnauthorizedError", "ClientForbiddenError") or "login_required" in low or "401" in low or "403" in low:
+        return {"success": False, "status": "session_expired",
+                "message": "This session is expired or logged out. Log in to Instagram in your browser again and copy a fresh sessionid."}
+    if name in ("ClientConnectionError", "ConnectionError", "ReadTimeout", "Timeout") or "timed out" in low or "connection" in low:
+        return {"success": False, "status": "network", "message": "Couldn't reach Instagram from the server. Try again in a minute."}
+    return {"success": False, "status": "error", "message": f"Instagram didn't accept this session ({text[:160]})."}
+
+
 def _sync_import_session(
     account_key: str,
     username: str,
-    session_data: Dict[str, Any],
+    session_data: Any,
 ) -> Dict[str, Any]:
-    """Import and validate session settings or cookies dictionary."""
-    if not HAS_INSTAGRAPI or Client is None:
-        raise ImportError("instagrapi is not installed on this system.")
+    """Import and validate a session (settings JSON, sessionid or cookie line). Never raises."""
+    try:
+        if not HAS_INSTAGRAPI or Client is None:
+            raise ImportError("instagrapi is not installed on this system.")
+        session = parse_session_input(session_data)
 
-    client = Client()
-    client.delay_range = [1, 3]
+        client = Client()
+        client.delay_range = [1, 3]
+        clean_username = (username or session.get("username") or account_key).strip().lstrip("@")
 
-    clean_username = (username or session_data.get("username") or account_key).strip().lstrip("@")
-
-    # Support simple {"sessionid": "..."} format from browser devtools
-    if isinstance(session_data, dict) and "sessionid" in session_data and len(session_data) == 1:
-        sid = str(session_data["sessionid"]).strip().strip('"').strip("'")
-        logger.info("Logging in to Instagram via sessionid for '%s'...", clean_username)
-        client.login_by_sessionid(sid)
-    else:
-        # Handle if session_data is either { "settings": { ... } } or raw settings dict
-        settings = session_data.get("settings") if isinstance(session_data.get("settings"), dict) else session_data
-        client.set_settings(settings)
+        if "sessionid" in session and len(session) == 1:
+            sid = str(session["sessionid"]).strip().strip('"').strip("'")
+            logger.info("Logging in to Instagram via sessionid for '%s'...", clean_username)
+            if not client.login_by_sessionid(sid):
+                raise ValueError("Instagram didn't accept that sessionid. Copy a fresh one from a logged-in browser.")
+        else:
+            # either {"settings": {...}} or a raw settings dict
+            settings = session.get("settings") if isinstance(session.get("settings"), dict) else session
+            client.set_settings(settings)
+            client.account_info()                 # proves the session works (raises LoginRequired when not)
+    except Exception as e:
+        logger.warning("Instagram session import for '%s' failed: %s: %s", account_key, type(e).__name__, e)
+        return _import_error(e)
 
     try:
         user_info = client.user_info_by_username(clean_username)
@@ -265,32 +322,24 @@ def _sync_import_session(
     except Exception as e:
         logger.warning("Could not fetch user profile for imported session '%s': %s", clean_username, e)
         user_dict = {
-            "pk": str(session_data.get("user_id") or ""),
+            "pk": str(session.get("user_id") or getattr(client, "user_id", "") or ""),
             "username": clean_username,
             "full_name": clean_username,
             "profile_pic_url": None,
         }
 
-    save_token(
-        account_key,
-        {
-            "username": clean_username,
-            "settings": client.get_settings(),
-            "user_id": user_dict["pk"],
-        },
-    )
+    try:
+        save_token(account_key, {"username": clean_username, "settings": client.get_settings(), "user_id": user_dict["pk"]})
+    except Exception as e:
+        return {"success": False, "status": "error", "message": f"Session works but couldn't be saved on the server: {e}"}
 
-    return {
-        "success": True,
-        "status": "connected",
-        "user": user_dict,
-    }
+    return {"success": True, "status": "connected", "user": user_dict}
 
 
 async def import_session(
     account_key: str,
     username: str,
-    session_data: Dict[str, Any],
+    session_data: Any,
 ) -> Dict[str, Any]:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(

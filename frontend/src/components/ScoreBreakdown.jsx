@@ -18,7 +18,11 @@ export function parseBreakdown(raw) {
   const items = Object.entries(b)
     .filter(([, v]) => typeof v === 'number')
     .map(([k, v]) => ({ key: k, label: k.replace(/_/g, ' '), value: v, max: v <= 5 ? 5 : 100 }));
-  return items.length ? { kind: 'rubric', items } : null;
+  // score nudges added after the AI judge: real-views learning and viewer-made Twitch clips
+  const extras = [['performance', 'Learned from real views'], ['community_clips', 'Viewers clipped this']]
+    .filter(([k]) => b[k] && typeof b[k].points === 'number')
+    .map(([k, label]) => ({ key: k, label, points: b[k].points, reasons: b[k].reasons || [] }));
+  return items.length ? { kind: 'rubric', items, extras } : null;
 }
 
 export default function ScoreBreakdown({ raw, compact = false }) {
@@ -59,6 +63,13 @@ export default function ScoreBreakdown({ raw, compact = false }) {
           </div>
         ))}
       </div>
+      {(parsed.extras || []).map((x) => (
+        <div key={x.key} className="rounded-xl border border-line bg-canvas p-2.5 text-xs" data-testid={`score-extra-${x.key}`}>
+          <div className="flex justify-between"><span className="text-slate-300">{x.label}</span>
+            <span className="font-semibold text-ink tabular-nums">{x.points > 0 ? '+' : ''}{x.points}</span></div>
+          {x.reasons.map((r) => <p key={r} className="text-[11px] text-muted mt-0.5">{r}</p>)}
+        </div>
+      ))}
       {parsed.hook && <p className="text-[11px] text-slate-400"><b className="text-slate-200">Hook:</b> {parsed.hook}</p>}
       {parsed.payoff && <p className="text-[11px] text-slate-400"><b className="text-slate-200">Payoff:</b> {parsed.payoff}</p>}
     </div>

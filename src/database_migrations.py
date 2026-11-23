@@ -850,6 +850,55 @@ async def migration_v26(db):
             pass
 
 
+
+async def _add_column(db, table: str, column: str, ddl: str) -> None:
+    cur = await db.execute(f"PRAGMA table_info({table})")
+    if column not in {r[1] for r in await cur.fetchall()}:
+        await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl}")
+
+
+@migration(27, "Learning from real results: post times, IG account per row, smart slots, title tests, translations")
+async def migration_v27(db):
+    await _add_column(db, "scheduled_queue", "ig_account_key", "TEXT")
+    await _add_column(db, "scheduled_queue", "posted_at", "TEXT")
+    await _add_column(db, "youtube_accounts", "smart_slots", "INTEGER DEFAULT 0")
+    # best guess for rows posted before posted_at existed: the slot they were posted in
+    await db.execute("""UPDATE scheduled_queue SET posted_at = scheduled_for
+                        WHERE posted_at IS NULL AND (yt_status = 'uploaded' OR ig_status = 'uploaded')""")
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS title_tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL,
+            account_key TEXT NOT NULL,
+            video_id TEXT NOT NULL UNIQUE,
+            variants_json TEXT NOT NULL,          -- [{"title": ..., "thumb_t": seconds|null}]
+            status TEXT NOT NULL DEFAULT 'running' CHECK(status IN ('running', 'done', 'stopped', 'failed')),
+            current_idx INTEGER NOT NULL DEFAULT 0,
+            rounds_json TEXT NOT NULL DEFAULT '[]', -- [{"idx", "start", "end", "views_start", "views_end"}]
+            window_hours REAL NOT NULL DEFAULT 4,
+            next_switch_at TEXT,
+            winner_idx INTEGER,
+            note TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )""")
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS video_translations (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            clip_id INTEGER NOT NULL,
+            account_key TEXT NOT NULL,
+            video_id TEXT NOT NULL,
+            language TEXT NOT NULL,
+            title TEXT,
+            description TEXT,
+            titles_status TEXT DEFAULT 'pending',
+            captions_status TEXT DEFAULT 'pending',
+            error TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(video_id, language)
+        )""")
+
 async def run_migrations(db) -> None:
     """Execute all pending schema migrations inside a single safe transaction."""
     # Ensure schema_version table exists first

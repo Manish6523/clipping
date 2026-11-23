@@ -1,4 +1,4 @@
-import { Film, Zap, Activity, Calendar, Radio, Palette, Flame, Terminal, Settings, FlaskConical } from 'lucide-react';
+import { Film, Zap, Activity, Calendar, Radio, Palette, Flame, Terminal, Settings, FlaskConical, TrendingUp } from 'lucide-react';
 
 /** Every destination in the app. `phoneTab` ones sit in the bottom bar, the rest live under "More". */
 export const NAV = [
@@ -6,6 +6,7 @@ export const NAV = [
   { to: '/quickclip', label: 'Quick Clip', short: 'Clip', icon: Zap, phoneTab: true },
   { to: '/telemetry', label: 'Live Pulse', short: 'Pulse', icon: Activity, phoneTab: true },
   { to: '/queue', label: 'Queue', icon: Calendar, phoneTab: true },
+  { to: '/performance', label: 'Performance', icon: TrendingUp, hint: 'Views, what works, title tests' },
   { to: '/channels', label: 'Streamers', icon: Radio, hint: 'Who to watch & where clips post' },
   { to: '/templates', label: 'Templates', icon: Palette, hint: 'Layouts & caption styles' },
   { to: '/pipelines', label: 'Pipelines', icon: Flame, hint: 'Moments & rejections' },

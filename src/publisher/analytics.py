@@ -4,6 +4,7 @@
 - Average % viewed comes from the YouTube Analytics API when the account granted
   yt-analytics.readonly (new logins do); otherwise retention is simply left empty.
 - Snapshots are taken 24h, 72h and 7d after the upload.
+- Instagram Reels plays / likes / comments are snapshotted on the same windows (video_id "ig:<pk>").
 - ``performance_examples`` feeds a streamer's best / worst Shorts back into the AI prompt.
 """
 
@@ -87,7 +88,7 @@ async def collect_due_metrics(now: Optional[datetime] = None) -> int:
     now = now or datetime.now(timezone.utc)
     async with get_db_connection() as db:
         cur = await db.execute(
-            """SELECT q.clip_id, q.account_key, q.yt_video_id, q.scheduled_for
+            """SELECT q.clip_id, q.account_key, q.yt_video_id, COALESCE(q.posted_at, q.scheduled_for) AS scheduled_for
                FROM scheduled_queue q
                WHERE q.yt_status = 'uploaded' AND q.yt_video_id IS NOT NULL AND q.account_key IS NOT NULL"""
         )
@@ -141,12 +142,121 @@ async def collect_due_metrics(now: Optional[datetime] = None) -> int:
     return written
 
 
+def _ig_views(media: Any) -> int:
+    """Reel plays (instagrapi exposes play_count / view_count / ig_play_count depending on version)."""
+    vals = []
+    for attr in ("play_count", "ig_play_count", "view_count", "video_view_count"):
+        try:
+            v = getattr(media, attr, None)
+            if v is not None:
+                vals.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    return max(vals) if vals else 0
+
+
+def _fetch_ig_stats_blocking(account_key: str, media_pks: List[str]) -> Dict[str, Dict[str, Any]]:
+    from src.publisher.instagram_reels import InstagramReelsPublisher
+
+    client = InstagramReelsPublisher(account_key)._get_client()
+    out: Dict[str, Dict[str, Any]] = {}
+    for pk in media_pks:
+        try:
+            m = client.media_info(pk)
+        except Exception as e:  # deleted / private / rate limit: skip this one
+            logger.info("Instagram stats unavailable for media %s: %s", pk, e)
+            continue
+        out[pk] = {"views": _ig_views(m), "likes": int(getattr(m, "like_count", 0) or 0),
+                   "comments": int(getattr(m, "comment_count", 0) or 0)}
+    return out
+
+
+async def _ig_key_for_row(row: Dict[str, Any]) -> Optional[str]:
+    """The Instagram account that posted a queue row (stored since v27; resolved like the uploader before)."""
+    if row.get("ig_account_key"):
+        return row["ig_account_key"]
+    try:
+        from src.publisher.scheduler import load_template_destinations
+        from src.publisher.instagram_accounts import account_for_streamer
+        return (load_template_destinations(row.get("template_name") or "").get("instagram_account_key")
+                or await account_for_streamer(row.get("channel_id") or ""))
+    except Exception:
+        return None
+
+
+async def collect_instagram_metrics(now: Optional[datetime] = None) -> int:
+    """24h / 72h / 7d snapshots of posted Reels (plays, likes, comments). Stored with video_id 'ig:<pk>'."""
+    from src.database import get_db_connection
+    from src.publisher.slots import to_utc
+
+    now = now or datetime.now(timezone.utc)
+    async with get_db_connection() as db:
+        cur = await db.execute(
+            """SELECT q.clip_id, q.ig_media_id, q.ig_account_key, COALESCE(q.posted_at, q.scheduled_for) AS posted,
+                      c.template_name, c.channel_id
+               FROM scheduled_queue q JOIN clips c ON c.id = q.clip_id
+               WHERE q.ig_status = 'uploaded' AND q.ig_media_id IS NOT NULL AND q.ig_media_id != ''""")
+        rows = [dict(r) for r in await cur.fetchall()]
+        cur = await db.execute("SELECT video_id, window FROM clip_metrics WHERE platform = 'instagram'")
+        have: Dict[str, List[str]] = {}
+        for r in await cur.fetchall():
+            have.setdefault(r[0], []).append(r[1])
+
+    todo: Dict[str, List[Dict[str, Any]]] = {}
+    for r in rows:
+        posted = to_utc(r["posted"])
+        if not posted or posted < now - timedelta(days=30):
+            continue
+        wins = due_windows(posted, have.get(f"ig:{r['ig_media_id']}", []), now)
+        if not wins:
+            continue
+        key = await _ig_key_for_row(r)
+        if key:
+            todo.setdefault(key, []).append({**r, "windows": wins})
+
+    written = 0
+    loop = asyncio.get_running_loop()
+    for key, items in todo.items():
+        try:
+            stats = await loop.run_in_executor(None, _fetch_ig_stats_blocking, key, sorted({i["ig_media_id"] for i in items}))
+        except Exception as e:
+            logger.warning("Instagram metrics fetch failed for %s: %s", key, e)
+            continue
+        async with get_db_connection() as db:
+            for it in items:
+                st = stats.get(it["ig_media_id"])
+                if not st:
+                    continue
+                for w in it["windows"]:
+                    await db.execute(
+                        """INSERT OR IGNORE INTO clip_metrics
+                           (clip_id, platform, window, views, likes, comments, shares, retention_pct,
+                            performance_score, video_id, account_key)
+                           VALUES (?, 'instagram', ?, ?, ?, ?, 0, NULL, ?, ?, ?)""",
+                        (it["clip_id"], w, st["views"], st["likes"], st["comments"],
+                         performance_score(st["views"], None), f"ig:{it['ig_media_id']}", key))
+                    written += 1
+            await db.commit()
+    if written:
+        logger.info("Collected %d Instagram metric snapshot(s).", written)
+    return written
+
+
 async def run_metrics_loop() -> None:
     while True:
         try:
             await collect_due_metrics()
         except Exception as e:
             logger.error("Metrics loop error: %s", e)
+        try:
+            await collect_instagram_metrics()
+        except Exception as e:
+            logger.error("Instagram metrics error: %s", e)
+        try:
+            from src.intelligence.performance_learning import refresh_performance_model
+            await refresh_performance_model()
+        except Exception as e:
+            logger.error("Performance learning refresh failed: %s", e)
         await asyncio.sleep(COLLECT_EVERY_S)
 
 

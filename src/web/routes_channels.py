@@ -57,6 +57,13 @@ async def fetch_streamer_avatar(platform: str, channel_id_or_handle: str) -> str
         except Exception as e:
             logger.debug("Twitch avatar fetch error for %s: %s", handle, e)
 
+    elif platform.lower() == "kick":
+        try:
+            from src.monitor.kick import avatar
+            return await avatar(handle)
+        except Exception as e:
+            logger.debug("Kick avatar fetch error for %s: %s", handle, e)
+
     elif platform.lower() == "youtube":
         try:
             yt_url = f"https://www.youtube.com/@{handle}"

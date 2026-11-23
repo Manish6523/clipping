@@ -26,6 +26,7 @@ import axios from 'axios';
 import CensorSettings from './CensorSettings';
 import StorageAlerts from './StorageAlerts';
 import YouTubeDownloads from './YouTubeDownloads';
+import KickApp from './KickApp';
 import AutoEditLearning from './AutoEditLearning';
 import {
   Page,
@@ -56,7 +57,7 @@ const SETTINGS_TABS = [
   { id: 'story', label: 'Narrative Storylines', icon: BookOpen, desc: 'Same-stream setup seed staging & stitch settings' },
   { id: 'autoedit', label: 'Auto Edit & Pacing', icon: Zap, desc: 'Jump cuts, punch zooms, sound effects & hook cards' },
   { id: 'transcription', label: 'Whisper Models', icon: Cpu, desc: 'Speech-to-text models for VODs and live clips' },
-  { id: 'downloads', label: 'YouTube & Engine', icon: Download, desc: 'yt-dlp health, cookies.txt & bot bypass' },
+  { id: 'downloads', label: 'YouTube, Kick & Engine', icon: Download, desc: 'yt-dlp health, cookies.txt, Kick app' },
   { id: 'censor', label: 'Profanity Censor', icon: VolumeX, desc: 'Word lists, bleep audio & asterisks' },
   { id: 'storage', label: 'Storage & Alerts', icon: HardDrive, desc: 'Disk usage, Telegram alerts & retention' },
 ];
@@ -678,6 +679,7 @@ export default function Settings() {
       {activeTab === 'downloads' && (
         <div className="space-y-5 animate-in fade-in duration-200">
           <YouTubeDownloads />
+          <KickApp />
         </div>
       )}
 

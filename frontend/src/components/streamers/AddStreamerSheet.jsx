@@ -41,6 +41,12 @@ export default function AddStreamerSheet({ hub, open, onClose, onAdded, onConnec
     setPicked(usualDestinations(hub));
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // a pasted link picks the platform for you
+  useEffect(() => {
+    const m = handle.match(/(twitch\.tv|youtube\.com|kick\.com)\//i);
+    if (m) setPlatform({ 'twitch.tv': 'twitch', 'youtube.com': 'youtube', 'kick.com': 'kick' }[m[1].toLowerCase()]);
+  }, [handle]);
+
   const clean = handle.trim().replace(/^@/, '').replace(/^https?:\/\/(www\.)?(twitch\.tv|youtube\.com|kick\.com)\/@?/i, '').split(/[/?#]/)[0];
   const exists = hub.channels.some((c) => c.channel_id_or_handle.toLowerCase() === clean.toLowerCase());
   const canNext = clean && !exists;
@@ -81,13 +87,13 @@ export default function AddStreamerSheet({ hub, open, onClose, onAdded, onConnec
       {step === 1 ? (
         <form className="space-y-3.5" onSubmit={(e) => { e.preventDefault(); if (canNext) setStep(2); }} data-testid="add-step1">
           <Field label="Channel handle or link" error={exists ? 'Already watching this streamer' : undefined}>
-            <Input autoFocus required placeholder="e.g. ishowspeed or twitch.tv/ishowspeed" value={handle} onChange={(e) => setHandle(e.target.value)}
+            <Input autoFocus required placeholder="e.g. ishowspeed, twitch.tv/… or kick.com/…" value={handle} onChange={(e) => setHandle(e.target.value)}
               autoCapitalize="none" autoCorrect="off" aria-label="Channel handle" />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Platform">
               <Select value={platform} onChange={(e) => setPlatform(e.target.value)} aria-label="Platform">
-                <option value="twitch">Twitch</option><option value="youtube">YouTube</option>
+                <option value="twitch">Twitch</option><option value="youtube">YouTube</option><option value="kick">Kick</option>
               </Select>
             </Field>
             <Field label="Layout template">

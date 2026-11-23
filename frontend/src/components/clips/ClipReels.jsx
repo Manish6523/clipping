@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import {
   Volume2, VolumeX, Play, Loader2, PartyPopper, ChevronUp, ChevronDown,
-  Film, MoreVertical, Check, X, Send, Scissors, Download, Palette, Info, Wand2, Trash2,
+  Film, MoreVertical, Check, X, Send, Scissors, Download, Palette, Info, Wand2, Trash2, SkipForward,
 } from 'lucide-react';
 import { Sheet, Button, PILL } from '../ui';
 import { withToken } from '../../api';
@@ -164,6 +164,20 @@ function ReelItem({
             {reviewable ? 'Reject' : 'Delete'}
           </span>
         </button>
+
+        {reviewable && onNext && (
+          <button
+            type="button"
+            onClick={onNext}
+            aria-label="Skip clip"
+            className="group flex flex-col items-center gap-0.5 text-white active:scale-95 transition-transform"
+          >
+            <span className="w-10 h-10 sm:w-11 sm:h-11 rounded-full bg-black/50 text-white border border-white/15 backdrop-blur-md flex items-center justify-center shadow-lg group-hover:bg-black/70">
+              <SkipForward size={17} />
+            </span>
+            <span className="text-[10px] font-semibold tracking-tight drop-shadow">Skip</span>
+          </button>
+        )}
 
         {clip.status !== 'published' && (
           <button

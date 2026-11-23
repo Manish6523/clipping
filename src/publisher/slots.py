@@ -111,6 +111,26 @@ def next_slot(
     return max(taken_utc + [now]) + timedelta(hours=4)
 
 
+async def effective_account(acc: Dict[str, Any]) -> Dict[str, Any]:
+    """The account with its posting slots swapped for the learned best hours when Smart times is on
+    and there is enough data; otherwise unchanged. Adds `slots_source` ('smart' / 'manual')."""
+    out = dict(acc or {})
+    out["slots_source"] = "manual"
+    if not out.get("smart_slots"):
+        return out
+    try:
+        from src.intelligence.performance_learning import best_hours
+        hours = await best_hours(out.get("account_key"))
+    except Exception as e:
+        logger.debug("Smart slots unavailable for %s: %s", out.get("account_key"), e)
+        hours = None
+    if hours:
+        cap = int(out.get("daily_cap") or DEFAULT_DAILY_CAP)
+        out["publish_slots"] = json.dumps([f"{h:02d}:00" for h in sorted(hours)[:max(cap, 1)]])
+        out["slots_source"] = "smart"
+    return out
+
+
 def quota_day(at: Optional[datetime] = None) -> str:
     """YouTube quota resets at midnight Pacific Time."""
     return (at or datetime.now(timezone.utc)).astimezone(PACIFIC).date().isoformat()
@@ -246,7 +266,8 @@ async def schedule_clip(
             else:
                 cur = await db.execute("SELECT * FROM youtube_accounts WHERE account_key = ?", (key,))
                 acc = await cur.fetchone()
-                at = next_slot(dict(acc) if acc else {}, await account_taken_times(db, key))
+                acc = await effective_account(dict(acc) if acc else {})
+                at = next_slot(acc, await account_taken_times(db, key))
             first = i == 0
             ig_status = "pending" if (first and want_ig) else "skipped"
             tt_status = "pending" if (first and want_tt) else "skipped"

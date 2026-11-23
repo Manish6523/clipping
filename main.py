@@ -1323,7 +1323,8 @@ class AutoClipEngine:
                         channel_id=channel_id,
                         sentences=sentences,
                         trigger_context={"type": "vod_heatmap", "peaks": metadata.get("heatmap_peaks", []),
-                                         "chat_peaks": metadata.get("chat_peaks", [])},
+                                         "chat_peaks": metadata.get("chat_peaks", []),
+                                         "community_clips": metadata.get("community_clips") or []},
                         min_score=min_score,
                     )
                 except Exception as e:
@@ -1515,6 +1516,9 @@ class AutoClipEngine:
         # Real YouTube performance (24h / 72h / 7d) for the learning loop
         from src.publisher.analytics import run_metrics_loop
         self._metrics_task = asyncio.create_task(run_metrics_loop())
+        # Title A/B tests rotate on a timer (translations run right after each upload)
+        from src.publisher.growth import run_growth_loop
+        self._growth_task = asyncio.create_task(run_growth_loop())
 
         logger.info("AutoClipDaemon running. Web UI at http://localhost:%d | Telegram active.", WEB_PORT)
 

@@ -77,7 +77,7 @@ export const uploadWatermark = (formData) => api.post('/api/templates/watermark/
   headers: { 'Content-Type': 'multipart/form-data' }
 }).then(r => r.data);
 
-export const getQueue = () => api.get('/api/queue').then(r => r.data);
+export const getQueue = (limit = 200) => api.get('/api/queue', { params: { limit } }).then(r => r.data);
 export const rescheduleQueueItem = (id, scheduledFor) => api.post(`/api/queue/${id}/reschedule`, { scheduled_for: scheduledFor }).then(r => r.data);
 export const removeQueueItem = (id, returnToReview = true) => api.post(`/api/queue/${id}/remove`, { return_to_review: returnToReview }).then(r => r.data);
 export const clipManual = (data) => api.post('/api/clip-manual', data).then(r => r.data);
@@ -137,3 +137,14 @@ export const deleteInstagramAccount = (key) => api.delete(`/api/instagram/accoun
 
 export default api;
 
+
+// Performance: real views, what the system learned, title tests, translations
+export const getPerformance = (days = 30) => api.get('/api/performance', { params: { days } }).then(r => r.data);
+export const refreshPerformance = () => api.post('/api/performance/refresh', {}, { timeout: 120000 }).then(r => r.data);
+export const getGrowthSettings = () => api.get('/api/growth/settings').then(r => r.data);
+export const saveGrowthSettings = (data) => api.put('/api/growth/settings', data).then(r => r.data);
+export const stopTitleTest = (id, keep) => api.post(`/api/title-tests/${id}/stop`, keep == null ? {} : { keep }).then(r => r.data);
+
+// Kick app (official API: live status + chat webhook)
+export const getKickAppConfig = () => api.get('/api/kick/app-config').then(r => r.data);
+export const saveKickAppConfig = (data) => api.put('/api/kick/app-config', data).then(r => r.data);

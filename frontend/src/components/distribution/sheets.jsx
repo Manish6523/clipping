@@ -77,24 +77,21 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
 
   const submitInstagramImport = async () => {
     setIgError('');
-    let parsed;
-    try {
-      parsed = JSON.parse(igSessionJson);
-    } catch {
-      setIgError('Invalid JSON format. Please paste valid settings or session JSON.');
-      return;
+    const text = igSessionJson.trim();
+    if (!igUser.trim()) { setIgError('Enter the Instagram username first.'); return; }
+    if (!text) { setIgError('Paste the session JSON, the sessionid value, or the cookie line.'); return; }
+    // JSON when it parses; otherwise the server reads a bare sessionid or a "sessionid=…; …" cookie line
+    let sessionData = text;
+    if (text.startsWith('{')) {
+      try { sessionData = JSON.parse(text); } catch { setIgError('That JSON is incomplete - copy the whole session file again.'); return; }
     }
     setBusy(true);
     try {
-      const res = await onInstagramImport({
-        username: igUser.trim(),
-        session_data: parsed,
-      });
-      if (res && !res.success) {
-        setIgError(res.message || 'Import failed.');
-      }
+      const res = await onInstagramImport({ username: igUser.trim(), session_data: sessionData });
+      if (res && !res.success) setIgError(res.message || 'Import failed.');
     } catch (e) {
-      setIgError(e?.response?.data?.message || e?.message || 'Import failed');
+      const d = e?.response?.data || {};
+      setIgError(d.message || (typeof d.error === 'string' ? d.error : d.error?.message) || e?.message || 'Import failed');
     } finally {
       setBusy(false);
     }
@@ -238,7 +235,7 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
             onClick={() => { setIgImporting(true); setIgError(''); }}
             className="w-full text-[12px] text-muted hover:text-ink inline-flex items-center justify-center gap-1.5"
           >
-            <FileJson size={13} /> Import session settings JSON instead
+            <FileJson size={13} /> Import a browser session instead
           </button>
         </div>
       )}
@@ -261,13 +258,13 @@ export function ConnectSheet({ open, onClose, yt, tt, onYouTube, onYouTubeImport
             />
           </Field>
 
-          <Field label="Session JSON" hint="Dump of instagrapi client.get_settings() from local PC.">
+          <Field label="Session" hint="Any of: the sessionid cookie value from a logged-in browser, a cookie line (sessionid=…; …), or an instagrapi settings JSON.">
             <Textarea
               rows={6}
               className="font-mono !text-xs"
               value={igSessionJson}
               onChange={(e) => setIgSessionJson(e.target.value)}
-              placeholder='{"uuids": {...}, "cookies": {...}, "authorization_data": {...}}'
+              placeholder='e.g. 1234567890%3AAbCdEf… or {"cookies": {...}, "authorization_data": {...}}'
               disabled={busy}
             />
           </Field>

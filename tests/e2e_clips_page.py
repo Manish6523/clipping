@@ -144,7 +144,7 @@ def run(p, name, viewport, touch):
     pg.wait_for_selector('[data-testid="reel"]')
     first_reel = pg.locator('[data-testid="reel"] >> nth=0')
     rail = first_reel.locator('[data-testid="reel-rail"]')
-    for need in ("Approve clip", "Reject clip", "Publish clip", "Edit clip layout & captions", "More options"):
+    for need in ("Approve clip", "Reject clip", "Skip clip", "Publish clip", "Edit clip layout & captions", "More options"):
         assert rail.get_by_role("button", name=need).count() == 1, need
     rail.get_by_role("button", name="More options").click()
     sheet = pg.locator('[role="dialog"]')
@@ -153,6 +153,15 @@ def run(p, name, viewport, touch):
     pg.keyboard.press("Escape")
     pg.wait_for_timeout(300)
     first = first_reel.get_attribute("data-clip-id")
+    # Skip: next clip, nothing is written
+    writes_before = len([c for c in calls if c[0] != "GET"])
+    rail.get_by_role("button", name="Skip clip").click()
+    pg.wait_for_timeout(900)
+    skipped_to = pg.evaluate("""() => { const r = document.querySelector('[data-testid=reels]');
+        const top = r.getBoundingClientRect().top;
+        return [...r.querySelectorAll('[data-testid=reel]')].find(e => Math.abs(e.getBoundingClientRect().top - top) < 5)?.dataset.clipId; }""")
+    assert skipped_to and skipped_to != first, (skipped_to, first)
+    assert len([c for c in calls if c[0] != "GET"]) == writes_before, "skip must not change the clip"
     pg.wait_for_timeout(600)
     pg.screenshot(path=f"{SHOT}{name}_reels.png")
     # next clip = scroll one reel (swipe up on a phone, arrow key on desktop)

@@ -771,7 +771,7 @@ async def delete_youtube_account(account_key: str) -> bool:
 
 ACCOUNT_EDITABLE_COLUMNS = (
     "auto_upload", "auto_mode", "min_score_threshold", "drip_delay_hours", "privacy_status", "tag_override",
-    "publish_slots", "daily_cap", "timezone", "quota_units_per_day", "is_active",
+    "publish_slots", "daily_cap", "timezone", "quota_units_per_day", "is_active", "smart_slots",
 )
 
 

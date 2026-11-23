@@ -155,8 +155,8 @@ class LiveStreamWatcher:
                                 and newest_age is not None and newest_age < 30),
             },
             "chat": {
-                "connected": self._chat_connected if self.platform == "twitch" else None,
-                "supported": self.platform == "twitch",
+                "connected": self._chat_connected if self.platform in ("twitch", "kick") else None,
+                "supported": self.platform in ("twitch", "kick"),
                 "total_messages": self._chat_total,
                 "active_chatters_5m": sum(1 for t in self._chatters.values() if t >= now - 300),
                 "feed": [{"t": round(t, 1), "user": u, "text": m, "keyword": k} for t, u, m, k in list(self._chat_feed)[-40:]],
@@ -222,6 +222,9 @@ class LiveStreamWatcher:
         """Resolve correct live stream URL for platform (handles YouTube handles with @)."""
         if self.platform == "twitch":
             return f"https://www.twitch.tv/{self.channel_id}"
+        if self.platform == "kick":
+            from src.monitor.kick import slug_of
+            return f"https://kick.com/{slug_of(self.channel_id)}"
         cid = self.channel_id.strip()
         if not cid.startswith("@") and not cid.startswith("UC") and not cid.startswith("http"):
             cid = f"@{cid}"
@@ -231,6 +234,22 @@ class LiveStreamWatcher:
 
     async def is_channel_live(self) -> bool:
         """Probe whether the channel is currently broadcasting live using official Helix API, GraphQL, or streamlink."""
+        if self.platform == "kick":
+            from src.monitor import kick
+            info = await kick.channel_info(self.channel_id)
+            if info is not None:
+                self._kick_broadcaster_id = info.get("broadcaster_user_id")
+                if info["is_live"]:
+                    self._stream_title = info.get("title") or ""
+                    self._stream_category = info.get("category") or ""
+                    self._stream_info = {
+                        "display_name": info.get("display_name") or self.channel_id,
+                        "avatar": info.get("avatar"), "title": info.get("title"), "category": info.get("category"),
+                        "viewers": info.get("viewers"), "started_at": info.get("started_at"),
+                        "preview": info.get("preview"), "updated": time.time(),
+                    }
+                return bool(info["is_live"])
+            # unknown -> fall through to the streamlink probe below
         if self.platform == "twitch":
             # 1. Primary: Official Twitch Helix API (Whitelisted, 100% reliable on Cloud VPS / Datacenter IPs)
             if TWITCH_CLIENT_ID and TWITCH_CLIENT_SECRET:
@@ -381,6 +400,7 @@ class LiveStreamWatcher:
         audio_task = asyncio.create_task(self._monitor_audio_peaks())
         sample_task = asyncio.create_task(self._sample_telemetry())
         seed_task = asyncio.create_task(self._monitor_story_seeds())
+        clips_task = asyncio.create_task(self._watch_community_clips())
         telemetry.register_watcher(self)
 
         try:
@@ -417,6 +437,7 @@ class LiveStreamWatcher:
             audio_task.cancel()
             sample_task.cancel()
             seed_task.cancel()
+            clips_task.cancel()
             telemetry.unregister_watcher(self)
             await self.stop_pipeline()
 
@@ -465,6 +486,9 @@ class LiveStreamWatcher:
 
     async def _listen_to_chat(self) -> None:
         """Connect to Twitch IRC or public chat to monitor message velocity."""
+        if self.platform == "kick":
+            await self._listen_to_kick_chat()
+            return
         if self.platform != "twitch":
             return
 
@@ -503,6 +527,30 @@ class LiveStreamWatcher:
                 self._chat_connected = False
                 logger.warning("Twitch IRC connection drop for %s: %s. Reconnecting in 10s...", self.channel_id, e)
                 await asyncio.sleep(10)
+
+    async def _listen_to_kick_chat(self) -> None:
+        """Kick chat arrives via the official webhook (src.monitor.kick); keep the subscription alive."""
+        from src.monitor import kick
+
+        async def on_message(text: str, user: Optional[str]) -> None:
+            await self._on_chat_message(text, user=user)
+
+        kick.register_listener(self.channel_id, on_message)
+        try:
+            while self.is_running:
+                bid = getattr(self, "_kick_broadcaster_id", None)
+                if bid and (await kick.app_config())["client_id"]:
+                    ok = await kick.subscribe_chat(bid)
+                    if ok and not self._chat_connected:
+                        logger.info("Kick chat connected for %s (webhook).", self.channel_id)
+                    self._chat_connected = ok
+                else:
+                    self._chat_connected = False
+                await asyncio.sleep(300)
+        except asyncio.CancelledError:
+            pass
+        finally:
+            kick.unregister_listener(self.channel_id)
 
     def _extract_chat_features(self) -> Dict[str, Any]:
         """Extract deduplicated, spam-filtered chat messages and top tokens/emotes from rolling history."""
@@ -664,6 +712,61 @@ class LiveStreamWatcher:
             ))
 
     # ==========================================
+    # Trigger 1b: Twitch community clips (viewers clipped it)
+    # ==========================================
+
+    async def _watch_community_clips(self) -> None:
+        """Every minute while live: new viewer-made Twitch clips trigger a capture around their time."""
+        if self.platform != "twitch":
+            return
+        from src.monitor import twitch_clips
+        if not twitch_clips.enabled():
+            return
+        seen: set = set()
+        while self.is_running:
+            try:
+                await asyncio.sleep(60)
+                if not getattr(self, "_is_channel_live", False):
+                    continue
+                from src.database import get_system_setting
+                if str(await get_system_setting("community_clips_enabled", "true")).lower() not in ("true", "1", "on", "yes"):
+                    continue
+                for moment in await twitch_clips.recent_moments(self.channel_id):
+                    new_ids = [i for i in moment["ids"] if i not in seen]
+                    if not new_ids:
+                        continue
+                    seen.update(moment["ids"])
+                    if len(seen) > 500:
+                        seen = set(list(seen)[-200:])
+                    created = moment["created_at"].timestamp()
+                    # our own trigger already caught this moment
+                    if abs(self.last_trigger_time - created) < 45:
+                        logger.info("Community clip on %s matches a moment already captured.", self.channel_id)
+                        continue
+                    if time.time() - created > twitch_clips.LIVE_LOOKBACK_S:
+                        continue
+                    now = time.time()
+                    self.last_trigger_time = now
+                    trigger_context = {
+                        "type": "community_clip", "t_trigger": now, "clip_created_at": created,
+                        "community_clips": {"count": moment["count"], "views": moment["views"], "titles": moment["titles"]},
+                        "moment_id": f"{self.channel_id.lower()}:{int(now)}",
+                    }
+                    self._trigger_count += 1
+                    self._last_trigger_ctx = dict(trigger_context)
+                    telemetry.moment_event(trigger_context["moment_id"], "triggered", self.channel_id,
+                                           note=f"{moment['count']} viewer clip(s)", trigger=dict(trigger_context))
+                    logger.info("Community clip trigger on %s: %d viewer clip(s) (%s)", self.channel_id,
+                                moment["count"], "; ".join(moment["titles"][:2]))
+                    asyncio.create_task(self._handle_hype_event(
+                        reason="community_clip", trigger_context=trigger_context,
+                        chat_features=self._extract_chat_features(), target_time=created))
+            except asyncio.CancelledError:
+                break
+            except Exception as e:
+                logger.debug("Community clip watch error on %s: %s", self.channel_id, e)
+
+    # ==========================================
     # Trigger 2: Audio dB Peak / Scream Detector
     # ==========================================
 
@@ -747,16 +850,22 @@ class LiveStreamWatcher:
         reason: str,
         trigger_context: Optional[Dict[str, Any]] = None,
         chat_features: Optional[Dict[str, Any]] = None,
+        target_time: Optional[float] = None,
     ) -> None:
-        """Wait 20s for moment to conclude, concatenate surrounding 75s of .ts chunks into an MP4."""
+        """Wait 20s for moment to conclude, concatenate surrounding 75s of .ts chunks into an MP4.
+        With ``target_time`` (an event that already happened, e.g. a viewer clip), cut the chunks
+        around that time instead of the newest ones."""
         logger.info("🔥 Hype moment triggered on %s (%s). Waiting 20 seconds for conclusion...", self.channel_id, reason)
         update_pipeline_progress("triggered", channel_id=self.channel_id, step=1, step_name=f"Hype Moment Triggered ({reason})! Buffering event...", trigger_reason=reason)
         moment_id = (trigger_context or {}).get("moment_id")
         telemetry.moment_event(moment_id, "buffering", self.channel_id, note="waiting 20 s for the moment to finish")
-        await asyncio.sleep(20)
+        if target_time is None or time.time() - target_time < 20:
+            await asyncio.sleep(20)
 
         update_pipeline_progress("processing", channel_id=self.channel_id, step=2, step_name="Slicing and concatenating 75s ring buffer chunks...", trigger_reason=reason)
         chunks = sorted(glob.glob(str(self.buffer_path / "chunk_*.ts")), key=os.path.getmtime)
+        if target_time is not None:
+            chunks = pick_chunks_around(chunks, target_time, [os.path.getmtime(c) for c in chunks])
         if len(chunks) < 3:
             logger.warning("Not enough ring-buffer chunks on %s to create clip (chunks: %d).", self.channel_id, len(chunks))
             telemetry.moment_event(moment_id, "error", self.channel_id, note=f"only {len(chunks)} buffer chunks recorded")
@@ -816,3 +925,10 @@ class LiveStreamWatcher:
                 await asyncio.sleep(10)
                 update_pipeline_progress("idle", channel_id=self.channel_id, step=0, step_name="Idle - Awaiting Stream Moments")
             asyncio.create_task(_reset_err())
+
+
+def pick_chunks_around(chunks: List[str], target: float, mtimes: List[float], before: float = 60.0, after: float = 20.0) -> List[str]:
+    """Chunks (10 s each; mtime = when the chunk finished) covering [target - before, target + after].
+    A Twitch clip covers about the 30 s before it was made. Falls back to everything when nothing fits."""
+    picked = [c for c, m in zip(chunks, mtimes) if target - before <= m <= target + after + 10]
+    return picked if len(picked) >= 3 else chunks

@@ -44,6 +44,8 @@ YOUTUBE_SCOPES = [
     "https://www.googleapis.com/auth/youtube.readonly",
     # retention (average % viewed) for the learning loop; optional - uploads never depend on it
     "https://www.googleapis.com/auth/yt-analytics.readonly",
+    # change titles (A/B tests), add translated titles and caption tracks after upload
+    "https://www.googleapis.com/auth/youtube.force-ssl",
 ]
 
 
@@ -241,7 +243,8 @@ async def list_accounts_handler(request: web.Request) -> web.Response:
     from src.database import get_db_connection
     from src.publisher.auto_approve import agreement_stats
     from src.publisher.slots import (
-        DEFAULT_QUOTA_UNITS, UPLOAD_UNITS, account_taken_times, next_slot, parse_slots, slots_to_strings, units_used,
+        DEFAULT_QUOTA_UNITS, UPLOAD_UNITS, account_taken_times, effective_account, next_slot, parse_slots,
+        slots_to_strings, units_used,
     )
     from src.publisher.youtube_shorts import token_project_key
 
@@ -251,7 +254,8 @@ async def list_accounts_handler(request: web.Request) -> web.Response:
     async with get_db_connection() as db:
         for acc in accounts:
             key = acc["account_key"]
-            has_token = (TOKENS_DIR / f"yt_{key}.json").exists()
+            token_path = TOKENS_DIR / f"yt_{key}.json"
+            has_token = token_path.exists()
             project = token_project_key(key)
             used = await units_used(db, project)
             limit = int(acc.get("quota_units_per_day") or DEFAULT_QUOTA_UNITS)
@@ -267,8 +271,18 @@ async def list_accounts_handler(request: web.Request) -> web.Response:
                 (key,),
             )
             tracked, total_views = await cur.fetchone()
+            eff = await effective_account(acc)
+            scopes = []
+            try:
+                scopes = (json.loads(token_path.read_text()).get("scopes") or []) if has_token else []
+            except Exception:
+                pass
             result.append({
                 **acc,
+                "smart_slots": bool(acc.get("smart_slots")),
+                "smart": {"active": eff["slots_source"] == "smart",
+                          "slots": slots_to_strings(parse_slots(eff.get("publish_slots")))},
+                "can_edit_videos": any(s.endswith("/youtube") or s.endswith("youtube.force-ssl") for s in scopes),
                 "auto_mode": acc.get("auto_mode") or ("on" if acc.get("auto_upload") else "off"),
                 "publish_slots": slots_to_strings(parse_slots(acc.get("publish_slots"))),
                 "has_token_file": has_token,
@@ -280,7 +294,7 @@ async def list_accounts_handler(request: web.Request) -> web.Response:
                 },
                 "upcoming_posts": upcoming,
                 "performance": {"tracked_shorts": tracked, "total_views": total_views},
-                "next_free_slot": next_slot(acc, taken).isoformat(),
+                "next_free_slot": next_slot(eff, taken).isoformat(),
                 "trial": stats.get(key),
             })
     return web.json_response(result)
@@ -404,6 +418,8 @@ async def update_account_config_handler(request: web.Request) -> web.Response:
             changes["quota_units_per_day"] = v
         if "is_active" in data:
             changes["is_active"] = 1 if data["is_active"] else 0
+        if "smart_slots" in data:
+            changes["smart_slots"] = 1 if data["smart_slots"] else 0
     except (TypeError, ValueError, KeyError) as e:
         return web.json_response({"error": str(e) or "Invalid value"}, status=400)
     except Exception as e:  # ZoneInfoNotFoundError

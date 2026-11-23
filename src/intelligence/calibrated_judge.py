@@ -17,6 +17,7 @@ from src.intelligence.llm.judge_prompts import PROMPT_VERSION, JUDGE_SYSTEM_PROM
 from src.intelligence.llm.judge_schemas import JudgeEvaluationResponse, JudgeClipEvaluation
 from src.intelligence.chat_signals import chat_signal_score, describe_reaction
 from src.intelligence.scoring_calculator import calculate_predicted_score, calculate_final_score
+from src.monitor.twitch_clips import describe_community_clips, community_clip_windows, community_boost
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +72,17 @@ class CalibratedJudge:
             for r in few_shot["rejected_clips"]:
                 fb_lines.append(f"  * #{r['clip_id']} \"{r['title']}\" (Reason: {r['rejection_reason']})")
         fb_str = "\n".join(fb_lines) if fb_lines else "No human reviews logged yet for this streamer."
+        # what really got watched beats what was approved: real view numbers for this streamer
+        try:
+            from src.publisher.analytics import performance_examples
+            perf = await performance_examples(channel_id)
+            if perf:
+                fb_str += "\nReal audience results: " + perf
+        except Exception as e:
+            logger.debug("No performance examples for %s: %s", channel_id, e)
+        community = describe_community_clips((trigger_context or {}).get("community_clips"))
+        if community:
+            fb_str += "\n" + community
 
         # Format numbered sentences
         s_lines = []
@@ -124,10 +136,25 @@ class CalibratedJudge:
                     ratio = trigger_sig.get("ratio", 2.0)
                     signal_score = chat_signal_score(ratio, trigger_sig.get("mood_share", 0.0),
                                                      trigger_sig.get("unique_chatters_5s", 0))
+            elif trigger_sig.get("type") == "community_clip":
+                cc = trigger_sig.get("community_clips") or (trigger_context or {}).get("community_clips") or {}
+                signal_score = min(100.0, 72.0 + 8.0 * max(1, int(cc.get("count") or 1)))
             elif trigger_sig.get("type") == "audio_peak":
                 # Peak -6dB -> 80
                 peak = trigger_sig.get("peak_db", -10.0)
                 signal_score = min(100.0, max(50.0, 100.0 + (peak * 3.0)))
+
+        # learned from real views: a bounded nudge per streamer / trigger / mood / length / layout
+        layout = None
+        try:
+            from src.database import get_channel
+            rec = await get_channel(channel_id)
+            layout = (rec or {}).get("template_name")
+        except Exception:
+            pass
+        trig_type = (trigger_sig or {}).get("type") or (trigger_context or {}).get("type")
+        trig_mood = (trigger_sig or {}).get("mood") or (trigger_context or {}).get("mood")
+        community_windows = community_clip_windows((trigger_context or {}).get("community_clips"))
 
         candidates = []
         for cand in resp.candidates:
@@ -144,6 +171,17 @@ class CalibratedJudge:
             # Calculate predicted & final scores
             predicted = calculate_predicted_score(cand.scores, would_post=cand.would_post)
             final = calculate_final_score(predicted, signal_score)
+            perf_pts, perf_why = 0.0, []
+            try:
+                from src.intelligence.performance_learning import adjust as perf_adjust, length_bucket
+                perf_pts, perf_why = await perf_adjust({
+                    "streamer": channel_id, "trigger": trig_type, "mood": trig_mood,
+                    "length": length_bucket(float(t_end) - float(t_start)), "layout": layout, "source": None, "style": None,
+                })
+            except Exception as e:
+                logger.debug("Performance adjustment skipped: %s", e)
+            community_pts, community_why = community_boost(float(t_start), float(t_end), community_windows)
+            final = round(max(0.0, min(100.0, final + perf_pts + community_pts)), 1)
 
             # Teaser timestamp if specified
             teaser_ts = None
@@ -166,7 +204,9 @@ class CalibratedJudge:
                 "predicted_score": predicted,
                 "final_score": final,
                 "virality_score": int(round(final)),
-                "scores": cand.scores.model_dump(),
+                "scores": {**cand.scores.model_dump(),
+                           **({"performance": {"points": perf_pts, "reasons": perf_why}} if perf_pts else {}),
+                           **({"community_clips": {"points": community_pts, "reasons": community_why}} if community_pts else {})},
                 "evidence": cand.evidence.model_dump(),
                 "flags": [f.model_dump() for f in cand.flags],
                 "editorial_reason": cand.editorial_reason,

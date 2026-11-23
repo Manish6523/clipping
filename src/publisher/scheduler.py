@@ -183,7 +183,7 @@ class DripScheduler:
                 res = res if isinstance(res, dict) else {"success": False, "error": str(res)}
                 await self._record_upload_usage(k, res)
                 if res.get("success") and not yt_res.get("success"):
-                    yt_res = res
+                    yt_res = {**res, "account_key": k}
                 elif not yt_res.get("success"):
                     yt_res = res
 
@@ -213,6 +213,8 @@ class DripScheduler:
         # Retry transient failures (network / 5xx) up to 3 attempts, 30 min apart
         retry = errors and attempts + 1 < MAX_ATTEMPTS and not any(_is_permanent(r.get("error")) for _n, r, w in
                                                                       outcomes if w and not r.get("success"))
+        any_posted = any(w and r.get("success") for _n, r, w in outcomes)
+        posted_now = datetime.now(timezone.utc).isoformat() if any_posted else None
         from src.database import get_db_connection
         async with get_db_connection() as db:
             if retry:
@@ -223,22 +225,31 @@ class DripScheduler:
                        ig_status = CASE WHEN ? = 'failed' THEN 'pending' ELSE ? END,
                        tt_status = CASE WHEN ? = 'failed' THEN 'pending' ELSE ? END,
                        yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id),
-                       tt_publish_id = COALESCE(?, tt_publish_id)
+                       tt_publish_id = COALESCE(?, tt_publish_id), ig_account_key = COALESCE(?, ig_account_key),
+                       posted_at = COALESCE(posted_at, ?)
                        WHERE id = ?""",
                     (attempts + 1, when, " | ".join(errors) + f" (retry {attempts + 1}/{MAX_ATTEMPTS - 1})",
                      yt_status, yt_status, ig_status, ig_status, tt_status, tt_status,
-                     yt_res.get("video_id"), ig_res.get("media_id"), tt_res.get("publish_id"), queue_id),
+                     yt_res.get("video_id"), ig_res.get("media_id"), tt_res.get("publish_id"),
+                     ig_key if ig_res.get("success") else None, posted_now, queue_id),
                 )
             else:
                 await db.execute(
                     """UPDATE scheduled_queue SET attempts = ?, yt_status = ?, ig_status = ?, tt_status = ?,
                        yt_video_id = COALESCE(?, yt_video_id), ig_media_id = COALESCE(?, ig_media_id),
-                       tt_publish_id = COALESCE(?, tt_publish_id), last_error = ?
+                       tt_publish_id = COALESCE(?, tt_publish_id), last_error = ?,
+                       ig_account_key = COALESCE(?, ig_account_key), posted_at = COALESCE(posted_at, ?)
                        WHERE id = ?""",
                     (attempts + 1, yt_status, ig_status, tt_status, yt_res.get("video_id"), ig_res.get("media_id"),
-                     tt_res.get("publish_id"), " | ".join(errors) or None, queue_id),
+                     tt_res.get("publish_id"), " | ".join(errors) or None,
+                     ig_key if ig_res.get("success") else None, posted_now, queue_id),
                 )
             await db.commit()
+
+        if yt_res.get("success") and yt_res.get("video_id") and yt_res.get("account_key"):
+            # title A/B test + translated titles/captions run in the background; never block publishing
+            from src.publisher.growth import after_youtube_upload
+            asyncio.create_task(after_youtube_upload(clip_id, yt_res["account_key"], yt_res["video_id"]))
 
         if yt_res.get("success") or ig_res.get("success") or tt_res.get("success"):
             await update_clip_status(clip_id, "published")

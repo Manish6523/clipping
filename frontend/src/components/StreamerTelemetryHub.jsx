@@ -153,6 +153,7 @@ function StreamCard({ s, now }) {
   const started = st.started_at ? Date.parse(st.started_at) / 1000 : s.live_since;
   const isTwitch = (s.platform || '').toLowerCase() === 'twitch';
   const isYouTube = (s.platform || '').toLowerCase() === 'youtube';
+  const isKick = (s.platform || '').toLowerCase() === 'kick';
   const hostname = window.location.hostname || 'localhost';
 
   return (
@@ -163,6 +164,14 @@ function StreamCard({ s, now }) {
             {isTwitch && (
               <iframe
                 src={`https://player.twitch.tv/?channel=${encodeURIComponent(s.channel_id)}&parent=${hostname}&autoplay=true&muted=false`}
+                className="w-full h-full border-0"
+                allowFullScreen
+                title={`Live Stream: ${s.channel_id}`}
+              />
+            )}
+            {isKick && (
+              <iframe
+                src={`https://player.kick.com/${encodeURIComponent(s.channel_id)}?autoplay=true&muted=false`}
                 className="w-full h-full border-0"
                 allowFullScreen
                 title={`Live Stream: ${s.channel_id}`}

@@ -92,6 +92,7 @@ class WebUIServer:
             or path == "/api/fetcher/script"             # the helper script itself (public code)
             or path.startswith("/api/fetcher/next")      # home fetch helper: own token (handle_fetcher_*)
             or path.startswith("/api/fetcher/result/")
+            or path == "/api/kick/webhook"                # Kick chat events: RSA-signed (routes_kick)
             or not (path.startswith("/api/") or path.startswith("/ws") or path.startswith("/renders/") or path.startswith("/output/"))
         ):
             return await handler(request)
@@ -138,6 +139,10 @@ class WebUIServer:
         register_publish_routes(self.app)
         register_instagram_routes(self.app)
         register_lab_routes(self.app)
+        from src.web.routes_kick import register_kick_routes
+        register_kick_routes(self.app)
+        from src.web.routes_performance import register_performance_routes
+        register_performance_routes(self.app)
 
         self.app.router.add_post("/api/admin/reset", self.handle_admin_reset)
         self.app.router.add_get("/api/channels", self.handle_get_channels)
@@ -393,6 +398,11 @@ class WebUIServer:
 
         if not channel:
             return web.json_response({"error": "Channel handle required"}, status=400)
+        if platform not in ("twitch", "youtube", "kick"):
+            return web.json_response({"error": f"Unsupported platform '{platform}'"}, status=400)
+        if platform == "kick":
+            from src.monitor.kick import slug_of
+            channel = slug_of(channel)
 
         # Auto-fetch avatar if not provided
         if not avatar_url:
@@ -1030,7 +1040,11 @@ class WebUIServer:
 
     async def handle_get_queue(self, request: web.Request) -> web.Response:
         """Get upcoming drip queue items."""
-        queue = await get_upcoming_queue(limit=20)
+        try:
+            limit = max(1, min(300, int(request.query.get("limit", "20"))))
+        except ValueError:
+            limit = 20
+        queue = await get_upcoming_queue(limit=limit)
         return web.json_response(queue)
 
     async def handle_reschedule_queue(self, request: web.Request) -> web.Response:

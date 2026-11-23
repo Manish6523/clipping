@@ -82,15 +82,18 @@ async def ig_import_account(request: web.Request) -> web.Response:
     account_key = "".join(ch for ch in account_key if ch.isalnum() or ch in "_-")[:40]
 
     if not username:
-        return web.json_response({"error": "Username is required"}, status=400)
+        return web.json_response({"success": False, "status": "invalid", "message": "Enter the Instagram username.",
+                                  "error": "Username is required"}, status=400)
     if not session_data:
-        return web.json_response({"error": "Session JSON data is required"}, status=400)
+        return web.json_response({"success": False, "status": "invalid_session", "message": "Paste your Instagram session first.",
+                                  "error": "Session data is required"}, status=400)
 
-    res = await instagram_accounts.import_session(
-        account_key=account_key,
-        username=username,
-        session_data=session_data,
-    )
+    try:
+        res = await instagram_accounts.import_session(
+            account_key=account_key, username=username, session_data=session_data)
+    except Exception as e:  # import_session reports its own errors; this is a last resort
+        logger.exception("Instagram import crashed")
+        res = {"success": False, "status": "error", "message": f"Import failed on the server: {e}"}
 
     if res.get("success"):
         user = res.get("user") or {}
@@ -113,7 +116,7 @@ async def ig_import_account(request: web.Request) -> web.Response:
             },
         })
 
-    return web.json_response(res, status=400)
+    return web.json_response({**res, "error": res.get("message")}, status=400)
 
 
 async def ig_patch_account(request: web.Request) -> web.Response:

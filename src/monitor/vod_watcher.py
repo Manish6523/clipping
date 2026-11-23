@@ -313,6 +313,15 @@ class VODWatcher:
             except Exception:
                 chat_peaks = []
 
+            # Twitch: clips viewers made of this broadcast (positions in the VOD) - a strong signal
+            community_clips: List[Dict[str, Any]] = []
+            if platform == "twitch":
+                try:
+                    from src.monitor.twitch_clips import fetch_vod_community_clips
+                    community_clips = await fetch_vod_community_clips(channel_id, vod_id)
+                except Exception as e:
+                    logger.debug("Community clips lookup failed for VOD %s: %s", vod_id, e)
+
             if self.on_vod_clip_ready:
                 await self.on_vod_clip_ready(
                     audio_path,
@@ -326,6 +335,7 @@ class VODWatcher:
                         "template_name": template_name,
                         "heatmap_peaks": peaks,
                         "chat_peaks": chat_peaks,
+                        "community_clips": community_clips,
                         "work_dir": str(work_dir),
                         **(options or {}),
                     },
@@ -383,6 +393,30 @@ class VODWatcher:
             except Exception as e:
                 logger.debug("Failed checking Twitch VODs for %s: %s", channel_id, e)
 
+        elif platform == "kick":
+            from src.monitor.kick import slug_of
+            slug = slug_of(channel_id)
+            url = f"https://kick.com/{slug}/videos"
+            try:
+                rc, stdout, err = await ytdlp.run(["--flat-playlist", "--dump-json", "--playlist-items", "1:3", url], timeout=120)
+                if rc != 0:
+                    logger.warning("Kick VOD lookup failed for %s: %s", slug, ytdlp.explain(err))
+                for line in (stdout or b"").decode(errors="ignore").splitlines():
+                    try:
+                        info = json.loads(line)
+                    except ValueError:
+                        continue
+                    if info.get("is_live"):
+                        continue                       # still streaming: the live watcher has it
+                    vod_id = str(info.get("id") or "")
+                    web_url = (info.get("url") or f"https://kick.com/{slug}/videos/{vod_id}").split("#", 1)[0]
+                    if vod_id and not await is_vod_processed(vod_id):
+                        await self.process_vod(platform="kick", channel_id=channel_id, vod_id=vod_id,
+                                               title=info.get("title") or f"Kick VOD {vod_id}", video_url=web_url,
+                                               template_name=template_name)
+                    break                              # newest finished broadcast only
+            except Exception as e:
+                logger.debug("Failed checking Kick VODs for %s: %s", channel_id, e)
 
 
 def parse_live_chat_replay(path: Path) -> List[tuple]:
