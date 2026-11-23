@@ -32,6 +32,13 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(swap, "RENDER_DIR", str(tmp_path / "renders"))
     (tmp_path / "renders").mkdir()
     (tmp_path / "out").mkdir()
+    import shutil
+    from src.compositor import auto_edit
+    sfx = tmp_path / "sfx"                                                  # bundled sounds only, not the user's own
+    sfx.mkdir()
+    for f in ("whoosh.wav", "boom.wav", "pop.wav", "boop.wav"):
+        shutil.copy(auto_edit.SFX_DIR / f, sfx / f)
+    monkeypatch.setattr(auto_edit, "SFX_DIR", sfx)
     src = tmp_path / "src.mp4"
     _make_video(src)
     tpl = {"name": "t", "layout": {"schema": 2, "canvas": {"w": 1080, "h": 1920}, "layers": [

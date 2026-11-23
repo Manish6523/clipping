@@ -81,7 +81,7 @@ def run(p, name, viewport, touch):
     pg.goto(BASE + "/")
     pg.wait_for_selector('[data-testid="clip-card"]')
     assert pg.locator('[data-testid="clip-card"]').count() == 12
-    assert "To review 12" in pg.inner_text('[aria-label="Status"]')
+    assert "To review 12" in pg.inner_text('select[aria-label="Status"]')
 
     # ---- grid: open details, edit hashtags without '#', approve + undo, approve for real, download
     if not touch:
@@ -139,29 +139,35 @@ def run(p, name, viewport, touch):
             pg.keyboard.press("Escape")
             pg.wait_for_timeout(200)
 
-    # ---- reels
-    pg.get_by_role("tab", name=re.compile("Reels")).click()
+    # ---- reels (rail: Approve / Reject / Publish / Edit / More; the rest lives in the More sheet)
+    pg.get_by_role("button", name="Switch to Reels view").click()
     pg.wait_for_selector('[data-testid="reel"]')
-    rail = pg.locator('[data-testid="reel"] >> nth=0').locator('[data-testid="reel-rail"]')
-    labels = [x.get_attribute("data-action") for x in rail.locator("button").all()]
-    for need in ("approve", "reject", "skip", "publish", "edit", "style", "download"):
-        assert need in labels, labels
-    first = pg.locator('[data-testid="reel"] >> nth=0').get_attribute("data-clip-id")
+    first_reel = pg.locator('[data-testid="reel"] >> nth=0')
+    rail = first_reel.locator('[data-testid="reel-rail"]')
+    for need in ("Approve clip", "Reject clip", "Publish clip", "Edit clip layout & captions", "More options"):
+        assert rail.get_by_role("button", name=need).count() == 1, need
+    rail.get_by_role("button", name="More options").click()
+    sheet = pg.locator('[role="dialog"]')
+    for need in ("Style & Fonts", "Auto-Edits", "Download", "Clip Details"):
+        assert sheet.get_by_role("button", name=need).count() == 1, need
+    pg.keyboard.press("Escape")
+    pg.wait_for_timeout(300)
+    first = first_reel.get_attribute("data-clip-id")
     pg.wait_for_timeout(600)
     pg.screenshot(path=f"{SHOT}{name}_reels.png")
-    rail.locator('[data-action="skip"]').click()
+    # next clip = scroll one reel (swipe up on a phone, arrow key on desktop)
+    pg.evaluate("() => { const r = document.querySelector('[data-testid=reels]'); r.scrollBy(0, r.clientHeight); }")
     pg.wait_for_timeout(900)
     visible = pg.evaluate("""() => { const r = document.querySelector('[data-testid=reels]');
         const items = [...r.querySelectorAll('[data-testid=reel]')];
         const top = r.getBoundingClientRect().top;
         return items.find(e => Math.abs(e.getBoundingClientRect().top - top) < 5)?.dataset.clipId; }""")
     assert visible and visible != first, (visible, first)
-    # description expands
     cur = pg.locator(f'[data-testid="reel"][data-clip-id="{visible}"]')
     cur.get_by_text("…more").click()
     assert cur.get_by_text("#kaicenat #funny").is_visible()
     # reject with a reason
-    cur.locator('[data-action="reject"]').click()
+    cur.get_by_role("button", name="Reject clip").click()
     pg.wait_for_selector('[data-testid="undo-bar"]')
     pg.get_by_role("button", name="Boring").click()
     pg.wait_for_timeout(400)
@@ -171,8 +177,6 @@ def run(p, name, viewport, touch):
         pg.keyboard.press("ArrowDown")
         pg.wait_for_timeout(700)
         assert pg.locator('[data-testid="reel-details"] [data-testid="clip-details"]').is_visible()
-    else:
-        pg.locator('[data-testid="reel"]').filter(has=pg.get_by_text("Edit title")).first
     pg.screenshot(path=f"{SHOT}{name}_reels2.png")
     width = pg.evaluate("document.documentElement.scrollWidth")
     assert width <= viewport["width"] + 1, f"horizontal scroll: {width}"

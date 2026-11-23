@@ -72,6 +72,11 @@ async def rows(sql, *args):
 
 def test_schedule_one_row_per_channel_and_idempotent(db):
     from src.publisher.slots import schedule_clip
+    from src.publisher import instagram_accounts
+    nocfg = make_clip()
+    asyncio.run(schedule_clip(nocfg))                                       # no Instagram account anywhere
+    assert {r["ig_status"] for r in asyncio.run(rows("SELECT ig_status FROM scheduled_queue WHERE clip_id = ?", nocfg))} == {"skipped"}
+    asyncio.run(instagram_accounts.save_accounts([{"key": "ig1", "username": "ig1", "streamers": ["caseoh_"]}]))
     cid = make_clip()
     created = asyncio.run(schedule_clip(cid))
     assert sorted(c["account_key"] for c in created) == ["chaos", "clutch"]

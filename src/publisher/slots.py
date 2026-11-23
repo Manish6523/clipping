@@ -165,8 +165,8 @@ async def schedule_clip(
 
     ``account_keys`` defaults to the accounts mapped to the clip's streamer. Clips with no
     mapped account get a single legacy row (account_key NULL) at the drip interval.
-    Instagram (if configured on the template) and TikTok (if an account is mapped to the
-    streamer) are handled once, on the first row only.
+    Instagram (an account on the template, or one mapped to the streamer) and TikTok (if an
+    account is mapped to the streamer) are handled once, on the first row only.
 
     ``platforms`` limits the destinations (any of youtube / instagram / tiktok); None = all that
     are set up. ``when`` overrides the slot time for every row (e.g. "post now" or a picked time).
@@ -183,11 +183,12 @@ async def schedule_clip(
         raise ValueError("Pick at least one platform")
 
     async with get_db_connection() as db:
-        cur = await db.execute("SELECT id, channel_id FROM clips WHERE id = ?", (clip_id,))
+        cur = await db.execute("SELECT id, channel_id, template_name FROM clips WHERE id = ?", (clip_id,))
         clip = await cur.fetchone()
         if not clip:
             raise ValueError(f"Clip #{clip_id} not found")
         channel = (clip["channel_id"] or "").strip()
+        template_name = clip["template_name"] or ""
 
         if replace_pending:
             await db.execute(
@@ -216,7 +217,12 @@ async def schedule_clip(
 
         tt_key = await account_for_streamer(channel) if "tiktok" in chosen else None
         from src.publisher.instagram_accounts import account_for_streamer as ig_account_for_streamer
-        ig_key = await ig_account_for_streamer(channel) if "instagram" in chosen else None
+        ig_key = None
+        if "instagram" in chosen:
+            # same order as the uploader (scheduler): the template's account, else the streamer's mapping
+            from src.publisher.scheduler import load_template_destinations
+            ig_key = (load_template_destinations(template_name).get("instagram_account_key")
+                      or await ig_account_for_streamer(channel))
         want_ig = bool(ig_key) and not ig_taken
         want_tt = bool(tt_key) and not tt_taken
         if platforms is not None and "instagram" in chosen and not ig_key:

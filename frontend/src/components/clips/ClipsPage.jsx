@@ -86,6 +86,7 @@ export default function ClipsPage() {
         
         <div className="relative inline-flex items-center">
           <select
+            aria-label="Status"
             value={filters.status}
             onChange={(e) => setFilters({ status: e.target.value })}
             className="h-8.5 pl-3.5 pr-8 rounded-full bg-white/[0.08] hover:bg-white/[0.12] backdrop-blur-md border border-white/15 text-[12px] font-semibold text-white shadow-sm appearance-none cursor-pointer focus:outline-none focus:ring-1 focus:ring-accent transition-all"
