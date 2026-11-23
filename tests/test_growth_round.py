@@ -580,3 +580,40 @@ def test_performance_api(db, monkeypatch):
     assert body["title_tests"][0]["variants"][1]["title"] == "b"
     assert body["accounts"][0]["smart_slots"] is True
     assert s_status == 200 and s_body["ab_titles"] is False and bad_status == 400
+
+
+def test_live_community_trigger_needs_two_viewers(db, tmp_path, monkeypatch):
+    import time as _time
+    from src.monitor import live_watcher as lw
+    monkeypatch.setattr(lw, "BUFFER_DIR", str(tmp_path / "buf"))
+    monkeypatch.setattr(tc, "enabled", lambda: True)
+    w = lw.LiveStreamWatcher("caseoh_", "twitch", {})
+    w.is_running, w._is_channel_live, w.last_trigger_time = True, True, 0.0
+    now = datetime.now(timezone.utc)
+    one = {"created_at": now - timedelta(seconds=20), "count": 1, "views": 1, "titles": ["a"], "ids": ["c1"], "duration": 30}
+    two = {"created_at": now - timedelta(seconds=10), "count": 2, "views": 5, "titles": ["a", "b"], "ids": ["c1", "c2"], "duration": 30}
+    rounds = iter([[one], [two], [two]])
+
+    async def moments(login, since_s=180, now=None):
+        return next(rounds)
+    calls = {"n": 0}
+
+    async def fake_sleep(s):
+        calls["n"] += 1
+        if calls["n"] > 3:
+            w.is_running = False
+    fired = []
+
+    async def fake_hype(reason, trigger_context=None, chat_features=None, target_time=None):
+        fired.append((reason, trigger_context["community_clips"]["count"], round(target_time)))
+    monkeypatch.setattr(tc, "recent_moments", moments)
+    monkeypatch.setattr(lw.asyncio, "sleep", fake_sleep)
+    monkeypatch.setattr(w, "_handle_hype_event", fake_hype)
+    monkeypatch.setattr(w, "_extract_chat_features", lambda: {})
+
+    async def go():
+        await w._watch_community_clips()
+        await lw.asyncio.gather(*[t for t in lw.asyncio.all_tasks() if t is not lw.asyncio.current_task()], return_exceptions=True)
+    asyncio.run(go())
+    assert fired == [("community_clip", 2, round((now - timedelta(seconds=10)).timestamp()))], fired   # once, not for the lone clip
+    assert _time.time() - w.last_trigger_time < 5

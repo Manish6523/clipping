@@ -731,14 +731,25 @@ class LiveStreamWatcher:
                 from src.database import get_system_setting
                 if str(await get_system_setting("community_clips_enabled", "true")).lower() not in ("true", "1", "on", "yes"):
                     continue
+                try:
+                    min_viewers = max(1, int(await get_system_setting("community_clips_min_viewers", "2") or 2))
+                except (TypeError, ValueError):
+                    min_viewers = 2
                 for moment in await twitch_clips.recent_moments(self.channel_id):
                     new_ids = [i for i in moment["ids"] if i not in seen]
                     if not new_ids:
+                        continue
+                    # big channels get a lone clip every few minutes; several viewers clipping the
+                    # same moment is the real signal (a later clip of a seen moment re-checks it)
+                    if moment["count"] < min_viewers:
                         continue
                     seen.update(moment["ids"])
                     if len(seen) > 500:
                         seen = set(list(seen)[-200:])
                     created = moment["created_at"].timestamp()
+                    cooldown = max(60.0, float(getattr(self, "cooldown_seconds", LIVE_TRIGGER_COOLDOWN_S)))
+                    if time.time() - self.last_trigger_time < cooldown:
+                        continue
                     # our own trigger already caught this moment
                     if abs(self.last_trigger_time - created) < 45:
                         logger.info("Community clip on %s matches a moment already captured.", self.channel_id)
